@@ -1,0 +1,70 @@
+import { ItineraryItem } from "@/types/itinerary";
+
+export const mockItineraryItems: ItineraryItem[] = [
+  {
+    id: "it-1",
+    locationId: "1",
+    name: "Holiday Indochina",
+    image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800",
+    timeRange: {
+      start: "08:00",
+      end: "09:00",
+    },
+    price: "70.000 VND",
+    googleMapsUrl: "https://maps.google.com/?q=Holiday+Indochina",
+    category: "restaurant",
+    transportation: {
+      car: "10 phút",
+      motorcycle: "-",
+      bus: "23 phút",
+      walking: "35 phút",
+      bicycle: "35 phút",
+      airplane: "-",
+    },
+    timelineIcon: "restaurant",
+  },
+  {
+    id: "it-2",
+    locationId: "2",
+    name: "Holiday Indochina",
+    image: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
+    timeRange: {
+      start: "09:00",
+      end: "12:00",
+    },
+    price: "0 VND",
+    googleMapsUrl: "https://maps.google.com/?q=Holiday+Indochina",
+    category: "attraction",
+    transportation: {
+      car: "15 phút",
+      motorcycle: "12 phút",
+      bus: "25 phút",
+      walking: "40 phút",
+      bicycle: "30 phút",
+      airplane: "-",
+    },
+    timelineIcon: "location",
+  },
+  {
+    id: "it-3",
+    locationId: "3",
+    name: "Holiday Indochina",
+    image: "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=800",
+    timeRange: {
+      start: "13:00",
+      end: "17:30",
+    },
+    price: "80.000 - 120.000 VND",
+    googleMapsUrl: "https://maps.google.com/?q=Holiday+Indochina",
+    category: "activity",
+    transportation: {
+      car: "20 phút",
+      motorcycle: "18 phút",
+      bus: "30 phút",
+      walking: "45 phút",
+      bicycle: "35 phút",
+      airplane: "-",
+    },
+    timelineIcon: "telescope",
+  },
+];
