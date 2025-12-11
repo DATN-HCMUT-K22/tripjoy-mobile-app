@@ -10,6 +10,8 @@ interface ItineraryContextType {
   addLocationsToDay: (dayKey: string, locationIds: string[]) => void;
   // Thêm itinerary items cho một ngày
   addItineraryItemsToDay: (dayKey: string, items: ItineraryItem[]) => void;
+  // Hoán đổi hai item trong ngày và giữ nguyên timeRange tại vị trí
+  swapItems: (dayKey: string, fromIndex: number, toIndex: number) => void;
   // Reset tất cả
   resetItinerary: () => void;
 }
@@ -42,6 +44,38 @@ export const ItineraryProvider: React.FC<{ children: ReactNode }> = ({
     }));
   };
 
+  const swapItems = (dayKey: string, fromIndex: number, toIndex: number) => {
+    setItineraryItemsByDay((prev) => {
+      const items = prev[dayKey] || [];
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= items.length ||
+        toIndex >= items.length
+      ) {
+        return prev;
+      }
+
+      const newItems = [...items];
+      const itemFrom = { ...newItems[fromIndex] };
+      const itemTo = { ...newItems[toIndex] };
+
+      const timeRangeAtFromIndex = { ...newItems[fromIndex].timeRange };
+      const timeRangeAtToIndex = { ...newItems[toIndex].timeRange };
+
+      itemFrom.timeRange = timeRangeAtToIndex;
+      itemTo.timeRange = timeRangeAtFromIndex;
+
+      newItems[fromIndex] = itemTo;
+      newItems[toIndex] = itemFrom;
+
+      return {
+        ...prev,
+        [dayKey]: newItems,
+      };
+    });
+  };
+
   const resetItinerary = () => {
     setSelectedLocationsByDay({});
     setItineraryItemsByDay({});
@@ -54,6 +88,7 @@ export const ItineraryProvider: React.FC<{ children: ReactNode }> = ({
         itineraryItemsByDay,
         addLocationsToDay,
         addItineraryItemsToDay,
+        swapItems,
         resetItinerary,
       }}
     >

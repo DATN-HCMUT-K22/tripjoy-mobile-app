@@ -1,3 +1,5 @@
+import InteractiveMap from "@/components/InteractiveMap";
+import TimePickerModal from "@/components/TimePickerModal";
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { budgetOptions } from "@/data/budgetOptions";
@@ -10,6 +12,7 @@ import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
+  Linking,
   SafeAreaView,
   ScrollView,
   Text,
@@ -17,41 +20,17 @@ import {
   View,
 } from "react-native";
 
-type LocationForMap = {
-  latitude: number;
-  longitude: number;
-};
-
-function buildStaticMapUrl(locations: LocationForMap[]) {
-  // Sử dụng static map của OpenStreetMap (không cần API key)
-  // API: https://staticmap.openstreetmap.de/
-  if (!locations.length) {
-    // Fallback vị trí default (Hà Giang)
-    return "https://staticmap.openstreetmap.de/staticmap.php?center=22.8333,105.0000&zoom=10&size=600x300";
-  }
-
-  const avgLat =
-    locations.reduce((sum, l) => sum + l.latitude, 0) / locations.length;
-  const avgLng =
-    locations.reduce((sum, l) => sum + l.longitude, 0) / locations.length;
-
-  const center = `${avgLat},${avgLng}`;
-  const markers = locations
-    .map((l) => `markers=${l.latitude},${l.longitude},red-pushpin`)
-    .join("&");
-
-  return `https://staticmap.openstreetmap.de/staticmap.php?center=${center}&zoom=11&size=600x300&${markers}`;
-}
-
 // Component hiển thị một itinerary item card
 function ItineraryItemCard({
   item,
   index,
   totalItems,
+  onEditTime,
 }: {
   item: ItineraryItem;
   index: number;
   totalItems: number;
+  onEditTime: (item: ItineraryItem) => void;
 }) {
   const getTimelineIcon = () => {
     switch (item.timelineIcon) {
@@ -144,6 +123,13 @@ function ItineraryItemCard({
               <Text className="ml-2 text-sm text-gray-700">
                 {item.timeRange.start} - {item.timeRange.end}
               </Text>
+              <TouchableOpacity
+                onPress={() => onEditTime(item)}
+                className="ml-2 px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200"
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Ionicons name="calendar-outline" size={14} color="#34B27D" />
+              </TouchableOpacity>
             </View>
             <View className="flex-row items-center mb-2">
               <Ionicons name="cash-outline" size={16} color="#666" />
@@ -153,10 +139,10 @@ function ItineraryItemCard({
               <TouchableOpacity
                 className="flex-row items-center"
                 onPress={() => {
-                  // Mở Google Maps
                   if (googleMapsUrl) {
-                    // Có thể dùng Linking.openURL nếu cần
-                    console.log("Open Google Maps:", googleMapsUrl);
+                    Linking.openURL(googleMapsUrl).catch((err) =>
+                      console.warn("Không mở được Google Maps:", err)
+                    );
                   }
                 }}
               >
@@ -195,7 +181,11 @@ export default function ManualItineraryScreen() {
     itineraryItemsByDay,
     addItineraryItemsToDay,
     addLocationsToDay,
+    resetItinerary,
   } = useItinerary();
+
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
 
   // Lưu snapshot của state trước khi điều hướng để có thể revert khi back
   const snapshotRef = useRef<{
@@ -237,6 +227,21 @@ export default function ManualItineraryScreen() {
   const itineraryItemsForDay = useMemo(() => {
     return selectedDay ? itineraryItemsByDay[selectedDay.key] || [] : [];
   }, [selectedDay, itineraryItemsByDay]);
+
+  const openTimePicker = (item: ItineraryItem) => {
+    setEditingItem(item);
+    setTimePickerVisible(true);
+  };
+
+  const handleSaveTime = (timeRange: { start: string; end: string }) => {
+    if (!selectedDay || !editingItem) return;
+    const updated = (itineraryItemsByDay[selectedDay.key] || []).map((it) =>
+      it.id === editingItem.id ? { ...it, timeRange } : it
+    );
+    addItineraryItemsToDay(selectedDay.key, updated);
+    setTimePickerVisible(false);
+    setEditingItem(null);
+  };
 
   // Lấy locations để hiển thị trên map
   const locationsForSelectedDay = useMemo(() => {
@@ -383,7 +388,10 @@ export default function ManualItineraryScreen() {
       {/* Header */}
       <View className="flex-row items-center px-4 py-3">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => {
+            resetItinerary();
+            router.back();
+          }}
           className="absolute left-4 z-10"
           activeOpacity={0.7}
         >
@@ -501,15 +509,10 @@ export default function ManualItineraryScreen() {
           {/* Big map card: hiển thị tất cả marker của các địa điểm trong ngày */}
           {locationsForSelectedDay.length > 0 && (
             <View className="mb-4 rounded-2xl overflow-hidden bg-white border border-gray-200">
-              <View className="w-full h-64 bg-gray-200">
-                <Image
-                  source={{
-                    uri: buildStaticMapUrl(locationsForSelectedDay),
-                  }}
-                  style={{ width: "100%", height: "100%" }}
-                  contentFit="cover"
-                />
-              </View>
+              <InteractiveMap
+                locations={locationsForSelectedDay}
+                height={256}
+              />
             </View>
           )}
 
@@ -553,6 +556,7 @@ export default function ManualItineraryScreen() {
                   item={item}
                   index={index}
                   totalItems={itineraryItemsForDay.length}
+                  onEditTime={openTimePicker}
                 />
               ))}
             </View>
@@ -628,6 +632,7 @@ export default function ManualItineraryScreen() {
           onPress={() => {
             router.push({
               pathname: "/create/adjust-itinerary",
+              params: { dayKey: selectedDay?.key },
             } as any);
           }}
         >
@@ -651,6 +656,18 @@ export default function ManualItineraryScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <TimePickerModal
+        key={editingItem?.id || "time-picker"}
+        visible={timePickerVisible}
+        initialStartTime={editingItem?.timeRange.start || "08:00"}
+        initialEndTime={editingItem?.timeRange.end || "10:00"}
+        onClose={() => {
+          setTimePickerVisible(false);
+          setEditingItem(null);
+        }}
+        onSave={handleSaveTime}
+      />
     </SafeAreaView>
   );
 }

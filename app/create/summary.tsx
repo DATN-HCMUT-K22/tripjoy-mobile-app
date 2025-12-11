@@ -1,3 +1,4 @@
+import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { budgetOptions } from "@/data/budgetOptions";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
@@ -16,6 +17,7 @@ import {
 export default function TripSummaryScreen() {
   const router = useRouter();
   const { tripData } = useTripSetup();
+  const { resetItinerary } = useItinerary();
 
   const selectedBudgetOption = budgetOptions.find(
     (opt) => opt.id === tripData.budget
@@ -49,7 +51,10 @@ export default function TripSummaryScreen() {
       {/* Page Header */}
       <View className="flex-row items-center px-4 py-3">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => {
+            resetItinerary();
+            router.back();
+          }}
           className="absolute left-4 z-10"
           activeOpacity={0.7}
         >

@@ -40,10 +40,10 @@ export default function CreateTripScreen() {
     tripData.location || null
   );
   const [searchText, setSearchText] = useState("");
-  const [isLocationExpanded, setIsLocationExpanded] = useState(false);
-  const [isTimeExpanded, setIsTimeExpanded] = useState(false);
-  const [isBudgetExpanded, setIsBudgetExpanded] = useState(false);
-  const [isTypeExpanded, setIsTypeExpanded] = useState(false);
+  const [isLocationExpanded, setIsLocationExpanded] = useState(true);
+  const [isTimeExpanded, setIsTimeExpanded] = useState(true);
+  const [isBudgetExpanded, setIsBudgetExpanded] = useState(true);
+  const [isTypeExpanded, setIsTypeExpanded] = useState(true);
   const [selectedTripTypes, setSelectedTripTypes] = useState<string[]>(
     tripData.tripTypes || []
   );
