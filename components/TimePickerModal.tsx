@@ -13,6 +13,7 @@ const hours = Array.from({ length: 24 }, (_, i) => i);
 const minutes = Array.from({ length: 12 }, (_, i) => i * 5);
 const ITEM_HEIGHT = 44; // ước lượng chiều cao mỗi dòng để scroll chính xác
 const VISIBLE_HEIGHT = 180; // chiều cao khung scroll (phù hợp với style hiện tại)
+const PADDING_VERTICAL = (VISIBLE_HEIGHT - ITEM_HEIGHT) / 2;
 
 const pad = (n: number) => n.toString().padStart(2, "0");
 
@@ -109,8 +110,14 @@ const TimePickerModal: React.FC<Props> = ({
               <View className="flex-row bg-gray-100 rounded-xl p-2">
                 <ScrollView
                   ref={startHourRef}
-                  style={{ flex: 1, maxHeight: 180 }}
+                  style={{ flex: 1, maxHeight: VISIBLE_HEIGHT }}
                   showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingVertical: PADDING_VERTICAL,
+                  }}
+                  snapToInterval={ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  snapToAlignment="center"
                 >
                   {hours.map((h) => (
                     <TouchableOpacity
@@ -134,8 +141,14 @@ const TimePickerModal: React.FC<Props> = ({
                 </ScrollView>
                 <ScrollView
                   ref={startMinuteRef}
-                  style={{ flex: 1, maxHeight: 180 }}
+                  style={{ flex: 1, maxHeight: VISIBLE_HEIGHT }}
                   showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingVertical: PADDING_VERTICAL,
+                  }}
+                  snapToInterval={ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  snapToAlignment="center"
                 >
                   {minutes.map((m) => (
                     <TouchableOpacity
@@ -167,8 +180,14 @@ const TimePickerModal: React.FC<Props> = ({
               <View className="flex-row bg-gray-100 rounded-xl p-2">
                 <ScrollView
                   ref={endHourRef}
-                  style={{ flex: 1, maxHeight: 180 }}
+                  style={{ flex: 1, maxHeight: VISIBLE_HEIGHT }}
                   showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingVertical: PADDING_VERTICAL,
+                  }}
+                  snapToInterval={ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  snapToAlignment="center"
                 >
                   {hours.map((h) => (
                     <TouchableOpacity
@@ -192,8 +211,14 @@ const TimePickerModal: React.FC<Props> = ({
                 </ScrollView>
                 <ScrollView
                   ref={endMinuteRef}
-                  style={{ flex: 1, maxHeight: 180 }}
+                  style={{ flex: 1, maxHeight: VISIBLE_HEIGHT }}
                   showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingVertical: PADDING_VERTICAL,
+                  }}
+                  snapToInterval={ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  snapToAlignment="center"
                 >
                   {minutes.map((m) => (
                     <TouchableOpacity
