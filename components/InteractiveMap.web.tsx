@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import React from "react";
+import React, { useMemo } from "react";
 import { View } from "react-native";
 
 import { buildMapboxStaticMapUrl, LocationForMap } from "@/utils/mapbox";
@@ -10,10 +10,14 @@ type Props = {
 };
 
 const InteractiveMapWeb: React.FC<Props> = ({ locations, height = 256 }) => {
-  const uri = buildMapboxStaticMapUrl(locations, {
-    width: 800,
-    height,
-  });
+  const uri = useMemo(
+    () =>
+      buildMapboxStaticMapUrl(locations, {
+        width: 800,
+        height,
+      }),
+    [locations, height]
+  );
 
   return (
     <View style={{ height }} className="w-full bg-gray-200">

@@ -18,5 +18,6 @@
 
 ## Env
 
-- `EXPO_PUBLIC_MAP_API_KEY`, `MAP_API_KEY`, hoặc `EXPO_PUBLIC_MAPBOX_TOKEN`.
-- Đặt trong file `.env` và nạp qua `app.config.js` (nếu cần).
+- Render (public): `EXPO_PUBLIC_MAP_API_KEY` (ưu tiên), `EXPO_PUBLIC_MAPBOX_TOKEN`, hoặc `MAP_API_KEY`. Dùng token public (pk.\* hoặc sk giới hạn).
+- Native SDK download (build time): `RNMAPBOX_MAPS_DOWNLOAD_TOKEN` (đặt trong env EAS, không commit).
+- Local dev: tạo `.env` với các biến trên; `app.config.js` đã `require("dotenv").config()` để nạp khi chạy `expo start`.
