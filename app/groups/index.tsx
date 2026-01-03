@@ -1,9 +1,11 @@
 import { CreateGroupModal, GroupCard, GroupListItem } from "@/components/group";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
-import { AppHeader } from "@/components/ui/AppHeader";
-import { mockGroups } from "@/data/mockGroups";
+import { SocialHeader } from "@/components/social/SocialHeader";
+import { useGroups } from "@/hooks/useGroups";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -15,16 +17,53 @@ import {
 type ViewMode = "card" | "list";
 
 export default function GroupsScreen() {
+  const router = useRouter();
+  const { requireAuth } = useRequireAuth();
   const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
-  const groups = mockGroups;
+  const [activeIcon, setActiveIcon] = useState<
+    "notification" | "message" | null
+  >(null);
+
+  // Fetch groups từ API
+  const { data: groups = [], isLoading, error } = useGroups();
+
+  // Reset activeIcon khi quay lại màn này
+  useFocusEffect(
+    useCallback(() => {
+      setActiveIcon(null);
+    }, [])
+  );
+
+  // Tính tổng unreadCount từ các groups để làm messageCount
+  const messageCount = groups.reduce(
+    (sum, group) => sum + ((group as any).unreadCount || 0),
+    0
+  );
+
+  // Mock notification count (tương tự màn mạng xã hội)
+  const notificationCount = 3;
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      {/* App Header */}
-      <AppHeader
-        onNotificationPress={() => console.log("Notification pressed")}
-        onMessagePress={() => console.log("Message pressed")}
+    <SafeAreaView className="flex-1 bg-white">
+      {/* Social Header với notification và chat icons */}
+      <SocialHeader
+        notificationCount={notificationCount}
+        messageCount={messageCount}
+        activeIcon={activeIcon}
+        onNotificationPress={async () => {
+          await requireAuth(async () => {
+            setActiveIcon("notification");
+            // TODO: Call API get notifications
+            console.log("Notification pressed");
+          });
+        }}
+        onMessagePress={async () => {
+          await requireAuth(async () => {
+            setActiveIcon("message");
+            router.push("/messages");
+          });
+        }}
       />
 
       {/* Page Header */}
@@ -34,7 +73,7 @@ export default function GroupsScreen() {
         </View>
         <View className="flex-row items-center justify-between">
           <Text className="text-base font-bold text-gray-600">
-            {groups.length} nhóm
+            {isLoading ? "Đang tải..." : `${groups.length} nhóm`}
           </Text>
           <View className="flex-row items-center gap-3">
             {/* View Toggle */}
@@ -67,7 +106,6 @@ export default function GroupsScreen() {
               </TouchableOpacity>
             </View>
             <TouchableOpacity
-              activeOpacity={0.7}
               className="px-4 py-2 bg-primary rounded-lg"
               onPress={() => setIsCreateModalVisible(true)}
             >
@@ -78,9 +116,26 @@ export default function GroupsScreen() {
       </View>
 
       {/* Content */}
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="px-4 py-4">
-          {groups.length === 0 ? (
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        style={{ backgroundColor: "#E8F5E9" }}
+      >
+        <View className="px-4 py-4" style={{ backgroundColor: "#E8F5E9" }}>
+          {isLoading ? (
+            <View className="items-center justify-center py-20">
+              <Text className="text-gray-500 text-base">
+                Đang tải danh sách nhóm...
+              </Text>
+            </View>
+          ) : error ? (
+            <View className="items-center justify-center py-20">
+              <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
+              <Text className="text-gray-500 text-base mt-4">
+                Có lỗi xảy ra khi tải danh sách nhóm
+              </Text>
+            </View>
+          ) : groups.length === 0 ? (
             <View className="items-center justify-center py-20">
               <Ionicons name="people-outline" size={64} color="#ccc" />
               <Text className="text-gray-500 text-base mt-4">

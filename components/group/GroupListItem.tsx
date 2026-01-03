@@ -11,13 +11,17 @@ interface GroupListItemProps {
 
 export const GroupListItem: React.FC<GroupListItemProps> = ({ group }) => {
   const router = useRouter();
-  const hasData = group.itineraryCount > 0 || group.memberCount > 0;
+  const memberCount = (group as any).memberCount ?? group.members?.length ?? 0;
+  const itineraryCount = (group as any).itineraryCount ?? 0;
+  const hasData = itineraryCount > 0 || memberCount > 0;
+  const avatar = group.avatar || "";
+  const goToChat = () => router.push(`/groups/${group.id}/chat` as any);
 
   return (
     <TouchableOpacity
       onPress={() => {
         if (hasData) {
-          router.push(`/groups/${group.id}` as any);
+          goToChat();
         }
       }}
       activeOpacity={hasData ? 0.8 : 1}
@@ -26,15 +30,27 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({ group }) => {
       }`}
     >
       {/* Image Thumbnail */}
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => router.push(`/groups/${group.id}/info` as any)}
-      >
-        <ExpoImage
-          source={{ uri: group.image }}
-          style={{ width: 80, height: 80, borderRadius: 8 }}
-          contentFit="cover"
-        />
+      <TouchableOpacity activeOpacity={0.9} onPress={goToChat}>
+        {avatar ? (
+          <ExpoImage
+            source={{ uri: avatar }}
+            style={{ width: 80, height: 80, borderRadius: 8 }}
+            contentFit="cover"
+          />
+        ) : (
+          <View
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: 8,
+              backgroundColor: "#E5E7EB",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="people-outline" size={32} color="#9CA3AF" />
+          </View>
+        )}
       </TouchableOpacity>
 
       {/* Text Details */}
@@ -47,7 +63,11 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({ group }) => {
             {group.name}
           </Text>
         </TouchableOpacity>
-        <Text className="text-sm text-gray-500 mb-3">{group.description}</Text>
+        {group.description && (
+          <Text className="text-sm text-gray-500 mb-3">
+            {group.description}
+          </Text>
+        )}
         <View className="flex-row items-center gap-4">
           {/* Lịch trình Metric */}
           <View className="flex-row items-center gap-2">
@@ -65,7 +85,7 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({ group }) => {
             </View>
             <View>
               <Text className="text-lg font-bold text-black">
-                {group.itineraryCount}
+                {itineraryCount}
               </Text>
               <Text className="text-xs text-black">lịch trình</Text>
             </View>
@@ -90,7 +110,7 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({ group }) => {
             </View>
             <View>
               <Text className="text-lg font-bold text-black">
-                {group.memberCount}
+                {memberCount}
               </Text>
               <Text className="text-xs text-black">thành viên</Text>
             </View>

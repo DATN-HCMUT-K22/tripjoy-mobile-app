@@ -98,7 +98,31 @@ export default function TripSummaryScreen() {
 
             {/* Summary Details */}
             <View className="px-5 py-4">
-              {/* Destination */}
+              {/* Departure Location (Điểm đi) */}
+              {tripData.departureLocation && (
+                <>
+                  <View className="flex-row items-start gap-3 mb-3">
+                    <Text className="text-lg">🚩</Text>
+                    <View className="flex-1">
+                      <Text className="text-base font-semibold text-black mb-1">
+                        Điểm đi
+                      </Text>
+                      <Text className="text-base text-gray-800 mb-1">
+                        {tripData.departureLocation.name}
+                      </Text>
+                      <View className="flex-row items-center gap-1">
+                        <Text className="text-base">🍔</Text>
+                        <Text className="text-sm text-gray-600">
+                          Đặc sản: {tripData.departureLocation.specialty}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View className="h-px bg-gray-200 w-full mb-3" />
+                </>
+              )}
+
+              {/* Destination (Điểm đến) */}
               {tripData.location && (
                 <>
                   <View className="flex-row items-start gap-3 mb-3">

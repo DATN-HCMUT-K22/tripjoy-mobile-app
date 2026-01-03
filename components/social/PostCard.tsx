@@ -7,10 +7,10 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 interface PostCardProps {
   post: Post;
-  onLike?: (postId: string) => void;
+  onLike?: (postId: string) => void | Promise<void>;
   onComment?: (postId: string) => void;
   onShare?: (postId: string) => void;
-  onBookmark?: (postId: string) => void;
+  onBookmark?: (postId: string) => void | Promise<void | null>;
   onDownload?: (postId: string) => void;
   onReport?: (postId: string) => void;
 }
@@ -27,14 +27,22 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [isLiked, setIsLiked] = React.useState(false);
   const [isBookmarked, setIsBookmarked] = React.useState(post.isBookmarked);
 
-  const handleLike = () => {
-    setIsLiked(!isLiked);
-    onLike?.(post.id);
+  const handleLike = async () => {
+    // Gọi callback trước, chỉ cập nhật state nếu thành công
+    const result = await onLike?.(post.id);
+    // Nếu result là null, có nghĩa là không có auth (modal đã hiện), không cập nhật state
+    if (result !== null && result !== undefined) {
+      setIsLiked(!isLiked);
+    }
   };
 
-  const handleBookmark = () => {
-    setIsBookmarked(!isBookmarked);
-    onBookmark?.(post.id);
+  const handleBookmark = async () => {
+    // Gọi callback trước, chỉ cập nhật state nếu thành công
+    const result = await onBookmark?.(post.id);
+    // Nếu result là null, có nghĩa là không có auth (modal đã hiện), không cập nhật state
+    if (result !== null && result !== undefined) {
+      setIsBookmarked(!isBookmarked);
+    }
   };
 
   return (

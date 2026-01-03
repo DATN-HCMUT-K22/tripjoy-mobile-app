@@ -11,31 +11,58 @@ interface GroupCardProps {
 
 export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
   const router = useRouter();
-  const hasData = group.itineraryCount > 0 || group.memberCount > 0;
+  const memberCount = (group as any).memberCount ?? group.members?.length ?? 0;
+  const itineraryCount = (group as any).itineraryCount ?? 0;
+  const hasData = itineraryCount > 0 || memberCount > 0;
+  const initial = group.name.charAt(0).toUpperCase();
+  const avatar = group.avatar || "";
+  const goToChat = () => router.push(`/groups/${group.id}/chat` as any);
 
   return (
     <TouchableOpacity
       onPress={() => {
         if (hasData) {
-          router.push(`/groups/${group.id}` as any);
+          goToChat();
         }
       }}
-      activeOpacity={hasData ? 0.8 : 1}
-      className={`mb-4 bg-white rounded-xl overflow-hidden shadow-sm ${
-        !hasData ? "opacity-60" : ""
-      }`}
+      activeOpacity={0.8}
+      className="mb-4 bg-white rounded-xl overflow-hidden shadow-sm"
     >
       {/* Image with Overlay */}
       <View className="relative">
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => router.push(`/groups/${group.id}/info` as any)}
-        >
-          <ExpoImage
-            source={{ uri: group.image }}
-            style={{ width: "100%", height: 200 }}
-            contentFit="cover"
-          />
+        <TouchableOpacity activeOpacity={0.9} onPress={goToChat}>
+          {avatar ? (
+            <View className="relative">
+              <ExpoImage
+                source={{ uri: avatar }}
+                style={{ width: "100%", height: 200 }}
+                contentFit="cover"
+              />
+              {/* Gradient Overlay - BỎ LỚP MỜ NÀY */}
+              {/* <LinearGradient
+                colors={['transparent', 'rgba(0, 0, 0, 0.3)']}
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: 100,
+                }}
+              /> */}
+            </View>
+          ) : (
+            <View
+              style={{
+                width: "100%",
+                height: 200,
+                backgroundColor: "#E5E7EB",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="people-outline" size={64} color="#9CA3AF" />
+            </View>
+          )}
         </TouchableOpacity>
         {/* Overlay Text */}
         <TouchableOpacity
@@ -43,12 +70,28 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
           onPress={() => router.push(`/groups/${group.id}/info` as any)}
           className="absolute bottom-4 left-4"
         >
-          <Text className="text-white text-xl font-bold mb-1">
+          <Text
+            className="text-white text-xl font-bold mb-1"
+            style={{
+              textShadowColor: "rgba(0, 0, 0, 0.75)",
+              textShadowOffset: { width: 0, height: 1 },
+              textShadowRadius: 3,
+            }}
+          >
             {group.name}
           </Text>
-          <Text className="text-white text-sm opacity-90">
-            {group.description}
-          </Text>
+          {group.description && (
+            <Text
+              className="text-white text-sm"
+              style={{
+                textShadowColor: "rgba(0, 0, 0, 0.75)",
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 3,
+              }}
+            >
+              {group.description}
+            </Text>
+          )}
         </TouchableOpacity>
         {/* Initial Icon - White rounded square with green text */}
         <View
@@ -64,9 +107,7 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
             justifyContent: "center",
           }}
         >
-          <Text className="text-primary font-bold text-xl">
-            {group.initial}
-          </Text>
+          <Text className="text-primary font-bold text-xl">{initial}</Text>
         </View>
       </View>
 
@@ -90,7 +131,7 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
               </View>
               <View>
                 <Text className="text-2xl font-bold text-black">
-                  {group.itineraryCount}
+                  {itineraryCount}
                 </Text>
                 <Text className="text-sm text-black">Lịch trình</Text>
               </View>
@@ -117,7 +158,7 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
               </View>
               <View>
                 <Text className="text-2xl font-bold text-black">
-                  {group.memberCount}
+                  {memberCount}
                 </Text>
                 <Text className="text-sm text-black">Thành viên</Text>
               </View>

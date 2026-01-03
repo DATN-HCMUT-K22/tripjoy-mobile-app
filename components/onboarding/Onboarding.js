@@ -43,21 +43,27 @@ export function Onboarding({ onDone }) {
 
   const handleMomentumEnd = (e) => {
     const newIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    if (newIndex !== index) setIndex(newIndex);
+    // Đảm bảo index hợp lệ
+    if (newIndex >= 0 && newIndex < slides.length && newIndex !== index) {
+      setIndex(newIndex);
+    }
   };
 
   const goNext = () => {
-    if (isLast) {
-      onDone();
+    // Kiểm tra trực tiếp index thay vì dùng isLast để tránh race condition
+    if (index >= slides.length - 1) {
+      onDone?.();
       return;
     }
-    const next = Math.min(index + 1, slides.length - 1);
-    listRef.current?.scrollToIndex({ index: next, animated: true });
-    setIndex(next);
+    const next = index + 1;
+    if (next < slides.length) {
+      listRef.current?.scrollToIndex({ index: next, animated: true });
+      setIndex(next);
+    }
   };
 
   const goSkip = () => {
-    onDone();
+    onDone?.();
   };
 
   const renderItem = ({ item }) => {
@@ -148,6 +154,23 @@ export function Onboarding({ onDone }) {
     );
   };
 
+  const getItemLayout = (data, index) => ({
+    length: SCREEN_WIDTH,
+    offset: SCREEN_WIDTH * index,
+    index,
+  });
+
+  const onScrollToIndexFailed = (info) => {
+    // Fallback: scroll đến vị trí tính toán
+    const wait = new Promise((resolve) => setTimeout(resolve, 500));
+    wait.then(() => {
+      listRef.current?.scrollToOffset({
+        offset: info.averageItemLength * info.index,
+        animated: true,
+      });
+    });
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
       <FlatList
@@ -161,6 +184,8 @@ export function Onboarding({ onDone }) {
         onMomentumScrollEnd={handleMomentumEnd}
         scrollEventThrottle={16}
         decelerationRate="fast"
+        getItemLayout={getItemLayout}
+        onScrollToIndexFailed={onScrollToIndexFailed}
       />
 
       <View
@@ -224,7 +249,7 @@ export function Onboarding({ onDone }) {
 
         <TouchableOpacity
           activeOpacity={0.9}
-          onPress={isLast ? onDone : goNext}
+          onPress={goNext}
           style={{
             flex: 1,
             height: 52,

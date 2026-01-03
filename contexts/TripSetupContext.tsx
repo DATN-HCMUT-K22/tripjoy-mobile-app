@@ -2,7 +2,9 @@ import { Location } from "@/types/trip";
 import React, { createContext, ReactNode, useContext, useState } from "react";
 
 interface TripSetupData {
-  location: Location | null;
+  location: Location | null; // Điểm đến (giữ để tương thích)
+  departureLocation: Location | null; // Điểm đi
+  destinationLocation: Location | null; // Điểm đến
   dateRange: string | null;
   budget: string | null;
   tripTypes: string[];
@@ -12,7 +14,9 @@ interface TripSetupData {
 
 interface TripSetupContextType {
   tripData: TripSetupData;
-  setLocation: (location: Location | null) => void;
+  setLocation: (location: Location | null) => void; // Giữ để tương thích
+  setDepartureLocation: (location: Location | null) => void;
+  setDestinationLocation: (location: Location | null) => void;
   setDateRange: (range: string | null) => void;
   setBudget: (budget: string | null) => void;
   setTripTypes: (types: string[]) => void;
@@ -30,6 +34,8 @@ export const TripSetupProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [tripData, setTripData] = useState<TripSetupData>({
     location: null,
+    departureLocation: null,
+    destinationLocation: null,
     dateRange: null,
     budget: null,
     tripTypes: [],
@@ -38,7 +44,23 @@ export const TripSetupProvider: React.FC<{ children: ReactNode }> = ({
   });
 
   const setLocation = (location: Location | null) => {
-    setTripData((prev) => ({ ...prev, location }));
+    setTripData((prev) => ({
+      ...prev,
+      location,
+      destinationLocation: location,
+    }));
+  };
+
+  const setDepartureLocation = (location: Location | null) => {
+    setTripData((prev) => ({ ...prev, departureLocation: location }));
+  };
+
+  const setDestinationLocation = (location: Location | null) => {
+    setTripData((prev) => ({
+      ...prev,
+      destinationLocation: location,
+      location,
+    }));
   };
 
   const setDateRange = (range: string | null) => {
@@ -64,6 +86,8 @@ export const TripSetupProvider: React.FC<{ children: ReactNode }> = ({
   const resetTripData = () => {
     setTripData({
       location: null,
+      departureLocation: null,
+      destinationLocation: null,
       dateRange: null,
       budget: null,
       tripTypes: [],
@@ -77,6 +101,8 @@ export const TripSetupProvider: React.FC<{ children: ReactNode }> = ({
       value={{
         tripData,
         setLocation,
+        setDepartureLocation,
+        setDestinationLocation,
         setDateRange,
         setBudget,
         setTripTypes,

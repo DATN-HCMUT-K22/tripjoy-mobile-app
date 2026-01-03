@@ -1,16 +1,42 @@
+import { Group } from "@/types/group";
+import { ApiResponse } from "@/types/user";
 import { httpClient } from "./http/client";
 
-export type Group = {
-  id: string;
+export interface CreateGroupPayload {
   name: string;
+  avatar?: string;
   description?: string;
-  members: number;
-};
+  chatbotCount?: number;
+  isPro?: boolean;
+  theme_color?: string;
+  member_ids: string[];
+}
 
-export const getGroups = () => httpClient.get<Group[]>("/groups");
+export interface CreateGroupResponse {
+  code: number;
+  message: string;
+  data: Group;
+}
 
+export interface GetGroupsResponse {
+  code: number;
+  data: Group[];
+}
+
+// Public API - không cần auth (optional auth)
+export const getGroups = () =>
+  httpClient.get<GetGroupsResponse>("/groups", {
+    skipAuth: false, // Optional auth - có token thì gửi, không có thì không gửi
+  });
+
+// Public API - không cần auth (optional auth)
 export const getGroupById = (id: string) =>
-  httpClient.get<Group>(`/groups/${id}`);
+  httpClient.get<ApiResponse<Group>>(`/groups/${id}`, {
+    skipAuth: false, // Optional auth
+  });
 
-export const createGroup = (payload: Pick<Group, "name" | "description">) =>
-  httpClient.post<Group>("/groups", payload);
+// Private API - bắt buộc cần auth
+export const createGroup = (payload: CreateGroupPayload) =>
+  httpClient.post<CreateGroupResponse>("/groups", payload, {
+    skipAuth: false, // Bắt buộc auth
+  });

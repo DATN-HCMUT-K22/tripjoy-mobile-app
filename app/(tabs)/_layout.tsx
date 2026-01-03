@@ -15,6 +15,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarStyle: { display: 'none' }, // Ẩn tab bar ở tất cả các màn hình
       }}>
       <Tabs.Screen
         name="index"

@@ -1,5 +1,6 @@
 import { ContactItem } from "@/components/group/ContactItem";
-import { mockContacts } from "@/data/mockContacts";
+import { useCreateGroup } from "@/hooks/useGroups";
+import { useUsers } from "@/hooks/useUsers";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -42,6 +43,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const slideAnim = useRef(new Animated.Value(windowHeight)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const sheetPositionRef = useRef(expandedY);
+
+  // Fetch users từ API - chỉ khi modal visible và đã authenticated
+  const { data: users = [], isLoading: isLoadingUsers } = useUsers(visible);
+  const createGroupMutation = useCreateGroup();
 
   useEffect(() => {
     if (visible) {
@@ -94,10 +99,12 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     });
   };
 
-  const filteredContacts = mockContacts.filter(
-    (contact) =>
-      contact.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      contact.email.toLowerCase().includes(searchText.toLowerCase())
+  // Filter users theo search text
+  const filteredUsers = users.filter(
+    (user) =>
+      user.fullName.toLowerCase().includes(searchText.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchText.toLowerCase()) ||
+      user.username.toLowerCase().includes(searchText.toLowerCase())
   );
 
   const toggleContact = (contactId: string) => {
@@ -112,8 +119,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     setSelectedContacts((prev) => prev.filter((id) => id !== contactId));
   };
 
-  const selectedContactsData = mockContacts.filter((contact) =>
-    selectedContacts.includes(contact.id)
+  const selectedUsersData = users.filter((user) =>
+    selectedContacts.includes(user.id)
   );
 
   // Bỏ pan gesture, chỉ auto slide lên full height
@@ -142,17 +149,33 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     }
   };
 
-  const handleCreate = () => {
-    if (groupName.trim() && selectedContacts.length > 0) {
-      console.log("Create group:", {
-        name: groupName,
-        description: groupDescription,
-        members: selectedContacts,
-        avatar: selectedImage,
+  const handleCreate = async () => {
+    if (!groupName.trim() || selectedContacts.length === 0) {
+      return;
+    }
+
+    try {
+      await createGroupMutation.mutateAsync({
+        name: groupName.trim(),
+        avatar: selectedImage || undefined,
+        description: groupDescription.trim() || undefined,
+        chatbotCount: 0,
+        isPro: false,
+        member_ids: selectedContacts,
       });
+
+      // Close modal sau khi tạo thành công
       handleClose();
+    } catch (error) {
+      // Error đã được handle trong useCreateGroup hook
+      console.error("Failed to create group:", error);
     }
   };
+
+  // Không render modal nếu không visible để tránh backdrop mờ
+  if (!visible) {
+    return null;
+  }
 
   return (
     <Modal
@@ -300,16 +323,33 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 />
               </View>
 
-              {/* Contacts List */}
+              {/* Users List */}
               <View>
-                {filteredContacts.map((contact) => (
-                  <ContactItem
-                    key={contact.id}
-                    contact={contact}
-                    isSelected={selectedContacts.includes(contact.id)}
-                    onToggle={toggleContact}
-                  />
-                ))}
+                {isLoadingUsers ? (
+                  <View className="py-8 items-center">
+                    <Text className="text-gray-500">Đang tải danh sách...</Text>
+                  </View>
+                ) : filteredUsers.length === 0 ? (
+                  <View className="py-8 items-center">
+                    <Text className="text-gray-500">
+                      Không tìm thấy người dùng
+                    </Text>
+                  </View>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <ContactItem
+                      key={user.id}
+                      contact={{
+                        id: user.id,
+                        name: user.fullName,
+                        email: user.email,
+                        avatar: user.avatarUrl || "",
+                      }}
+                      isSelected={selectedContacts.includes(user.id)}
+                      onToggle={toggleContact}
+                    />
+                  ))
+                )}
               </View>
             </View>
           </ScrollView>
@@ -318,7 +358,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           {selectedContacts.length > 0 && (
             <View className="px-4 py-3 bg-white border-t border-gray-200">
               <View className="flex-row items-center justify-between">
-                {/* Selected Contacts */}
+                {/* Selected Users */}
                 <View className="flex-row items-center gap-2 flex-1">
                   <ScrollView
                     horizontal
@@ -326,15 +366,36 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     className="flex-1"
                   >
                     <View className="flex-row items-center gap-2">
-                      {selectedContactsData.map((contact) => (
-                        <View key={contact.id} className="relative">
-                          <ExpoImage
-                            source={{ uri: contact.avatar }}
-                            style={{ width: 40, height: 40, borderRadius: 20 }}
-                            contentFit="cover"
-                          />
+                      {selectedUsersData.map((user) => (
+                        <View key={user.id} className="relative">
+                          {user.avatarUrl ? (
+                            <ExpoImage
+                              source={{ uri: user.avatarUrl }}
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                              }}
+                              contentFit="cover"
+                            />
+                          ) : (
+                            <View
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                                backgroundColor: "#E5E7EB",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Text className="text-gray-600 font-semibold">
+                                {user.fullName.charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                          )}
                           <TouchableOpacity
-                            onPress={() => removeContact(contact.id)}
+                            onPress={() => removeContact(user.id)}
                             activeOpacity={0.7}
                             style={{
                               position: "absolute",
@@ -362,10 +423,16 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 <TouchableOpacity
                   onPress={handleCreate}
                   activeOpacity={0.8}
-                  disabled={!groupName.trim() || selectedContacts.length === 0}
+                  disabled={
+                    !groupName.trim() ||
+                    selectedContacts.length === 0 ||
+                    createGroupMutation.isPending
+                  }
                   style={{
                     backgroundColor:
-                      groupName.trim() && selectedContacts.length > 0
+                      groupName.trim() &&
+                      selectedContacts.length > 0 &&
+                      !createGroupMutation.isPending
                         ? "#34B27D"
                         : "#D1D5DB",
                     paddingHorizontal: 20,
@@ -376,7 +443,13 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     gap: 8,
                   }}
                 >
-                  <Ionicons name="paper-plane" size={20} color="#FFFFFF" />
+                  {createGroupMutation.isPending ? (
+                    <Text className="text-white font-semibold">
+                      Đang tạo...
+                    </Text>
+                  ) : (
+                    <Ionicons name="paper-plane" size={20} color="#FFFFFF" />
+                  )}
                 </TouchableOpacity>
               </View>
             </View>

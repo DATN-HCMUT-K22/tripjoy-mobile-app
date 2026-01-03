@@ -26,6 +26,14 @@
           }
         }
       ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
       "@rnmapbox/maps"
     ],
     "ios": {
