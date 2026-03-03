@@ -1,5 +1,4 @@
 import { EXPO_PUBLIC_API_URL } from "@/config/env";
-import { store } from "@/store";
 import { ApiResponse } from "@/types/user";
 import { storage } from "@/utils/storage";
 
@@ -14,16 +13,21 @@ type RequestOptions = RequestInit & {
   skipAuth?: boolean; // true = bỏ qua hoàn toàn auth (cho login, register)
   // false hoặc undefined = optional auth (có token thì gửi, không có thì không gửi)
   // Mặc định là false (optional auth)
+  timeout?: number; // Timeout trong milliseconds (mặc định: 15000 = 15 giây)
 };
 
 // Biến để tránh refresh token nhiều lần cùng lúc
 let isRefreshing = false;
 let refreshPromise: Promise<string> | null = null;
 
-// Interface cho refresh token response
+// Interface cho refresh token response (theo format giống login/refresh hiện tại)
+// { code: 1000, data: { authenticated, access_token, refresh_token, expires_in, token_type } }
 interface RefreshTokenData {
-  token: string;
   authenticated: boolean;
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  token_type: string;
 }
 
 // Hàm để refresh token (tách ra để tránh circular dependency)
@@ -35,9 +39,10 @@ async function handleRefreshToken(): Promise<string> {
   isRefreshing = true;
   refreshPromise = (async () => {
     try {
-      const currentToken = await storage.getAccessToken();
-      if (!currentToken) {
-        throw new Error("No token to refresh");
+      // Lấy refresh token từ storage (không dùng access token nữa)
+      const currentRefreshToken = await storage.getRefreshToken();
+      if (!currentRefreshToken) {
+        throw new Error("No refresh token to refresh");
       }
 
       // Call refresh token API trực tiếp (không dùng httpClient để tránh circular)
@@ -51,7 +56,7 @@ async function handleRefreshToken(): Promise<string> {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token: currentToken }),
+        body: JSON.stringify({ token: currentRefreshToken }),
       });
 
       if (!res.ok) {
@@ -60,9 +65,22 @@ async function handleRefreshToken(): Promise<string> {
 
       const response: ApiResponse<RefreshTokenData> = await res.json();
 
-      if (response.code === 0 && response.data) {
-        await storage.setAccessToken(response.data.token);
-        return response.data.token;
+      // Response format: { code: 1000, data: { authenticated, access_token, refresh_token, ... } }
+      if (response.code === 1000 && response.data) {
+        const newAccessToken = response.data.access_token;
+        const newRefreshToken = response.data.refresh_token;
+
+        if (!newAccessToken) {
+          throw new Error("Refresh response missing access_token");
+        }
+
+        // Lưu lại token mới vào storage
+        await storage.setAccessToken(newAccessToken);
+        if (newRefreshToken) {
+          await storage.setRefreshToken(newRefreshToken);
+        }
+
+        return newAccessToken;
       }
 
       throw new Error("Refresh token failed");
@@ -83,7 +101,7 @@ async function request<T>(
   path: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { params, skipAuth = false, ...rest } = options;
+  const { params, skipAuth = false, timeout = 15000, ...rest } = options; // Mặc định 15 giây
 
   // Đảm bảo path bắt đầu bằng /
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
@@ -137,56 +155,84 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  console.log("API Request:", url);
-  console.log("Request options:", {
-    method: rest.method || "GET",
-    body: rest.body,
-    hasToken: !!token,
-    tokenPreview: token ? `${token.substring(0, 20)}...` : null,
-    fullToken: token || null, // Log full token
-  });
+  // Generate request ID để track
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const timestamp = new Date().toISOString();
 
-  // Log user info từ Redux nếu có (chỉ log khi có token)
-  if (token && !skipAuth) {
-    const state = store.getState();
-    if (state.auth.user) {
-      console.log("User Info (from Redux):", {
-        id: state.auth.user.id,
-        username: state.auth.user.username,
-        email: state.auth.user.email,
-        fullName: state.auth.user.fullName,
-      });
-    } else {
-      console.log("User Info (from Redux): No user data");
+  console.log("\n========== API REQUEST ==========");
+  console.log(`[${timestamp}] Request ID: ${requestId}`);
+  console.log(`URL: ${url}`);
+  console.log(`Method: ${rest.method || "GET"}`);
+  console.log(`Has Token: ${!!token}`);
+  if (token) {
+    console.log(`Token Preview: ${token.substring(0, 20)}...`);
+  }
+  if (rest.body) {
+    try {
+      const bodyObj = typeof rest.body === "string" ? JSON.parse(rest.body) : rest.body;
+      console.log(`Body:`, JSON.stringify(bodyObj, null, 2));
+    } catch {
+      console.log(`Body: ${rest.body}`);
     }
   }
+  if (params && Object.keys(params).length > 0) {
+    console.log(`Query Params:`, params);
+  }
+  console.log("================================\n");
+
+  // Tạo AbortController để hỗ trợ timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeout);
 
   try {
     const res = await fetch(url, {
       ...rest,
       headers,
+      signal: controller.signal,
     });
+
+    // Clear timeout nếu request thành công
+    clearTimeout(timeoutId);
+
+    // Log response status
+    console.log(`\n[${requestId}] Response Status: ${res.status} ${res.statusText}`);
+    console.log(`[${requestId}] URL: ${url}`);
 
     // Nếu gặp lỗi 401 (Unauthorized), thử refresh token
     // Chỉ refresh nếu đã có token (không phải guest mode)
     if (res.status === 401 && skipAuth !== true && token) {
-      console.log("Token expired, attempting to refresh...");
+      console.log(`[${requestId}] ⚠️ Token expired, attempting to refresh...`);
+      let retryTimeoutId: NodeJS.Timeout | null = null;
       try {
         const newToken = await handleRefreshToken();
         // Retry request với token mới
         headers["Authorization"] = `Bearer ${newToken}`;
+        // Tạo AbortController mới cho retry request
+        const retryController = new AbortController();
+        retryTimeoutId = setTimeout(() => {
+          retryController.abort();
+        }, timeout) as any;
+
         const retryRes = await fetch(url, {
           ...rest,
           headers,
+          signal: retryController.signal,
         });
+
+        // Clear timeout nếu retry thành công
+        if (retryTimeoutId) clearTimeout(retryTimeoutId);
 
         if (!retryRes.ok) {
           const message = await retryRes.text();
           let errorMessage = message || `Request failed: ${retryRes.status}`;
+          let errorData: any = null;
 
-          // Parse JSON response nếu có để lấy message
+          // Parse JSON response nếu có để lấy message và data
           try {
             const parsed = JSON.parse(message);
+            errorData = parsed;
             if (parsed.message) {
               errorMessage = parsed.message;
             } else if (parsed.code && parsed.message) {
@@ -196,15 +242,38 @@ async function request<T>(
             // Nếu không phải JSON, giữ nguyên message
           }
 
-          console.error(`API Error [${retryRes.status}]:`, url);
-          console.error("Error response:", message);
-          throw new Error(errorMessage);
+          console.error(`\n❌ [${requestId}] API ERROR [${retryRes.status}]`);
+          console.error(`URL: ${url}`);
+          console.error(`Error Message:`, errorMessage);
+          console.error(`Error Code:`, errorData?.code);
+          console.error(`Full Response:`, message);
+          console.error("================================\n");
+          
+          // Tạo error object với response property
+          const error: any = new Error(errorMessage);
+          error.response = {
+            status: retryRes.status,
+            data: errorData,
+          };
+          error.status = retryRes.status;
+          throw error;
         }
 
         const text = await retryRes.text();
-        if (!text) return {} as T;
-        return JSON.parse(text) as T;
-      } catch (refreshError) {
+        if (!text) {
+          console.log(`[${requestId}] ✅ Response: {} (empty)`);
+          console.log("================================\n");
+          return {} as T;
+        }
+        const responseData = JSON.parse(text) as T;
+        console.log(`[${requestId}] ✅ Response Success`);
+        console.log(`[${requestId}] URL: ${url}`);
+        console.log(`[${requestId}] Response Data:`, JSON.stringify(responseData, null, 2));
+        console.log("================================\n");
+        return responseData;
+      } catch (refreshError: any) {
+        // Clear retry timeout nếu có lỗi
+        if (retryTimeoutId) clearTimeout(retryTimeoutId);
         console.error("Refresh token failed:", refreshError);
         throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
       }
@@ -213,10 +282,12 @@ async function request<T>(
     if (!res.ok) {
       const message = await res.text();
       let errorMessage = message || `Request failed: ${res.status}`;
+      let errorData: any = null;
 
-      // Parse JSON response nếu có để lấy message
+      // Parse JSON response nếu có để lấy message và data
       try {
         const parsed = JSON.parse(message);
+        errorData = parsed;
         if (parsed.message) {
           errorMessage = parsed.message;
         } else if (parsed.code && parsed.message) {
@@ -227,27 +298,77 @@ async function request<T>(
         // Nếu không phải JSON, giữ nguyên message
       }
 
-      console.error(`API Error [${res.status}]:`, url);
-      console.error("Error response:", message);
-      throw new Error(errorMessage);
+      console.error(`\n❌ [${requestId}] API ERROR [${res.status}]`);
+      console.error(`URL: ${url}`);
+      console.error(`Error Message:`, errorMessage);
+      console.error(`Error Code:`, errorData?.code);
+      console.error(`Full Response:`, message);
+      console.error("================================\n");
+      
+      // Tạo error object với response property để có thể access status và data
+      const error: any = new Error(errorMessage);
+      error.response = {
+        status: res.status,
+        data: errorData,
+      };
+      error.status = res.status;
+      throw error;
     }
 
     const text = await res.text();
-    if (!text) return {} as T;
-    return JSON.parse(text) as T;
+    if (!text) {
+      console.log(`[${requestId}] ✅ Response: {} (empty)`);
+      console.log(`[${requestId}] URL: ${url}`);
+      console.log("================================\n");
+      return {} as T;
+    }
+    const responseData = JSON.parse(text) as T;
+    console.log(`[${requestId}] ✅ Response Success`);
+    console.log(`[${requestId}] URL: ${url}`);
+    console.log(`[${requestId}] Response Data:`, JSON.stringify(responseData, null, 2));
+    console.log("================================\n");
+    return responseData;
   } catch (error: any) {
+    // Clear timeout nếu có lỗi
+    clearTimeout(timeoutId);
+
+    // Xử lý timeout errors
+    if (
+      error.name === "AbortError" ||
+      error.message === "The user aborted a request."
+    ) {
+      console.error(`\n⏱️ [${requestId}] Request timeout`);
+      console.error(`URL: ${url}`);
+      console.error(`Timeout after: ${timeout / 1000} seconds`);
+      console.error("================================\n");
+      throw new Error(
+        `Request timeout sau ${timeout / 1000} giây. Vui lòng thử lại.`
+      );
+    }
+
     // Xử lý network errors
     if (
       error.message === "Network request failed" ||
       error.name === "TypeError"
     ) {
-      console.error("Network Error:", error);
-      console.error("Failed URL:", url);
-      console.error("Base URL:", EXPO_PUBLIC_API_URL);
+      console.error(`\n🌐 [${requestId}] Network Error`);
+      console.error(`URL: ${url}`);
+      console.error(`Base URL:`, EXPO_PUBLIC_API_URL);
+      console.error(`Error Name:`, error.name);
+      console.error(`Error Message:`, error.message);
+      console.error(`Error Stack:`, error.stack);
+      console.error("================================\n");
       throw new Error(
         `Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng và API URL: ${EXPO_PUBLIC_API_URL}`
       );
     }
+
+    console.error(`\n❌ [${requestId}] Unexpected Error`);
+    console.error(`URL: ${url}`);
+    console.error(`Error Name:`, error.name);
+    console.error(`Error Message:`, error.message);
+    console.error(`Error Stack:`, error.stack);
+    console.error("================================\n");
     throw error;
   }
 }

@@ -1,6 +1,7 @@
 import { ContactItem } from "@/components/group/ContactItem";
 import { useCreateGroup } from "@/hooks/useGroups";
 import { useUsers } from "@/hooks/useUsers";
+import { useAppSelector } from "@/store/hooks";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -9,6 +10,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Easing,
   Modal,
   ScrollView,
   Text,
@@ -45,8 +47,27 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const sheetPositionRef = useRef(expandedY);
 
   // Fetch users từ API - chỉ khi modal visible và đã authenticated
-  const { data: users = [], isLoading: isLoadingUsers } = useUsers(visible);
+  const {
+    data: users = [],
+    isLoading: isLoadingUsers,
+    error: usersError,
+  } = useUsers(visible);
   const createGroupMutation = useCreateGroup();
+
+  // Lấy user hiện tại từ Redux để filter ra khỏi danh sách
+  const currentUser = useAppSelector((state) => state.auth.user);
+
+  // Debug logging
+  useEffect(() => {
+    if (visible) {
+      console.log("[CreateGroupModal] Users state:", {
+        usersCount: users.length,
+        isLoadingUsers,
+        usersError: usersError ? String(usersError) : null,
+        users: users.slice(0, 3), // Log first 3 users
+      });
+    }
+  }, [visible, users, isLoadingUsers, usersError]);
 
   useEffect(() => {
     if (visible) {
@@ -58,18 +79,20 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       setIsDescriptionFocused(false);
       setSelectedImage(null);
 
-      // Slide up animation
+      // Slide up animation - mượt như lúc đóng (cùng duration và easing)
       slideAnim.setValue(windowHeight);
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: expandedY,
-          duration: 220,
-          useNativeDriver: false,
+          duration: 300, // Cùng duration như lúc đóng
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic), // Easing mượt cho slide up
         }),
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 220,
+          duration: 250, // Cùng duration như lúc đóng
           useNativeDriver: true,
+          easing: Easing.out(Easing.ease), // Easing mượt cho fade in
         }),
       ]).start(() => {
         sheetPositionRef.current = expandedY;
@@ -87,25 +110,57 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       Animated.timing(slideAnim, {
         toValue: windowHeight,
         duration: 300,
-        useNativeDriver: false,
+        useNativeDriver: true,
+        easing: Easing.in(Easing.cubic), // Easing mượt hơn khi đóng
       }),
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 250,
         useNativeDriver: true,
+        easing: Easing.in(Easing.ease),
       }),
     ]).start(() => {
       onClose();
     });
   };
 
-  // Filter users theo search text
-  const filteredUsers = users.filter(
-    (user) =>
-      user.fullName.toLowerCase().includes(searchText.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchText.toLowerCase()) ||
-      user.username.toLowerCase().includes(searchText.toLowerCase())
-  );
+  // Helper function để tạo avatar mẫu từ tên
+  const getAvatarUrl = (user: any) => {
+    if (user.avatarUrl) {
+      console.log("[getAvatarUrl] Using user avatarUrl:", user.avatarUrl);
+      return user.avatarUrl;
+    }
+    const name = user.fullName || user.username || user.email || "User";
+    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      name
+    )}&background=34B27D&color=fff&size=128`;
+    console.log(
+      "[getAvatarUrl] Generated avatar URL:",
+      avatarUrl,
+      "for name:",
+      name
+    );
+    return avatarUrl;
+  };
+
+  // Filter users theo search text và loại bỏ user hiện tại
+  const filteredUsers = users.filter((user) => {
+    // Loại bỏ user hiện tại
+    if (currentUser && user.id === currentUser.id) {
+      return false;
+    }
+    
+    // Filter theo search text
+    const searchLower = searchText.toLowerCase();
+    const fullName = (user.fullName || "").toLowerCase();
+    const email = (user.email || "").toLowerCase();
+    const username = (user.username || "").toLowerCase();
+    return (
+      fullName.includes(searchLower) ||
+      email.includes(searchLower) ||
+      username.includes(searchLower)
+    );
+  });
 
   const toggleContact = (contactId: string) => {
     setSelectedContacts((prev) =>
@@ -159,12 +214,12 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         name: groupName.trim(),
         avatar: selectedImage || undefined,
         description: groupDescription.trim() || undefined,
-        chatbotCount: 0,
-        isPro: false,
+        theme_color: "#34B27D", // Màu mặc định, có thể thêm picker sau
         member_ids: selectedContacts,
       });
 
       // Close modal sau khi tạo thành công
+      // Toast và navigation đã được xử lý trong useCreateGroup hook
       handleClose();
     } catch (error) {
       // Error đã được handle trong useCreateGroup hook
@@ -336,19 +391,30 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     </Text>
                   </View>
                 ) : (
-                  filteredUsers.map((user) => (
-                    <ContactItem
-                      key={user.id}
-                      contact={{
-                        id: user.id,
-                        name: user.fullName,
-                        email: user.email,
-                        avatar: user.avatarUrl || "",
-                      }}
-                      isSelected={selectedContacts.includes(user.id)}
-                      onToggle={toggleContact}
-                    />
-                  ))
+                  filteredUsers.map((user) => {
+                    const avatarUrl = getAvatarUrl(user);
+                    const displayName =
+                      user.fullName || user.username || user.email || "User";
+                    console.log("[CreateGroupModal] Rendering user:", {
+                      id: user.id,
+                      name: displayName,
+                      avatarUrl,
+                      hasAvatarUrl: !!user.avatarUrl,
+                    });
+                    return (
+                      <ContactItem
+                        key={user.id}
+                        contact={{
+                          id: user.id,
+                          name: displayName,
+                          email: user.email || "",
+                          avatar: avatarUrl,
+                        }}
+                        isSelected={selectedContacts.includes(user.id)}
+                        onToggle={toggleContact}
+                      />
+                    );
+                  })
                 )}
               </View>
             </View>
@@ -366,55 +432,73 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     className="flex-1"
                   >
                     <View className="flex-row items-center gap-2">
-                      {selectedUsersData.map((user) => (
-                        <View key={user.id} className="relative">
-                          {user.avatarUrl ? (
-                            <ExpoImage
-                              source={{ uri: user.avatarUrl }}
+                      {selectedUsersData.map((user) => {
+                        const avatarUrl = getAvatarUrl(user);
+                        const displayName =
+                          user.fullName ||
+                          user.username ||
+                          user.email ||
+                          "User";
+                        return (
+                          <View key={user.id} className="relative">
+                            {user.avatarUrl ? (
+                              <ExpoImage
+                                source={{ uri: avatarUrl }}
+                                style={{
+                                  width: 40,
+                                  height: 40,
+                                  borderRadius: 20,
+                                }}
+                                contentFit="cover"
+                                placeholder={{
+                                  blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH",
+                                }}
+                                transition={200}
+                              />
+                            ) : (
+                              <View
+                                style={{
+                                  width: 40,
+                                  height: 40,
+                                  borderRadius: 20,
+                                  backgroundColor: "#34B27D",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Text className="text-white text-sm font-bold">
+                                  {displayName.charAt(0).toUpperCase()}
+                                </Text>
+                              </View>
+                            )}
+                            <TouchableOpacity
+                              onPress={() => removeContact(user.id)}
+                              activeOpacity={0.7}
                               style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                              }}
-                              contentFit="cover"
-                            />
-                          ) : (
-                            <View
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: "#E5E7EB",
+                                position: "absolute",
+                                top: -6,
+                                right: -6,
+                                width: 22,
+                                height: 22,
+                                borderRadius: 11,
+                                backgroundColor: "#EF4444",
                                 alignItems: "center",
                                 justifyContent: "center",
+                                borderWidth: 2,
+                                borderColor: "#FFFFFF",
+                                zIndex: 10,
+                                elevation: 5,
                               }}
                             >
-                              <Text className="text-gray-600 font-semibold">
-                                {user.fullName.charAt(0).toUpperCase()}
-                              </Text>
-                            </View>
-                          )}
-                          <TouchableOpacity
-                            onPress={() => removeContact(user.id)}
-                            activeOpacity={0.7}
-                            style={{
-                              position: "absolute",
-                              top: -4,
-                              right: -4,
-                              width: 20,
-                              height: 20,
-                              borderRadius: 10,
-                              backgroundColor: "#EF4444",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              borderWidth: 2,
-                              borderColor: "#FFFFFF",
-                            }}
-                          >
-                            <Ionicons name="close" size={12} color="#FFFFFF" />
-                          </TouchableOpacity>
-                        </View>
-                      ))}
+                              <Ionicons
+                                name="close"
+                                size={14}
+                                color="#FFFFFF"
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
                     </View>
                   </ScrollView>
                 </View>

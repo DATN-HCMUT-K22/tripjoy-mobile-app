@@ -1,6 +1,7 @@
 import { CreateGroupModal, GroupCard, GroupListItem } from "@/components/group";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
 import { SocialHeader } from "@/components/social/SocialHeader";
+import { useConversations } from "@/hooks/useConversations";
 import { useGroups } from "@/hooks/useGroups";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,14 +27,33 @@ export default function GroupsScreen() {
   >(null);
 
   // Fetch groups từ API
-  const { data: groups = [], isLoading, error } = useGroups();
+  const { data: groups = [], isLoading, error, refetch } = useGroups();
+  // Danh sách conversation nhóm để tìm conversationId khi nhấn icon mũi tên
+  const { groupConversations, refetch: refetchConversations } =
+    useConversations();
 
-  // Reset activeIcon khi quay lại màn này
+  // Reset activeIcon, refetch groups và conversations khi quay lại màn này
   useFocusEffect(
     useCallback(() => {
+      console.log("🔍 [GroupsScreen] useFocusEffect triggered - refetching groups & conversations");
       setActiveIcon(null);
-    }, [])
+      refetch().then(() => {
+        console.log("✅ [GroupsScreen] Groups refetched successfully");
+      }).catch((err) => {
+        console.error("❌ [GroupsScreen] Failed to refetch groups:", err);
+      });
+      refetchConversations().catch(() => {});
+    }, [refetch, refetchConversations])
   );
+
+  // Log khi component mount hoặc groups thay đổi
+  React.useEffect(() => {
+    console.log("📊 [GroupsScreen] Groups data:", {
+      count: groups.length,
+      isLoading,
+      hasError: !!error,
+    });
+  }, [groups, isLoading, error]);
 
   // Tính tổng unreadCount từ các groups để làm messageCount
   const messageCount = groups.reduce(
@@ -147,13 +167,21 @@ export default function GroupsScreen() {
               {viewMode === "card" ? (
                 <>
                   {groups.map((group) => (
-                    <GroupCard key={group.id} group={group} />
+                    <GroupCard
+                      key={group.id}
+                      group={group}
+                      conversation={groupConversations.find((c) => c.group_id === group.id) ?? null}
+                    />
                   ))}
                 </>
               ) : (
                 <>
                   {groups.map((group) => (
-                    <GroupListItem key={group.id} group={group} />
+                    <GroupListItem
+                      key={group.id}
+                      group={group}
+                      conversation={groupConversations.find((c) => c.group_id === group.id) ?? null}
+                    />
                   ))}
                 </>
               )}

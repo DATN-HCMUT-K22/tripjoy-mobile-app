@@ -11,6 +11,8 @@ import "react-native-css-interop/jsx-runtime";
 import "react-native-reanimated";
 import "../global.css";
 
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
+import { MessageNotificationProvider } from "@/components/chat/MessageNotificationProvider";
 import { SimpleLogoLoading } from "@/components/loading";
 import { Onboarding } from "@/components/onboarding";
 import { ItineraryProvider } from "@/contexts/ItineraryContext";
@@ -26,27 +28,34 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LogBox, Platform, Text, View } from "react-native";
 import Toast from "react-native-toast-message";
 import { Provider } from "react-redux";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // Tắt error overlay và error stack trong development mode
 if (typeof __DEV__ !== "undefined" && __DEV__) {
-  // Tắt tất cả logs
+  // Tắt tất cả LogBox warnings và errors
   LogBox.ignoreAllLogs(true);
 
   // Ignore specific error patterns
   LogBox.ignoreLogs([
-    "Error:",
-    "Error stack:",
-    /Error stack:/,
     /code.*message/,
     /{"code":/,
+    /SSLHandshakeException/,
+    /Failed to load resource/,
+    /Chain validation failed/,
+    /Error loading image/,
   ]);
 
-  // Set global error handler để không hiện error overlay
+  // Set global error handler để log lỗi nhưng KHÔNG hiện error overlay
   if (typeof ErrorUtils !== "undefined") {
     ErrorUtils.setGlobalHandler((error, isFatal) => {
-      // Chỉ log vào console, không hiện error overlay
-      console.error("Global error:", error);
-      // Không gọi original handler để tránh hiện error overlay
+      // Chỉ log vào console, KHÔNG hiện error overlay
+      console.error("=== GLOBAL ERROR ===");
+      console.error("Error:", error);
+      console.error("Is Fatal:", isFatal);
+      console.error("Error Message:", error?.message);
+      console.error("Error Stack:", error?.stack);
+      console.error("===================");
+      // KHÔNG gọi original handler để tránh hiện error overlay
     });
   }
 }
@@ -85,9 +94,12 @@ export default function RootLayout() {
     async function prepare() {
       try {
         // Check authentication trước - nếu đã có token hợp lệ, không cần SplashScreen
-        const token = await storage.getAccessToken();
-        const refreshToken = await storage.getRefreshToken();
-        const isGuest = await storage.isGuestMode();
+        // Gọi song song để tối ưu performance
+        const [token, refreshToken, isGuest] = await Promise.all([
+          storage.getAccessToken(),
+          storage.getRefreshToken(),
+          storage.isGuestMode(),
+        ]);
 
         // Check Redux state hiện tại
         const reduxState = store.getState();
@@ -131,8 +143,13 @@ export default function RootLayout() {
           }
         }
 
+        // Check onboarding cho TẤT CẢ người dùng (bất kể đã authenticated hay chưa)
+        // Đảm bảo onboarding chỉ hiện lần đầu tiên
+        const hasSeenOnboarding = await storage.getOnboardingSeen();
+        setShowOnboarding(!hasSeenOnboarding);
+
         // Nếu đã authenticated hoặc guest mode, không cần SplashScreen
-        // Đi thẳng vào app
+        // Đi thẳng vào app (nhưng vẫn check onboarding trước)
         if (isAuthenticated || isGuest) {
           console.log("=== AUTH CHECK ===");
           console.log(
@@ -140,6 +157,7 @@ export default function RootLayout() {
           );
           console.log("Is Authenticated:", isAuthenticated);
           console.log("Is Guest:", isGuest);
+          console.log("Has Seen Onboarding:", hasSeenOnboarding);
           console.log("==================");
 
           setAuthChecked(true);
@@ -152,11 +170,8 @@ export default function RootLayout() {
         // Chỉ hiện SplashScreen cho người dùng mới (không có token/auth)
         console.log("=== AUTH CHECK ===");
         console.log("No valid token - showing splash screen for new user");
+        console.log("Has Seen Onboarding:", hasSeenOnboarding);
         console.log("==================");
-
-        // Check onboarding
-        const hasSeenOnboarding = await storage.getOnboardingSeen();
-        setShowOnboarding(!hasSeenOnboarding);
 
         // Set flag để redirect đến login
         setShouldRedirectToLogin(true);
@@ -179,7 +194,7 @@ export default function RootLayout() {
 
   // Xử lý redirect sau khi onboarding hoặc khi đã sẵn sàng - chỉ chạy một lần
   useEffect(() => {
-    if (!isReady || isChecking || !authChecked || hasRedirected) return;
+    if (!isReady || isChecking || !authChecked) return;
     if (showOnboarding) return; // Nếu đang hiển thị onboarding, không làm gì
 
     async function handleNavigation() {
@@ -205,6 +220,7 @@ export default function RootLayout() {
       console.log("Is Authenticated:", isAuthenticated);
       console.log("Is Guest:", isGuest);
       console.log("Is on Login Page:", isOnLoginPage);
+      console.log("Has Redirected:", hasRedirected);
       console.log("========================");
 
       // Nếu đã đăng nhập hoặc đang ở guest mode
@@ -212,7 +228,7 @@ export default function RootLayout() {
         setShouldRedirectToLogin(false); // Reset flag khi đã authenticated
 
         // Nếu đang ở trang login/signup nhưng đã authenticated, redirect đến mạng xã hội
-        if (isOnLoginPage && isAuthenticated) {
+        if (isOnLoginPage && isAuthenticated && !hasRedirected) {
           console.log("Already authenticated - redirecting from login to home");
           setHasRedirected(true);
           router.replace("/(tabs)");
@@ -225,15 +241,21 @@ export default function RootLayout() {
 
       // Chưa đăng nhập và không phải guest
       // Nếu không ở login page, redirect đến login
-      if (!isOnLoginPage) {
+      if (!isOnLoginPage && !hasRedirected) {
         console.log(
           "Not authenticated - redirecting to /login from:",
           currentPath
         );
         setHasRedirected(true); // Đánh dấu đã redirect để tránh lặp
         router.replace("/login");
+        return;
       }
       // Nếu đã ở login page, giữ nguyên (không redirect)
+      // Reset hasRedirected khi đã ở login page để có thể redirect lại nếu cần
+      if (isOnLoginPage && hasRedirected) {
+        // Đã ở login page rồi, không cần redirect nữa
+        console.log("Already on login page, no redirect needed");
+      }
     }
 
     handleNavigation();
@@ -257,175 +279,225 @@ export default function RootLayout() {
   const isAuthenticated =
     reduxState.auth.isAuthenticated && !!reduxState.auth.user;
 
+  const currentPath = pathname || "";
+  const isOnLoginPage =
+    currentPath === "/login" ||
+    currentPath === "/signup" ||
+    currentPath.startsWith("/login") ||
+    currentPath.startsWith("/signup");
+
+  // Log trạng thái render
+  console.log("=== RENDER CHECK ===");
+  console.log("isReady:", isReady);
+  console.log("isChecking:", isChecking);
+  console.log("authChecked:", authChecked);
+  console.log("isAuthenticated:", isAuthenticated);
+  console.log("currentPath:", currentPath);
+  console.log("isOnLoginPage:", isOnLoginPage);
+  console.log("shouldRedirectToLogin:", shouldRedirectToLogin);
+  console.log("showOnboarding:", showOnboarding);
+  console.log("===================");
+
   // Chỉ hiện loading khi:
   // 1. Chưa ready hoặc đang checking
   // 2. Cần redirect đến login (và chưa authenticated)
   if (!isReady || isChecking || !authChecked) {
+    console.log("Rendering SimpleLogoLoading (not ready)");
     return <SimpleLogoLoading />;
   }
 
   // Nếu đã authenticated, không hiện SplashScreen - render app bình thường
   if (isAuthenticated) {
     // User đã authenticated, không cần check redirect
+    console.log("User authenticated, rendering app normally");
   } else {
     // Chưa authenticated, check nếu cần redirect đến login
-    const currentPath = pathname || "";
+    // Chỉ hiển thị loading nếu đang redirect và chưa ở login page
     const needsRedirect =
       shouldRedirectToLogin &&
-      currentPath !== "/login" &&
-      currentPath !== "/signup" &&
-      !currentPath.startsWith("/login") &&
-      !currentPath.startsWith("/signup") &&
+      !isOnLoginPage &&
       !showOnboarding;
 
-    if (needsRedirect) {
+    if (needsRedirect && !isOnLoginPage) {
       // Đang redirect, hiển thị loading
+      console.log("Showing loading while redirecting to login...");
       return <SimpleLogoLoading />;
+    }
+    
+    // Nếu đã ở login page, render app bình thường để hiển thị login screen
+    if (isOnLoginPage) {
+      console.log("On login page, rendering app normally");
     }
   }
 
+  console.log("Rendering main app with providers");
+  
   return (
-    <QueryClientProvider client={queryClient}>
-      <Provider store={store}>
-        <TripSetupProvider>
-          <ItineraryProvider>
-            <TempLocationProvider>
-              <ThemeProvider
-                value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-              >
-                {showOnboarding ? (
-                  <Onboarding onDone={handleOnboardingDone} />
-                ) : (
-                  <Stack initialRouteName="login">
-                    <Stack.Screen
-                      name="login"
-                      options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                      name="signup"
-                      options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                      name="(tabs)"
-                      options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                      name="modal"
-                      options={{ headerShown: false, presentation: "modal" }}
-                    />
-                    <Stack.Screen
-                      name="create"
-                      options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                      name="messages"
-                      options={{ headerShown: false, presentation: "card" }}
-                    />
-                    <Stack.Screen
-                      name="groups"
-                      options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                      name="profile"
-                      options={{ headerShown: false }}
-                    />
-                  </Stack>
-                )}
-                <StatusBar style="auto" />
-                <Toast
-                  config={{
-                    success: (props) => (
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          paddingHorizontal: 16,
-                          paddingVertical: 12,
-                          borderRadius: 12,
-                          backgroundColor: "#2EC989",
-                          shadowColor: "#000",
-                          shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: 0.3,
-                          shadowRadius: 8,
-                          elevation: 8,
-                          gap: 12,
-                          alignSelf: "center",
-                          maxWidth: "90%",
-                        }}
-                      >
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={24}
-                          color="#ffffff"
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <QueryClientProvider client={queryClient}>
+          <Provider store={store}>
+            <TripSetupProvider>
+              <ItineraryProvider>
+                <TempLocationProvider>
+                  <ThemeProvider
+                    value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+                  >
+                  {showOnboarding ? (
+                    <Onboarding onDone={handleOnboardingDone} />
+                  ) : (
+                    <ErrorBoundary>
+                      <Stack initialRouteName="login">
+                        <Stack.Screen
+                          name="login"
+                          options={{ headerShown: false }}
                         />
-                        <Text
+                        <Stack.Screen
+                          name="signup"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="(tabs)"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="modal"
+                          options={{
+                            headerShown: false,
+                            presentation: "modal",
+                          }}
+                        />
+                        <Stack.Screen
+                          name="create"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="messages"
+                          options={{
+                            headerShown: false,
+                            presentation: "card",
+                          }}
+                        />
+                        <Stack.Screen
+                          name="groups"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="profile"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="create-post"
+                          options={{
+                            headerShown: false,
+                            presentation: "modal",
+                          }}
+                        />
+                        <Stack.Screen
+                          name="select-itinerary"
+                          options={{ headerShown: false }}
+                        />
+                      </Stack>
+                    </ErrorBoundary>
+                  )}
+                  <MessageNotificationProvider />
+                  <StatusBar style="auto" />
+                  <Toast
+                    config={{
+                      success: (props) => (
+                        <View
                           style={{
-                            color: "#ffffff",
-                            fontSize: 14,
-                            fontWeight: "600",
-                            flexShrink: 1,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderRadius: 12,
+                            backgroundColor: "#2EC989",
+                            shadowColor: "#000",
+                            shadowOffset: { width: 0, height: 4 },
+                            shadowOpacity: 0.3,
+                            shadowRadius: 8,
+                            elevation: 8,
+                            gap: 12,
+                            alignSelf: "center",
+                            maxWidth: "90%",
                           }}
                         >
-                          {props.text1}
-                        </Text>
-                      </View>
-                    ),
-                    error: (props) => (
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          paddingHorizontal: 16,
-                          paddingVertical: 12,
-                          borderRadius: 12,
-                          backgroundColor: "#EF4444",
-                          shadowColor: "#000",
-                          shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: 0.3,
-                          shadowRadius: 8,
-                          elevation: 8,
-                          gap: 12,
-                          alignSelf: "center",
-                          maxWidth: "90%",
-                        }}
-                      >
-                        <Ionicons
-                          name="close-circle"
-                          size={24}
-                          color="#ffffff"
-                        />
-                        <View style={{ flexShrink: 1 }}>
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            color="#ffffff"
+                          />
                           <Text
                             style={{
                               color: "#ffffff",
                               fontSize: 14,
                               fontWeight: "600",
+                              flexShrink: 1,
                             }}
                           >
                             {props.text1}
                           </Text>
-                          {props.text2 && (
+                        </View>
+                      ),
+                      error: (props) => (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderRadius: 12,
+                            backgroundColor: "#EF4444",
+                            shadowColor: "#000",
+                            shadowOffset: { width: 0, height: 4 },
+                            shadowOpacity: 0.3,
+                            shadowRadius: 8,
+                            elevation: 8,
+                            gap: 12,
+                            alignSelf: "center",
+                            maxWidth: "90%",
+                          }}
+                        >
+                          <Ionicons
+                            name="close-circle"
+                            size={24}
+                            color="#ffffff"
+                          />
+                          <View style={{ flexShrink: 1 }}>
                             <Text
                               style={{
                                 color: "#ffffff",
-                                fontSize: 12,
-                                marginTop: 2,
-                                opacity: 0.9,
+                                fontSize: 14,
+                                fontWeight: "600",
                               }}
                             >
-                              {props.text2}
+                              {props.text1}
                             </Text>
-                          )}
+                            {props.text2 && (
+                              <Text
+                                style={{
+                                  color: "#ffffff",
+                                  fontSize: 12,
+                                  marginTop: 2,
+                                  opacity: 0.9,
+                                }}
+                              >
+                                {props.text2}
+                              </Text>
+                            )}
+                          </View>
                         </View>
-                      </View>
-                    ),
-                  }}
-                />
-              </ThemeProvider>
-            </TempLocationProvider>
-          </ItineraryProvider>
-        </TripSetupProvider>
-      </Provider>
-    </QueryClientProvider>
+                      ),
+                    }}
+                  />
+                </ThemeProvider>
+              </TempLocationProvider>
+            </ItineraryProvider>
+          </TripSetupProvider>
+        </Provider>
+      </QueryClientProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

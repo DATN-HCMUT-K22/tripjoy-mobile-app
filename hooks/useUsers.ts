@@ -14,25 +14,56 @@ export function useUsers(enabled: boolean = false) {
   // Chỉ fetch khi đã authenticated (có token trong Redux) VÀ enabled=true
   const shouldFetch = enabled && isAuthenticated && !!accessToken;
 
+  console.log("[useUsers] Debug:", {
+    enabled,
+    isAuthenticated,
+    hasAccessToken: !!accessToken,
+    shouldFetch,
+  });
+
   return useQuery({
     queryKey: ["users"],
     queryFn: async () => {
       try {
+        console.log("[useUsers] Calling getUsers API...");
         const response = await getUsers();
-        // Response format: { code: 0, message: string, data: User[] }
-        if (response.code === 0) {
-          return response.data;
+        console.log("[useUsers] API Response:", {
+          code: response.code,
+          message: response.message,
+          dataLength: response.data?.length || 0,
+          data: response.data,
+        });
+        // Response format: { code: 1000, data: User[] } (code 1000 = success)
+        if (response.code === 1000) {
+          console.log(
+            "[useUsers] Success! Returning",
+            response.data?.length || 0,
+            "users"
+          );
+          return response.data || [];
         }
         // Nếu là lỗi permission (code 2002), trả về mảng rỗng thay vì throw error
         if (response.code === 2002) {
-          console.warn("Permission denied for /users API:", response.message);
+          console.warn(
+            "[useUsers] Permission denied for /users API:",
+            response.message
+          );
           return [];
         }
+        console.error(
+          "[useUsers] API returned error code:",
+          response.code,
+          response.message
+        );
         throw new Error(response.message || "Failed to fetch users");
       } catch (error: any) {
+        console.error("[useUsers] Error fetching users:", error);
         // Nếu error message chứa "permission", trả về mảng rỗng
-        if (error?.message?.includes("permission") || error?.message?.includes("2002")) {
-          console.warn("Permission denied for /users API");
+        if (
+          error?.message?.includes("permission") ||
+          error?.message?.includes("2002")
+        ) {
+          console.warn("[useUsers] Permission denied for /users API");
           return [];
         }
         throw error;
@@ -42,6 +73,3 @@ export function useUsers(enabled: boolean = false) {
     retry: false, // Không retry khi lỗi permission (code 2002)
   });
 }
-
-
-

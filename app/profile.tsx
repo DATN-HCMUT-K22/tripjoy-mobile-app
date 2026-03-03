@@ -1,5 +1,5 @@
 import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
-import { SimpleLogoLoading } from "@/components/loading";
+import { ProfileSkeleton } from "@/components/profile/ProfileSkeleton";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
 import { SocialHeader } from "@/components/social/SocialHeader";
 import { VietnamFlag } from "@/components/ui/VietnamFlag";
@@ -9,7 +9,7 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { updateUser } from "@/store/slices/authSlice";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   SafeAreaView,
@@ -197,17 +197,22 @@ const mockPosts: PostCard[] = [
 ];
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const [activeTab, setActiveTab] = useState<TabType>("posts");
   const [searchText, setSearchText] = useState("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [activeIcon, setActiveIcon] = useState<
+    "notification" | "message" | null
+  >(null);
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const accessToken = useAppSelector((state) => state.auth.accessToken);
   const userFromRedux = useAppSelector((state) => state.auth.user);
-  const { checkAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
+  const { checkAuth, showLoginModal, setShowLoginModal, requireAuth } =
+    useRequireAuth();
 
   // Fetch current user nếu chưa có trong Redux
-  const { data: currentUser } = useCurrentUser(
+  const { data: currentUser, isLoading: isCurrentUserLoading } = useCurrentUser(
     isAuthenticated && !userFromRedux
   );
 
@@ -231,23 +236,35 @@ export default function ProfileScreen() {
       };
 
       checkAuthStatus();
+      // Reset activeIcon khi focus vào màn này (quay lại từ messages)
+      setActiveIcon(null);
     }, [checkAuth])
   );
 
-  // Hiển thị loading khi đang check auth (giữ tab bar và header)
-  if (isCheckingAuth) {
+  // Hiển thị skeleton khi đang check auth hoặc đang load user (UI giống lúc có data)
+  const showSkeleton = isCheckingAuth || (isAuthenticated && !user && isCurrentUserLoading);
+  if (showSkeleton) {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <SocialHeader
-          notificationCount={0}
-          messageCount={0}
-          activeIcon={null}
-          onNotificationPress={async () => {}}
-          onMessagePress={async () => {}}
+          notificationCount={3}
+          messageCount={5}
+          activeIcon={activeIcon}
+          onNotificationPress={async () => {
+            await requireAuth(async () => {
+              setActiveIcon("notification");
+              // TODO: Call API get notifications
+              console.log("Notification pressed");
+            });
+          }}
+          onMessagePress={async () => {
+            await requireAuth(async () => {
+              setActiveIcon("message");
+              router.push("/messages");
+            });
+          }}
         />
-        <View className="flex-1">
-          <SimpleLogoLoading />
-        </View>
+        <ProfileSkeleton />
         <BottomNavigation />
       </SafeAreaView>
     );
@@ -258,10 +275,22 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <SocialHeader
-          onNotificationPress={() => console.log("Notification pressed")}
-          onMessagePress={() => console.log("Message pressed")}
-          notificationCount={1}
-          messageCount={1}
+          notificationCount={3}
+          messageCount={5}
+          activeIcon={activeIcon}
+          onNotificationPress={async () => {
+            await requireAuth(async () => {
+              setActiveIcon("notification");
+              // TODO: Call API get notifications
+              console.log("Notification pressed");
+            });
+          }}
+          onMessagePress={async () => {
+            await requireAuth(async () => {
+              setActiveIcon("message");
+              router.push("/messages");
+            });
+          }}
         />
         <LoginRequiredModal
           visible={showLoginModal}
@@ -279,10 +308,22 @@ export default function ProfileScreen() {
     <SafeAreaView className="flex-1 bg-white">
       {/* Social Header */}
       <SocialHeader
-        onNotificationPress={() => console.log("Notification pressed")}
-        onMessagePress={() => console.log("Message pressed")}
-        notificationCount={1}
-        messageCount={1}
+        notificationCount={3}
+        messageCount={5}
+        activeIcon={activeIcon}
+        onNotificationPress={async () => {
+          await requireAuth(async () => {
+            setActiveIcon("notification");
+            // TODO: Call API get notifications
+            console.log("Notification pressed");
+          });
+        }}
+        onMessagePress={async () => {
+          await requireAuth(async () => {
+            setActiveIcon("message");
+            router.push("/messages");
+          });
+        }}
       />
 
       {/* User Info Section */}
@@ -299,7 +340,15 @@ export default function ProfileScreen() {
           </View>
 
           {/* Right: Avatar */}
-          <TouchableOpacity activeOpacity={0.7} className="relative">
+          <TouchableOpacity 
+            activeOpacity={0.7} 
+            className="relative"
+            onPress={async () => {
+              await requireAuth(async () => {
+                router.push("/create-post");
+              });
+            }}
+          >
             <Image
               source={{
                 uri:

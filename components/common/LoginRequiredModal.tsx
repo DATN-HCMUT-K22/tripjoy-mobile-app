@@ -1,13 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React from "react";
-import {
-  Modal,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface LoginRequiredModalProps {
   visible: boolean;
@@ -25,12 +19,17 @@ export function LoginRequiredModal({
     router.push("/login");
   };
 
+  const handleCancel = () => {
+    onClose();
+    router.back();
+  };
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={handleCancel}
     >
       <View style={styles.overlay}>
         <View style={styles.modal}>
@@ -47,7 +46,7 @@ export function LoginRequiredModal({
           <View style={styles.buttonContainer}>
             <TouchableOpacity
               style={[styles.button, styles.cancelButton]}
-              onPress={onClose}
+              onPress={handleCancel}
               activeOpacity={0.8}
             >
               <Text style={styles.cancelButtonText}>Hủy</Text>
@@ -135,4 +134,3 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
-

@@ -1,61 +1,37 @@
-import { useState } from "react";
+import { yupResolver } from "@hookform/resolvers/yup";
+import { useForm } from "react-hook-form";
+import * as yup from "yup";
 
-type LoginFormData = {
-  username: string;
-  password: string;
-};
+const loginSchema = yup.object().shape({
+  username: yup
+    .string()
+    .required("Vui lòng nhập tên tài khoản"),
+  password: yup
+    .string()
+    .required("Vui lòng nhập mật khẩu")
+    .min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
+});
 
-type LoginFormErrors = {
-  username?: string;
-  password?: string;
-};
+export type LoginFormData = yup.InferType<typeof loginSchema>;
 
 export function useLoginForm() {
-  const [formData, setFormData] = useState<LoginFormData>({
-    username: "",
-    password: "",
+  const {
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormData>({
+    resolver: yupResolver(loginSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+    },
+    mode: "onSubmit", // Chỉ validate khi submit, không validate khi đang nhập
   });
-  const [errors, setErrors] = useState<LoginFormErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const updateField = (field: keyof LoginFormData, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear error khi user nhập lại
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }));
-    }
-  };
-
-  const validate = (): boolean => {
-    const newErrors: LoginFormErrors = {};
-
-    if (!formData.username.trim()) {
-      newErrors.username = "Vui lòng nhập tên tài khoản";
-    }
-
-    if (!formData.password.trim()) {
-      newErrors.password = "Vui lòng nhập mật khẩu";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Mật khẩu phải có ít nhất 6 ký tự";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const reset = () => {
-    setFormData({ username: "", password: "" });
-    setErrors({});
-    setIsSubmitting(false);
-  };
 
   return {
-    formData,
+    control,
+    handleSubmit,
     errors,
     isSubmitting,
-    updateField,
-    setIsSubmitting,
-    validate,
-    reset,
   };
 }

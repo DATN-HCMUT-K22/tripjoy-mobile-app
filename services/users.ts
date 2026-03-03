@@ -3,7 +3,7 @@ import { httpClient } from "./http/client";
 
 export interface GetUsersResponse {
   code: number;
-  message: string;
+  message?: string;
   data: User[];
 }
 

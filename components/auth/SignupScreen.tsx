@@ -7,25 +7,14 @@ import { storage } from "@/utils/storage";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { ImageBackground } from "expo-image";
 import { useRouter } from "expo-router";
-import React, { useEffect } from "react";
-import { Controller, useWatch } from "react-hook-form";
+import React from "react";
+import { Controller } from "react-hook-form";
 import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 export function SignupScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { control, handleSubmit, errors, isSubmitting, trigger } =
-    useSignupForm();
-
-  // Watch password để trigger validation confirmPassword khi password thay đổi
-  const password = useWatch({ control, name: "password" });
-
-  // Trigger validation confirmPassword khi password thay đổi
-  useEffect(() => {
-    if (password) {
-      trigger("confirmPassword");
-    }
-  }, [password, trigger]);
+  const { control, handleSubmit, errors, isSubmitting } = useSignupForm();
 
   const onSubmit = async (data: any) => {
     try {

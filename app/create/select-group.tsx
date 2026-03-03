@@ -1,10 +1,12 @@
 import { CreateGroupModal } from "@/components/group/CreateGroupModal";
-import { mockGroups } from "@/data/mockGroups";
+import { useTripSetup } from "@/contexts/TripSetupContext";
+import { useGroups } from "@/hooks/useGroups";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   SafeAreaView,
   ScrollView,
   Text,
@@ -14,20 +16,32 @@ import {
 
 export default function SelectGroupScreen() {
   const router = useRouter();
+  const { resetTripData } = useTripSetup();
+  const { data: groups = [], isLoading } = useGroups();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
-  const groups = mockGroups; // Có thể lấy từ context hoặc API sau
 
   const handleApply = () => {
     if (selectedGroupId) {
       // Áp dụng lịch trình vào nhóm đã chọn
       console.log("Apply itinerary to group:", selectedGroupId);
-      // Sau này sẽ lưu lịch trình vào nhóm và navigate về
-      router.back();
+      
+      // Reset tất cả các tiêu chí về rỗng
+      resetTripData();
+      
+      // Sau này sẽ lưu lịch trình vào nhóm và navigate về trang chat của nhóm
+      router.push(`/groups/${selectedGroupId}/chat` as any);
     }
   };
 
-  // Empty state nếu không có nhóm
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-white items-center justify-center">
+        <ActivityIndicator size="large" />
+      </SafeAreaView>
+    );
+  }
+
   if (groups.length === 0) {
     return (
       <SafeAreaView className="flex-1 bg-white">
@@ -124,6 +138,8 @@ export default function SelectGroupScreen() {
         <View className="px-4 pb-24">
           {groups.map((group) => {
             const isSelected = selectedGroupId === group.id;
+            const groupImage = group.avatar ?? (group as { image?: string }).image ?? "";
+            const memberCount = group.members?.length ?? (group as { memberCount?: number }).memberCount ?? 0;
             return (
               <TouchableOpacity
                 key={group.id}
@@ -135,20 +151,22 @@ export default function SelectGroupScreen() {
                     : "bg-white border-gray-200"
                 }`}
               >
-                {/* Group Image */}
                 <Image
-                  source={{ uri: group.image }}
+                  source={{ uri: groupImage }}
                   style={{ width: 60, height: 60, borderRadius: 30 }}
                   contentFit="cover"
+                  cachePolicy="memory-disk"
+                  priority="normal"
+                  placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+                  transition={200}
                 />
 
-                {/* Group Info */}
                 <View className="flex-1 ml-3">
                   <Text className="text-base font-bold text-black mb-1">
                     {group.name}
                   </Text>
                   <Text className="text-sm text-gray-600">
-                    {group.memberCount} thành viên
+                    {memberCount} thành viên
                   </Text>
                 </View>
 

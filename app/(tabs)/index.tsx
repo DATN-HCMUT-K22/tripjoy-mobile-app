@@ -4,25 +4,61 @@ import { PostCard } from "@/components/social/PostCard";
 import { SearchBar } from "@/components/social/SearchBar";
 import { SocialHeader } from "@/components/social/SocialHeader";
 import { TabMenu } from "@/components/social/TabMenu";
-import { mockPosts } from "@/data/mockPosts";
 import { useAuthLogger } from "@/hooks/useAuthLogger";
+import { useConversations } from "@/hooks/useConversations";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import {
+  useBookmarkPost,
+  useCommentPost,
+  useLikePost,
+  usePosts,
+  useSharePost,
+} from "@/hooks/useSocial";
 import { TabType } from "@/types/social";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
-import { SafeAreaView, ScrollView, View } from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, SafeAreaView, ScrollView, View } from "react-native";
 
 export default function HomeScreen() {
   const router = useRouter();
   const { requireAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
+  const { data: allPosts = [], isLoading: postsLoading } = usePosts();
+  const likePostMutation = useLikePost();
+  const bookmarkPostMutation = useBookmarkPost();
+  const commentPostMutation = useCommentPost();
+  const sharePostMutation = useSharePost();
 
-  // Log user info và token từ Redux khi component mount
   useAuthLogger("HomeScreen");
   const [activeTab, setActiveTab] = useState<TabType>("popular");
-  const [posts] = useState(mockPosts);
+
+  // Sắp xếp posts: Phổ biến (theo likes) và Gần đây (theo thời gian)
+  const posts = useMemo(() => {
+    if (activeTab === "popular") {
+      return [...allPosts].sort((a, b) => b.likes - a.likes);
+    }
+    const parseTimeAgo = (timeAgo: string): number => {
+      if (timeAgo.includes("phút")) return parseInt(timeAgo) || 0;
+      if (timeAgo.includes("giờ")) return (parseInt(timeAgo) || 0) * 60;
+      if (timeAgo.includes("ngày")) return (parseInt(timeAgo) || 0) * 60 * 24;
+      return 0;
+    };
+    return [...allPosts].sort((a, b) => {
+      const timeA = parseTimeAgo(a.timeAgo);
+      const timeB = parseTimeAgo(b.timeAgo);
+      return timeA - timeB;
+    });
+  }, [activeTab, allPosts]);
   const [activeIcon, setActiveIcon] = useState<
     "notification" | "message" | null
   >(null);
+
+  // Lấy conversations để tính unread count
+  const { conversations } = useConversations();
+
+  // Tổng unread_count từ tất cả conversation
+  const unreadConversationsCount = useMemo(() => {
+    return conversations.reduce((sum, conv) => sum + (conv.unread_count ?? 0), 0);
+  }, [conversations]);
 
   // Reset activeIcon khi quay lại màn này
   useFocusEffect(
@@ -38,39 +74,30 @@ export default function HomeScreen() {
 
   const handleLike = async (postId: string) => {
     const result = await requireAuth(async () => {
-      // TODO: Call API like post
-      console.log("Like post:", postId);
-      // await likePost(postId);
-      return true; // Trả về true để báo thành công
+      await likePostMutation.mutateAsync(postId);
+      return true;
     });
-    // Nếu result là null, có nghĩa là không có auth (modal đã hiện)
     return result;
   };
 
   const handleComment = async (postId: string) => {
     await requireAuth(async () => {
-      // TODO: Call API comment post
-      console.log("Comment on post:", postId);
-      // await commentPost(postId);
+      // API đã gắn: commentPostMutation.mutateAsync({ postId, content }). Cần modal nhập nội dung.
+      console.log("Comment post:", postId);
     });
   };
 
   const handleShare = async (postId: string) => {
     await requireAuth(async () => {
-      // TODO: Call API share post
-      console.log("Share post:", postId);
-      // await sharePost(postId);
+      await sharePostMutation.mutateAsync(postId);
     });
   };
 
   const handleBookmark = async (postId: string) => {
     const result = await requireAuth(async () => {
-      // TODO: Call API bookmark post
-      console.log("Bookmark post:", postId);
-      // await bookmarkPost(postId);
-      return true; // Trả về true để báo thành công
+      await bookmarkPostMutation.mutateAsync(postId);
+      return true;
     });
-    // Nếu result là null, có nghĩa là không có auth (modal đã hiện)
     return result;
   };
 
@@ -95,7 +122,7 @@ export default function HomeScreen() {
       <View className="flex-1">
         <SocialHeader
           notificationCount={3}
-          messageCount={5}
+          messageCount={unreadConversationsCount}
           activeIcon={activeIcon}
           onNotificationPress={async () => {
             await requireAuth(async () => {
@@ -117,18 +144,24 @@ export default function HomeScreen() {
         <TabMenu activeTab={activeTab} onTabChange={setActiveTab} />
 
         <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-          {posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              onLike={handleLike}
-              onComment={handleComment}
-              onShare={handleShare}
-              onBookmark={handleBookmark}
-              onDownload={handleDownload}
-              onReport={handleReport}
-            />
-          ))}
+          <View className="pb-4">
+            {postsLoading ? (
+              <ActivityIndicator size="large" style={{ paddingVertical: 32 }} />
+            ) : (
+              posts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onLike={handleLike}
+                  onComment={handleComment}
+                  onShare={handleShare}
+                  onBookmark={handleBookmark}
+                  onDownload={handleDownload}
+                  onReport={handleReport}
+                />
+              ))
+            )}
+          </View>
         </ScrollView>
 
         <BottomNavigation />

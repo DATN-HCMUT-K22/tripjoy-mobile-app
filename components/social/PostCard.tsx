@@ -7,10 +7,14 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 interface PostCardProps {
   post: Post;
-  onLike?: (postId: string) => void | Promise<void>;
+  onLike?: (
+    postId: string
+  ) => void | Promise<void | boolean | null | undefined>;
   onComment?: (postId: string) => void;
   onShare?: (postId: string) => void;
-  onBookmark?: (postId: string) => void | Promise<void | null>;
+  onBookmark?: (
+    postId: string
+  ) => void | Promise<void | boolean | null | undefined>;
   onDownload?: (postId: string) => void;
   onReport?: (postId: string) => void;
 }
@@ -26,6 +30,8 @@ export const PostCard: React.FC<PostCardProps> = ({
 }) => {
   const [isLiked, setIsLiked] = React.useState(false);
   const [isBookmarked, setIsBookmarked] = React.useState(post.isBookmarked);
+  const [imageError, setImageError] = React.useState(false);
+  const [avatarError, setAvatarError] = React.useState(false);
 
   const handleLike = async () => {
     // Gọi callback trước, chỉ cập nhật state nếu thành công
@@ -47,13 +53,48 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   return (
     <View className="bg-white mb-4">
-      {/* Image với bookmark icon */}
+      {/* Image với bookmark icon - fullwidth */}
       <View className="relative">
-        <Image
-          source={{ uri: post.image }}
-          style={{ width: "100%", height: 320 }}
-          contentFit="cover"
-        />
+        {!imageError ? (
+          <Image
+            source={{ uri: post.image }}
+            style={{ width: "100%", height: 320 }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            priority="high"
+            placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+            transition={200}
+            onError={(error) => {
+              console.error(
+                "[PostCard] Error loading image:",
+                error,
+                "URI:",
+                post.image,
+                "Error details:",
+                JSON.stringify(error, null, 2)
+              );
+              setImageError(true);
+            }}
+            onLoad={() => {
+              console.log("[PostCard] Image loaded successfully:", post.image);
+            }}
+            onLoadStart={() => {
+              console.log("[PostCard] Image load started:", post.image);
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              width: "100%",
+              height: 320,
+              backgroundColor: "#E5E7EB",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="image-outline" size={64} color="#9CA3AF" />
+          </View>
+        )}
         <TouchableOpacity
           onPress={handleBookmark}
           className="absolute top-3 right-3"
@@ -82,11 +123,47 @@ export const PostCard: React.FC<PostCardProps> = ({
       <View className="px-4 py-3">
         <View className="flex-row items-center justify-between mb-2">
           <View className="flex-row items-center gap-2 flex-1">
-            <Image
-              source={{ uri: post.user.avatar }}
-              style={{ width: 40, height: 40, borderRadius: 20 }}
-              contentFit="cover"
-            />
+            {!avatarError ? (
+              <Image
+                source={{ uri: post.user.avatar }}
+                style={{ width: 40, height: 40, borderRadius: 20 }}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                priority="normal"
+                placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+                transition={200}
+                onError={(error) => {
+                  console.log(
+                    "[PostCard] Error loading avatar:",
+                    error,
+                    "URI:",
+                    post.user.avatar
+                  );
+                  setAvatarError(true);
+                }}
+                onLoad={() => {
+                  console.log(
+                    "[PostCard] Avatar loaded successfully:",
+                    post.user.avatar
+                  );
+                }}
+              />
+            ) : (
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: "#34B27D",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text className="text-white text-sm font-bold">
+                  {post.user.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
             <View className="flex-1">
               <Text className="text-base text-gray-600">{post.timestamp}</Text>
               <Text className="text-sm text-gray-500">{post.timeAgo}</Text>

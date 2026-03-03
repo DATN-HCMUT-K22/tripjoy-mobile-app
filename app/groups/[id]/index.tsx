@@ -1,18 +1,20 @@
 import { ItineraryCard, ItineraryListItem } from "@/components/group";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
-import { mockGroups } from "@/data/mockGroups";
 import { mockItineraries } from "@/data/mockItineraries";
+import { groupService } from "@/services/groups";
+import { Group } from "@/types/group";
+import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  SafeAreaView,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 type ViewMode = "card" | "list";
 
@@ -20,13 +22,43 @@ export default function GroupDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [viewMode, setViewMode] = useState<ViewMode>("card");
-  const group = mockGroups.find((g) => g.id === id);
+  const insets = useSafeAreaInsets();
+
+  // Lấy chi tiết group từ API theo groupId
+  const {
+    data: group,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["group", id],
+    queryFn: async () => {
+      if (!id) throw new Error("Missing group id");
+      const response = await groupService.getGroupById(id);
+      // API có thể trả code 0 hoặc 1000 tùy endpoint
+      if (response.code === 0 || response.code === 1000) {
+        return response.data as Group;
+      }
+      throw new Error(response.message || "Failed to fetch group detail");
+    },
+    enabled: !!id,
+  });
+
   const itineraries = mockItineraries.filter((it) => it.groupId === id);
 
-  if (!group) {
+  if (isLoading) {
     return (
       <SafeAreaView className="flex-1 bg-white items-center justify-center">
-        <Text className="text-gray-500">Không tìm thấy nhóm</Text>
+        <Text className="text-gray-500">Đang tải thông tin nhóm...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !group) {
+    return (
+      <SafeAreaView className="flex-1 bg-white items-center justify-center">
+        <Text className="text-gray-500">
+          Không tìm thấy nhóm hoặc có lỗi xảy ra
+        </Text>
         <TouchableOpacity
           onPress={() => router.back()}
           className="mt-4 px-6 py-2 bg-primary rounded-lg"
@@ -36,6 +68,10 @@ export default function GroupDetailScreen() {
       </SafeAreaView>
     );
   }
+
+  const memberCount = group.members?.length ?? 0;
+  const itineraryCount = (group as any).itineraryCount ?? 0;
+  const initial = group.name?.charAt(0)?.toUpperCase() || "?";
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
@@ -70,7 +106,7 @@ export default function GroupDetailScreen() {
             }}
           >
             <Text className="text-white font-bold text-2xl">
-              {group.initial}
+              {initial}
             </Text>
           </View>
           <View className="flex-1">
@@ -81,13 +117,13 @@ export default function GroupDetailScreen() {
               <View className="flex-row items-center gap-1">
                 <Ionicons name="people" size={16} color="#86EFAC" />
                 <Text className="text-white text-sm">
-                  {group.memberCount} thành viên
+                  {memberCount} thành viên
                 </Text>
               </View>
               <View className="flex-row items-center gap-1">
                 <Ionicons name="location" size={16} color="#86EFAC" />
                 <Text className="text-white text-sm">
-                  {group.itineraryCount} lịch trình
+                  {itineraryCount} lịch trình
                 </Text>
               </View>
             </View>

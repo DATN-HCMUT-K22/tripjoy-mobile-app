@@ -1,5 +1,7 @@
 import { ContactItem } from "@/components/group/ContactItem";
-import { mockContacts } from "@/data/mockContacts";
+import { useCreateGroup } from "@/hooks/useGroups";
+import { useUsers } from "@/hooks/useUsers";
+import { useAppSelector } from "@/store/hooks";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
@@ -29,6 +31,19 @@ export default function CreateGroupScreen() {
   ).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Fetch users từ API
+  const {
+    data: users = [],
+    isLoading: isLoadingUsers,
+    error: usersError,
+  } = useUsers(visible);
+
+  // Lấy user hiện tại từ Redux để filter ra khỏi danh sách
+  const currentUser = useAppSelector((state) => state.auth.user);
+
+  // Create group mutation
+  const createGroupMutation = useCreateGroup();
+
   useEffect(() => {
     // Slide up animation
     Animated.parallel([
@@ -43,6 +58,7 @@ export default function CreateGroupScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleClose = () => {
@@ -63,11 +79,22 @@ export default function CreateGroupScreen() {
     });
   };
 
-  const filteredContacts = mockContacts.filter(
-    (contact) =>
-      contact.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      contact.email.toLowerCase().includes(searchText.toLowerCase())
-  );
+  // Filter users theo search text và loại bỏ user hiện tại
+  const filteredUsers = users.filter((user) => {
+    // Loại bỏ user hiện tại
+    if (currentUser && user.id === currentUser.id) {
+      return false;
+    }
+    
+    // Filter theo search text
+    const searchLower = searchText.toLowerCase();
+    const fullName = (user.fullName || user.username || "").toLowerCase();
+    const email = (user.email || "").toLowerCase();
+    return (
+      fullName.includes(searchLower) ||
+      email.includes(searchLower)
+    );
+  });
 
   const toggleContact = (contactId: string) => {
     setSelectedContacts((prev) =>
@@ -81,18 +108,34 @@ export default function CreateGroupScreen() {
     setSelectedContacts((prev) => prev.filter((id) => id !== contactId));
   };
 
-  const selectedContactsData = mockContacts.filter((contact) =>
-    selectedContacts.includes(contact.id)
+  // Get selected users data
+  const selectedUsersData = users.filter((user) =>
+    selectedContacts.includes(user.id)
   );
 
-  const handleCreate = () => {
-    if (groupName.trim() && selectedContacts.length > 0) {
-      console.log("Create group:", {
+  const handleCreate = async () => {
+    if (!groupName.trim() || selectedContacts.length === 0) {
+      return;
+    }
+
+    try {
+      console.log("Creating group:", {
         name: groupName,
         description: groupDescription,
-        members: selectedContacts,
+        member_ids: selectedContacts,
       });
-      handleClose();
+
+      await createGroupMutation.mutateAsync({
+        name: groupName.trim(),
+        description: groupDescription.trim() || undefined,
+        theme_color: "#34B27D", // Màu mặc định
+        member_ids: selectedContacts,
+      });
+
+      // handleClose sẽ được gọi trong onSuccess của mutation
+    } catch (error) {
+      // Error đã được xử lý trong mutation onError
+      console.error("Create group error:", error);
     }
   };
 
@@ -147,36 +190,16 @@ export default function CreateGroupScreen() {
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
             {/* Group Info Section */}
             <View className="px-4 py-6">
-              {/* Avatar and Name Input */}
-              <View className="flex-row items-center gap-4 mb-6">
-                {/* Avatar Placeholder */}
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={{
-                    width: 70,
-                    height: 70,
-                    borderRadius: 35,
-                    backgroundColor: "#F3F4F6",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderWidth: 1,
-                    borderColor: "#E5E7EB",
-                  }}
-                >
-                  <Ionicons name="camera-outline" size={28} color="#9CA3AF" />
-                </TouchableOpacity>
-
-                {/* Name Input */}
-                <View className="flex-1">
-                  <TextInput
-                    className="text-lg font-medium text-black pb-2 border-b border-gray-300"
-                    placeholder="Đặt tên nhóm..."
-                    placeholderTextColor="#9CA3AF"
-                    value={groupName}
-                    onChangeText={setGroupName}
-                    underlineColorAndroid="transparent"
-                  />
-                </View>
+              {/* Name Input */}
+              <View className="mb-6">
+                <TextInput
+                  className="text-lg font-medium text-black pb-2 border-b border-gray-300"
+                  placeholder="Đặt tên nhóm..."
+                  placeholderTextColor="#9CA3AF"
+                  value={groupName}
+                  onChangeText={setGroupName}
+                  underlineColorAndroid="transparent"
+                />
               </View>
 
               {/* Description Input */}
@@ -210,16 +233,43 @@ export default function CreateGroupScreen() {
                 />
               </View>
 
-              {/* Contacts List */}
+              {/* Users List */}
               <View>
-                {filteredContacts.map((contact) => (
-                  <ContactItem
-                    key={contact.id}
-                    contact={contact}
-                    isSelected={selectedContacts.includes(contact.id)}
-                    onToggle={toggleContact}
-                  />
-                ))}
+                {isLoadingUsers ? (
+                  <View className="py-8 items-center">
+                    <Text className="text-gray-500">Đang tải danh sách...</Text>
+                  </View>
+                ) : usersError ? (
+                  <View className="py-8 items-center">
+                    <Text className="text-red-500">
+                      Không thể tải danh sách người dùng
+                    </Text>
+                  </View>
+                ) : filteredUsers.length === 0 ? (
+                  <View className="py-8 items-center">
+                    <Text className="text-gray-500">
+                      Không tìm thấy người dùng
+                    </Text>
+                  </View>
+                ) : (
+                  filteredUsers.map((user) => {
+                    const displayName =
+                      user.fullName || user.username || user.email || "User";
+                    return (
+                      <ContactItem
+                        key={user.id}
+                        contact={{
+                          id: user.id,
+                          name: displayName,
+                          email: user.email || "",
+                          avatar: user.avatarUrl || "",
+                        }}
+                        isSelected={selectedContacts.includes(user.id)}
+                        onToggle={toggleContact}
+                      />
+                    );
+                  })
+                )}
               </View>
             </View>
           </ScrollView>
@@ -236,31 +286,50 @@ export default function CreateGroupScreen() {
                     className="flex-1"
                   >
                     <View className="flex-row items-center gap-2">
-                      {selectedContactsData.map((contact) => (
-                        <View key={contact.id} className="relative">
-                          <ExpoImage
-                            source={{ uri: contact.avatar }}
-                            style={{ width: 40, height: 40, borderRadius: 20 }}
-                            contentFit="cover"
-                          />
+                      {selectedUsersData.map((user) => (
+                        <View key={user.id} className="relative">
+                          {user.avatarUrl ? (
+                            <ExpoImage
+                              source={{ uri: user.avatarUrl }}
+                              style={{ width: 40, height: 40, borderRadius: 20 }}
+                              contentFit="cover"
+                            />
+                          ) : (
+                            <View
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                                backgroundColor: "#34B27D",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Text className="text-white text-sm font-bold">
+                                {(user.fullName || user.username || "U").charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                          )}
                           <TouchableOpacity
-                            onPress={() => removeContact(contact.id)}
+                            onPress={() => removeContact(user.id)}
                             activeOpacity={0.7}
                             style={{
                               position: "absolute",
-                              top: -4,
-                              right: -4,
-                              width: 20,
-                              height: 20,
-                              borderRadius: 10,
+                              top: -6,
+                              right: -6,
+                              width: 22,
+                              height: 22,
+                              borderRadius: 11,
                               backgroundColor: "#EF4444",
                               alignItems: "center",
                               justifyContent: "center",
                               borderWidth: 2,
                               borderColor: "#FFFFFF",
+                              zIndex: 10,
+                              elevation: 5,
                             }}
                           >
-                            <Ionicons name="close" size={12} color="#FFFFFF" />
+                            <Ionicons name="close" size={14} color="#FFFFFF" />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -272,10 +341,16 @@ export default function CreateGroupScreen() {
                 <TouchableOpacity
                   onPress={handleCreate}
                   activeOpacity={0.8}
-                  disabled={!groupName.trim() || selectedContacts.length === 0}
+                  disabled={
+                    !groupName.trim() ||
+                    selectedContacts.length === 0 ||
+                    createGroupMutation.isPending
+                  }
                   style={{
                     backgroundColor:
-                      groupName.trim() && selectedContacts.length > 0
+                      groupName.trim() &&
+                      selectedContacts.length > 0 &&
+                      !createGroupMutation.isPending
                         ? "#34B27D"
                         : "#D1D5DB",
                     paddingHorizontal: 20,
@@ -286,7 +361,13 @@ export default function CreateGroupScreen() {
                     gap: 8,
                   }}
                 >
-                  <Ionicons name="paper-plane" size={20} color="#FFFFFF" />
+                  {createGroupMutation.isPending ? (
+                    <Text className="text-white text-sm font-semibold">
+                      Đang tạo...
+                    </Text>
+                  ) : (
+                    <Ionicons name="paper-plane" size={20} color="#FFFFFF" />
+                  )}
                 </TouchableOpacity>
               </View>
             </View>

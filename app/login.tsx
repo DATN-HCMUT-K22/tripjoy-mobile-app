@@ -9,30 +9,22 @@ import { Ionicons } from "@expo/vector-icons";
 import { ImageBackground } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
+import { Controller } from "react-hook-form";
 import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 export default function LoginScreen() {
+  console.log("=== LOGIN SCREEN RENDER ===");
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const {
-    formData,
-    errors,
-    isSubmitting,
-    updateField,
-    setIsSubmitting,
-    validate,
-  } = useLoginForm();
+  const { control, handleSubmit, errors, isSubmitting } = useLoginForm();
 
-  const handleLogin = async () => {
-    if (!validate()) {
-      return;
-    }
+  console.log("Login screen initialized");
 
-    setIsSubmitting(true);
+  const onSubmit = async (data: { username: string; password: string }) => {
     try {
       const response = await login({
-        username: formData.username,
-        password: formData.password,
+        username: data.username,
+        password: data.password,
       });
 
       // Clear guest mode khi đăng nhập thành công
@@ -61,10 +53,8 @@ export default function LoginScreen() {
       // Hiển thị toast thành công
       showSuccessToast("Đăng nhập thành công!");
 
-      // Điều hướng sau 1 giây
-      setTimeout(() => {
-        router.replace("/(tabs)");
-      }, 1000);
+      // Điều hướng ngay lập tức về màn home
+      router.replace("/(tabs)");
     } catch (error: any) {
       // Log lỗi để debug (chỉ trong console, không hiện cho user)
       console.error("Login error:", error);
@@ -72,8 +62,6 @@ export default function LoginScreen() {
       console.error("Error stack:", error?.stack);
 
       showErrorToast("Đăng nhập thất bại", error);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -84,16 +72,22 @@ export default function LoginScreen() {
     await storage.clearTokens();
     // Clear Redux auth state
     dispatch(logout());
+
+    // Hiển thị toast thông báo
+    showSuccessToast("Đã đăng nhập như khách!");
+
     // Điều hướng đến màn hình chính (không cần đăng nhập)
     router.replace("/(tabs)");
   };
 
+  console.log("Login screen rendering JSX");
+  
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: "#ffffff" }}>
       <ImageBackground
         source={require("@/assets/images/login_logo.jpg")}
         style={{ flex: 1, width: "100%", height: "100%" }}
-        imageStyle={{ resizeMode: "cover" }}
+        contentFit="cover"
       >
         {/* Overlay màu vàng nhạt */}
         <View
@@ -160,23 +154,37 @@ export default function LoginScreen() {
             </Text>
 
             <Text style={{ color: "#ffffff", fontSize: 12 }}>Tài khoản</Text>
-            <Input
-              placeholder="Nhập tên tài khoản..."
-              leftIcon="person-outline"
-              value={formData.username}
-              onChangeText={(text) => updateField("username", text)}
-              error={errors.username}
+            <Controller
+              control={control}
+              name="username"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <Input
+                  placeholder="Nhập tên tài khoản..."
+                  leftIcon="person-outline"
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  error={errors.username?.message}
+                />
+              )}
             />
 
             <Text style={{ color: "#ffffff", fontSize: 12 }}>Mật khẩu</Text>
-            <Input
-              placeholder="Nhập mật khẩu..."
-              leftIcon="lock-closed-outline"
-              rightIcon="eye-outline"
-              secureTextEntry
-              value={formData.password}
-              onChangeText={(text) => updateField("password", text)}
-              error={errors.password}
+            <Controller
+              control={control}
+              name="password"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <Input
+                  placeholder="Nhập mật khẩu..."
+                  leftIcon="lock-closed-outline"
+                  rightIcon="eye-outline"
+                  secureTextEntry
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  error={errors.password?.message}
+                />
+              )}
             />
 
             <TouchableOpacity style={{ alignSelf: "flex-end", marginTop: 6 }}>
@@ -192,7 +200,7 @@ export default function LoginScreen() {
           <View style={{ marginTop: 20, gap: 16 }}>
             <TouchableOpacity
               activeOpacity={0.9}
-              onPress={handleLogin}
+              onPress={handleSubmit(onSubmit)}
               disabled={isSubmitting}
               style={{
                 height: 50,

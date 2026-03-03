@@ -44,7 +44,7 @@ export function useSignupForm() {
       fullName: "",
       email: "",
     },
-    mode: "onChange",
+    mode: "onSubmit", // Chỉ validate khi submit, không validate khi đang nhập
   });
 
   return {

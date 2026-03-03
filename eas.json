@@ -17,6 +17,9 @@
       }
     },
     "production": {
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "RNMAPBOX_MAPS_DOWNLOAD_TOKEN": "YOUR_NATIVE_SDK_DOWNLOAD_TOKEN"
       }

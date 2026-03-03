@@ -1,10 +1,14 @@
 import { ApiResponse, User } from "@/types/user";
 import { httpClient } from "./http/client";
 import { getCurrentUser } from "./users";
+import { storage } from "@/utils/storage";
 
 export interface LoginData {
   authenticated: boolean;
-  token: string;
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  token_type: string;
 }
 
 export interface RegisterResponse {
@@ -33,13 +37,21 @@ export const login = async (payload: LoginPayload) => {
 
   console.log("Login response:", response);
 
-  // Response format: { code: 1000, data: { authenticated: true, token: "..." } }
+  // Response format: { code: 1000, data: { authenticated: true, access_token: "...", refresh_token: "..." } }
   if (response.code === 1000 && response.data) {
-    const accessToken = response.data.token;
+    const accessToken = response.data.access_token;
+    const refreshToken = response.data.refresh_token;
+
+    // Kiểm tra token có tồn tại không
+    if (!accessToken) {
+      console.error("Access token is missing from login response");
+      throw new Error("Access token is missing");
+    }
 
     // Log token từ API response
     console.log("=== TOKEN FROM LOGIN API ===");
     console.log("Access Token:", accessToken);
+    console.log("Refresh Token:", refreshToken || "N/A");
     console.log("Token length:", accessToken.length);
     console.log("============================");
 
@@ -47,8 +59,10 @@ export const login = async (payload: LoginPayload) => {
     let user: User | null = null;
     try {
       // Tạm thời set token vào storage để có thể gọi API getCurrentUser
-      const { storage } = await import("@/utils/storage");
       await storage.setAccessToken(accessToken);
+      if (refreshToken) {
+        await storage.setRefreshToken(refreshToken);
+      }
 
       // Gọi API để lấy thông tin user
       const userResponse = await getCurrentUser();
@@ -62,7 +76,7 @@ export const login = async (payload: LoginPayload) => {
 
     return {
       accessToken,
-      refreshToken: "", // API không trả về refreshToken
+      refreshToken: refreshToken || "",
       user,
     };
   }
@@ -83,12 +97,15 @@ export const register = (payload: RegisterPayload) =>
   );
 
 export interface RefreshTokenData {
-  token: string;
   authenticated: boolean;
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  token_type: string;
 }
 
 export type RefreshTokenPayload = {
-  token: string;
+  token: string; // refresh_token
 };
 
 export const refreshToken = async (payload: RefreshTokenPayload) => {
@@ -100,10 +117,24 @@ export const refreshToken = async (payload: RefreshTokenPayload) => {
 
   console.log("Refresh token response:", response);
 
-  // Response format: { code: 0, data: { token: "...", authenticated: true } }
-  if (response.code === 0 && response.data) {
+  // Response format: { code: 1000, data: { authenticated: true, access_token, refresh_token, ... } }
+  if (response.code === 1000 && response.data) {
+    const accessToken = response.data.access_token;
+    const refreshTokenValue = response.data.refresh_token;
+
+    if (!accessToken) {
+      throw new Error("Refresh token response missing access_token");
+    }
+
+    // Lưu lại token mới vào storage
+    await storage.setAccessToken(accessToken);
+    if (refreshTokenValue) {
+      await storage.setRefreshToken(refreshTokenValue);
+    }
+
     return {
-      accessToken: response.data.token,
+      accessToken,
+      refreshToken: refreshTokenValue || "",
     };
   }
 

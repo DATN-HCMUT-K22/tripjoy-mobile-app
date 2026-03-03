@@ -83,6 +83,7 @@ type RequestOptions = {
   skipAuth?: boolean;
   // true: Bỏ qua hoàn toàn auth (cho login, register)
   // false/undefined: Optional auth (có token thì gửi, không có thì không gửi)
+  
   // Mặc định: false
 };
 ```
