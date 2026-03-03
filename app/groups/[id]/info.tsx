@@ -1,265 +1,629 @@
-import { mockGroups } from "@/data/mockGroups";
+import { useGroup } from "@/hooks/useGroups";
+import { formatCurrencyVND, formatDateRange } from "@/utils/format";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import React, { useLayoutEffect, useMemo, useState } from "react";
 import {
-  SafeAreaView,
+  ActivityIndicator,
   ScrollView,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+type ItineraryTab = "ongoing" | "completed" | "draft";
+
+interface ItineraryItem {
+  id: string;
+  name: string;
+  image: string;
+  startDate: string;
+  endDate: string;
+  budget?: number;
+  createdAtLabel: string;
+}
+
+// Mock danh sách theo từng tab (sau có thể lấy từ API theo status)
+function useMockItinerariesByTab(groupId: string | undefined) {
+  return useMemo(() => {
+    if (!groupId) return { ongoing: [], completed: [], draft: [] };
+    const base = [
+      {
+        id: "o1",
+        name: "Hội An trip",
+        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
+        startDate: "2025-08-16",
+        endDate: "2025-08-20",
+        budget: 9000000,
+        createdAtLabel: "Đã tạo 2 ngày trước",
+      },
+      {
+        id: "c1",
+        name: "Hội An trip",
+        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
+        startDate: "2025-08-16",
+        endDate: "2025-08-20",
+        createdAtLabel: "Đã tạo 2 ngày trước",
+      },
+      {
+        id: "c2",
+        name: "Hội An trip",
+        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
+        startDate: "2025-07-01",
+        endDate: "2025-07-05",
+        createdAtLabel: "Đã tạo 1 tuần trước",
+      },
+      {
+        id: "d1",
+        name: "Hội An trip",
+        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
+        startDate: "2025-09-01",
+        endDate: "2025-09-05",
+        createdAtLabel: "Đã tạo 1 ngày trước",
+      },
+      {
+        id: "d2",
+        name: "Hội An trip",
+        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
+        startDate: "2025-09-10",
+        endDate: "2025-09-12",
+        createdAtLabel: "Đã tạo 3 ngày trước",
+      },
+    ];
+    return {
+      ongoing: base.slice(0, 1) as ItineraryItem[],
+      completed: base.slice(1, 3) as ItineraryItem[],
+      draft: base.slice(3, 5) as ItineraryItem[],
+    };
+  }, [groupId]);
+}
+
+const TAB_CONFIG: Record<
+  ItineraryTab,
+  { label: string; count?: number; dotColor: string; borderColor: string }
+> = {
+  ongoing: {
+    label: "Đang diễn ra",
+    dotColor: "#16A34A",
+    borderColor: "#16A34A",
+  },
+  completed: {
+    label: "Đã hoàn thành",
+    count: 2,
+    dotColor: "#2563EB",
+    borderColor: "#2563EB",
+  },
+  draft: {
+    label: "Nháp",
+    count: 5,
+    dotColor: "#EA580C",
+    borderColor: "#EA580C",
+  },
+};
 
 export default function GroupInfoScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const group = mockGroups.find((g) => g.id === id);
+  const { data: group, isLoading } = useGroup(id);
+  const [itineraryTab, setItineraryTab] = useState<ItineraryTab>("ongoing");
+  const itinerariesByTab = useMockItinerariesByTab(id);
 
-  if (!group) {
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
+  if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 bg-white items-center justify-center">
-        <Text className="text-gray-500">Không tìm thấy nhóm</Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="mt-4 px-6 py-2 bg-primary rounded-lg"
-        >
-          <Text className="text-white">Quay lại</Text>
-        </TouchableOpacity>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#16A34A" />
+        </View>
       </SafeAreaView>
     );
   }
 
-  // Mock data - sau này sẽ lấy từ API
-  const creatorName = "Đình Đức";
-  const memberCount = group.memberCount;
+  if (!group) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorText}>Không tìm thấy nhóm</Text>
+          <TouchableOpacity style={styles.errorBtn} onPress={() => router.back()}>
+            <Text style={styles.errorBtnText}>Quay lại</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const groupImage = group.avatar ?? (group as { image?: string }).image ?? "";
+  const memberCount =
+    group.members?.length ?? (group as { memberCount?: number }).memberCount ?? 0;
+  const creatorName =
+    group.members?.find((m) => m.role === "LEADER")?.user?.fullName ?? "Đình Đức";
   const pastItinerariesCount = 12;
-  const draftItinerariesCount = 5;
-  const memberAvatars = [
+  const draftCount = 5;
+  const suggestedCount = 18;
+  const memberAvatars = (group.members
+    ?.map((m) => m.user?.avatarUrl)
+    .filter(Boolean) as string[]) || [
     "https://i.pravatar.cc/150?img=1",
     "https://i.pravatar.cc/150?img=2",
     "https://i.pravatar.cc/150?img=3",
     "https://i.pravatar.cc/150?img=4",
+    "https://i.pravatar.cc/150?img=5",
   ];
-  // Chỉ hiển thị tối đa 4 avatar, còn lại hiển thị + số
-  const displayedAvatars = memberAvatars.slice(0, 4);
-  const additionalMembers = memberCount > 4 ? memberCount - 4 : 0;
+  const displayedAvatars = memberAvatars.slice(0, 3);
+  const additionalMembers = memberCount > 3 ? memberCount - 3 : 0;
+
+  const currentItineraries =
+    itineraryTab === "ongoing"
+      ? itinerariesByTab.ongoing
+      : itineraryTab === "completed"
+        ? itinerariesByTab.completed
+        : itinerariesByTab.draft;
+  const tabStyle = TAB_CONFIG[itineraryTab];
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      {/* Header */}
-      <View className="flex-row items-center px-4 py-3 border-b border-gray-200">
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      {/* Header: nền xám nhạt, mũi tên trái, tiêu đề giữa */}
+      <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="absolute left-4 z-10"
+          style={styles.headerBack}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back-outline" size={24} color="#000" />
+          <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-black flex-1 text-center">
-          Thông tin nhóm
+        <Text style={styles.headerTitle}>Thông tin nhóm</Text>
+        <View style={styles.headerRight} />
+      </View>
+
+      {/* Banner xanh: avatar squircle, tên nhóm, tạo bởi - N thành viên */}
+      <View style={styles.banner}>
+        <Image
+          source={{ uri: groupImage }}
+          style={styles.bannerAvatar}
+          contentFit="cover"
+        />
+        <Text style={styles.bannerName} numberOfLines={2}>
+          {group.name}
+        </Text>
+        <Text style={styles.bannerMeta}>
+          Tạo bởi {creatorName} - {memberCount} thành viên
         </Text>
       </View>
 
-      {/* Header with Gradient - Only for avatar and group info */}
-      <LinearGradient
-        colors={["#14B8A6", "#0F766E", "#134E4A"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={{
-          paddingTop: 24,
-          paddingBottom: 24,
-        }}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Group Avatar - Rounded Square */}
-        <View className="items-center mb-4 px-4">
-          <Image
-            source={{ uri: group.image }}
-            style={{
-              width: 100,
-              height: 100,
-              borderRadius: 16,
-            }}
-            contentFit="cover"
-          />
-        </View>
+        {/* Thẻ Thành viên */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={styles.card}
+          onPress={() => {}}
+        >
+          <View style={[styles.cardIconWrap, { backgroundColor: "#DBEAFE" }]}>
+            <Ionicons name="people" size={24} color="#2563EB" />
+          </View>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardTitle}>Thành viên</Text>
+            <Text style={styles.cardDesc}>{memberCount} người trong nhóm</Text>
+          </View>
+          <View style={styles.avatarStack}>
+            {displayedAvatars.map((uri, i) => (
+              <Image
+                key={i}
+                source={{ uri }}
+                style={[styles.avatarCircle, i > 0 && styles.avatarOverlap]}
+              />
+            ))}
+            {additionalMembers > 0 && (
+              <View
+                style={[
+                  styles.avatarCircle,
+                  styles.avatarMore,
+                  displayedAvatars.length > 0 && styles.avatarOverlap,
+                ]}
+              >
+                <Text style={styles.avatarMoreText}>+{additionalMembers}</Text>
+              </View>
+            )}
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+        </TouchableOpacity>
 
-        {/* Group Name */}
-        <View className="px-4">
-          <Text
-            className="text-2xl font-bold text-white text-center mb-2"
-            numberOfLines={2}
-            style={{ maxWidth: "100%" }}
-          >
-            {group.name}
-          </Text>
-        </View>
-
-        {/* Group Details */}
-        <View className="px-4">
-          <Text className="text-sm text-white text-center opacity-90">
-            Tạo bởi {creatorName} • {memberCount} thành viên
-          </Text>
-        </View>
-      </LinearGradient>
-
-      {/* Content Cards */}
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="px-4 py-4">
-          {/* Thành viên Card */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            className="bg-white rounded-xl p-4 mb-3 flex-row items-center border border-gray-200"
-          >
-            <View
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                backgroundColor: "#3B82F6",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              <Ionicons name="people" size={24} color="#fff" />
+        {/* Thẻ Lịch trình đã đi: có tab + danh sách thẻ con */}
+        <View style={[styles.card, styles.cardColumn]}>
+          <View style={styles.cardRow}>
+            <View style={[styles.cardIconWrap, { backgroundColor: "#D1FAE5" }]}>
+              <Ionicons name="trail-sign-outline" size={24} color="#16A34A" />
             </View>
-            <View className="flex-1">
-              <Text className="text-base font-bold text-black mb-1">
-                Thành viên
-              </Text>
-              <Text className="text-sm text-gray-600">
-                {memberCount} người trong nhóm
-              </Text>
+            <View style={styles.cardTextWrap}>
+              <Text style={styles.cardTitle}>Lịch trình đã đi</Text>
+              <Text style={styles.cardDesc}>{pastItinerariesCount} chuyến đi</Text>
             </View>
-            <View className="flex-row items-center mr-2">
-              {displayedAvatars.map((avatar, index) => (
+            <Ionicons name="chevron-up" size={20} color="#9CA3AF" />
+          </View>
+
+          {/* Tab bar: chấm tròn + text */}
+          <View style={styles.tabBar}>
+            {(["ongoing", "completed", "draft"] as const).map((tab) => {
+              const config = TAB_CONFIG[tab];
+              const isActive = itineraryTab === tab;
+              const label =
+                config.count !== undefined
+                  ? `${config.label} (${config.count})`
+                  : config.label;
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setItineraryTab(tab)}
+                  style={styles.tabItem}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.tabDot,
+                      { backgroundColor: config.dotColor },
+                      !isActive && styles.tabDotInactive,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.tabLabel,
+                      isActive && { color: config.dotColor, fontWeight: "700" },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Danh sách thẻ lịch trình theo tab */}
+          <View style={styles.itineraryList}>
+            {currentItineraries.map((it) => (
+              <View
+                key={it.id}
+                style={[
+                  styles.itineraryCard,
+                  { borderColor: tabStyle.borderColor },
+                ]}
+              >
                 <Image
-                  key={index}
-                  source={{ uri: avatar }}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 16,
-                    marginLeft: index > 0 ? -16 : 0, // Overlap 50% (16px = 50% of 32px)
-                    borderWidth: 2,
-                    borderColor: "#fff",
-                  }}
+                  source={{ uri: it.image }}
+                  style={styles.itineraryThumb}
                   contentFit="cover"
                 />
-              ))}
-              {additionalMembers > 0 && (
-                <View
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 16,
-                    backgroundColor: "#EF4444",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginLeft: displayedAvatars.length > 0 ? -16 : 0, // Overlap 50%
-                    borderWidth: 2,
-                    borderColor: "#fff",
-                  }}
-                >
-                  <Text className="text-xs text-white font-bold">
-                    +{additionalMembers}
-                  </Text>
+                <View style={styles.itineraryBody}>
+                  <Text style={styles.itineraryName}>{it.name}</Text>
+                  <Text style={styles.itineraryCreated}>{it.createdAtLabel}</Text>
+                  <View style={styles.itineraryRow}>
+                    <Text style={styles.itineraryCalendar}>📅</Text>
+                    <Text style={styles.itineraryLabel}>Thời gian: </Text>
+                    <Text
+                      style={[
+                        styles.itineraryDate,
+                        { color: tabStyle.borderColor },
+                      ]}
+                    >
+                      {formatDateRange(it.startDate, it.endDate)}
+                    </Text>
+                  </View>
+                  {itineraryTab === "ongoing" && it.budget != null && (
+                    <Text style={styles.itineraryBudget}>
+                      Ngân sách: {formatCurrencyVND(it.budget)}
+                    </Text>
+                  )}
+                  {itineraryTab === "draft" && (
+                    <Text
+                      style={[
+                        styles.itineraryApply,
+                        { color: tabStyle.borderColor, alignSelf: "flex-end" },
+                      ]}
+                    >
+                      Áp dụng
+                    </Text>
+                  )}
                 </View>
-              )}
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-
-          {/* Lịch trình đã đi Card */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            className="bg-white rounded-xl p-4 mb-3 flex-row items-center border border-gray-200"
-          >
-            <View
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                backgroundColor: "#10B981",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              <Ionicons name="checkmark-circle" size={24} color="#fff" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-base font-bold text-black mb-1">
-                Lịch trình đã đi
-              </Text>
-              <Text className="text-sm text-gray-600">
-                {pastItinerariesCount} chuyến đi
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-
-          {/* Lịch trình nháp Card */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            className="bg-white rounded-xl p-4 mb-3 flex-row items-center border border-gray-200"
-          >
-            <View
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                backgroundColor: "#F97316",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              <Ionicons name="document-text-outline" size={24} color="#fff" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-base font-bold text-black mb-1">
-                Lịch trình nháp
-              </Text>
-              <Text className="text-sm text-gray-600">
-                {draftItinerariesCount} bản nháp đang lưu
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-
-          {/* Địa điểm gợi ý Card */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            className="bg-white rounded-xl p-4 mb-3 flex-row items-center border border-gray-200"
-          >
-            <View
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                backgroundColor: "#8B5CF6",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              <Ionicons name="bulb-outline" size={24} color="#fff" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-base font-bold text-black mb-1">
-                Địa điểm gợi ý
-              </Text>
-              <Text className="text-sm text-gray-600">
-                Đề xuất từ thành viên
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.itineraryBtn, { backgroundColor: tabStyle.borderColor }]}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="chevron-forward" size={18} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
         </View>
+
+        {/* Thẻ Địa điểm gợi ý */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={styles.card}
+          onPress={() => {}}
+        >
+          <View style={[styles.cardIconWrap, { backgroundColor: "#EDE9FE" }]}>
+            <Ionicons name="bulb" size={24} color="#7C3AED" />
+          </View>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardTitle}>Địa điểm gợi ý</Text>
+            <Text style={styles.cardDesc}>Đề xuất từ thành viên</Text>
+          </View>
+          <View style={styles.suggestedBadge}>
+            <Text style={styles.suggestedBadgeText}>{suggestedCount} gợi ý</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: "#F8F8F8",
+  },
+  loadingWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  errorWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#6B7280",
+  },
+  errorBtn: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: "#16A34A",
+    borderRadius: 10,
+  },
+  errorBtnText: {
+    fontSize: 16,
+    color: "#fff",
+    fontWeight: "600",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#F8F8F8",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E5E7EB",
+  },
+  headerBack: {
+    width: 40,
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  headerRight: {
+    width: 40,
+  },
+  banner: {
+    backgroundColor: "#16A34A",
+    alignItems: "center",
+    paddingTop: 24,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+  },
+  bannerAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 28,
+    marginBottom: 12,
+  },
+  bannerName: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#fff",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  bannerMeta: {
+    fontSize: 14,
+    color: "#fff",
+    opacity: 0.95,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  cardColumn: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+  cardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  cardIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  cardTextWrap: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  cardDesc: {
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  avatarStack: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  avatarCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  avatarOverlap: {
+    marginLeft: -12,
+  },
+  avatarMore: {
+    backgroundColor: "#9CA3AF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarMoreText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  tabBar: {
+    flexDirection: "row",
+    marginTop: 16,
+    marginBottom: 12,
+    gap: 4,
+  },
+  tabItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  tabDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  tabDotInactive: {
+    opacity: 0.5,
+  },
+  tabLabel: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  itineraryList: {
+    gap: 12,
+  },
+  itineraryCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    overflow: "hidden",
+  },
+  itineraryThumb: {
+    width: 72,
+    height: 72,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    marginLeft: -1,
+  },
+  itineraryBody: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  itineraryName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  itineraryCreated: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginBottom: 4,
+  },
+  itineraryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  itineraryCalendar: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  itineraryLabel: {
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  itineraryDate: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  itineraryBudget: {
+    fontSize: 13,
+    color: "#111827",
+    marginTop: 2,
+  },
+  itineraryApply: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  itineraryBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 8,
+  },
+  suggestedBadge: {
+    backgroundColor: "#7C3AED",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  suggestedBadgeText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#fff",
+  },
+});

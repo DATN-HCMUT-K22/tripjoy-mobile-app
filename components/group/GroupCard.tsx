@@ -1,54 +1,133 @@
 import { Group } from "@/types/group";
+import { ConversationResponse } from "@/types/message";
+import { normalizeAvatarUri } from "@/utils/image";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect } from "react";
+import { Image, Text, TouchableOpacity, View } from "react-native";
 
 interface GroupCardProps {
   group: Group;
+  /** Conversation nhóm tương ứng (từ GET /conversations, khớp group_id) để lấy conversationId và gọi API detail conversation trong màn chat */
+  conversation?: ConversationResponse | null;
 }
 
-export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
+export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => {
   const router = useRouter();
-  const hasData = group.itineraryCount > 0 || group.memberCount > 0;
+  const memberCount = (group as any).memberCount ?? group.members?.length ?? 0;
+  const itineraryCount = (group as any).itineraryCount ?? 0;
+  const hasData = itineraryCount > 0 || memberCount > 0;
+  const initial = group.name.charAt(0).toUpperCase();
+  const avatarUri = normalizeAvatarUri(group.avatar);
+  const isFileUri = !!avatarUri?.startsWith("file://");
+  const [imageError, setImageError] = React.useState(false);
+  useEffect(() => {
+    setImageError(false);
+  }, [avatarUri]);
+  // Điều hướng sang trang chi tiết nhóm `/groups/{groupId}`
+  const goToInfo = () => router.push(`/groups/${group.id}` as any);
+  // Mở màn tin nhắn nhóm, truyền conversationId để màn chat gọi GET /conversations/{id} như danh sách conversation
+  const goToChat = () => {
+    const name = conversation?.name || group.name;
+    const avatar = conversation?.avatar ?? group.avatar ?? undefined;
+    const memberCountStr = String(
+      conversation?.members?.length ?? group.members?.length ?? 0
+    );
+    router.push({
+      pathname: `/groups/${group.id}/chat` as any,
+      params: {
+        conversationId: conversation?.id ?? undefined,
+        name: name || undefined,
+        avatar: avatar || undefined,
+        memberCount: memberCountStr || undefined,
+      },
+    } as any);
+  };
 
   return (
-    <TouchableOpacity
-      onPress={() => {
-        if (hasData) {
-          router.push(`/groups/${group.id}` as any);
-        }
-      }}
-      activeOpacity={hasData ? 0.8 : 1}
-      className={`mb-4 bg-white rounded-xl overflow-hidden shadow-sm ${
-        !hasData ? "opacity-60" : ""
-      }`}
-    >
+    <View className="mb-4 bg-white rounded-xl overflow-hidden shadow-sm">
       {/* Image with Overlay */}
       <View className="relative">
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => router.push(`/groups/${group.id}/info` as any)}
-        >
-          <ExpoImage
-            source={{ uri: group.image }}
-            style={{ width: "100%", height: 200 }}
-            contentFit="cover"
-          />
+        <TouchableOpacity activeOpacity={0.9} onPress={goToInfo}>
+          {avatarUri && !imageError ? (
+            <View className="relative" style={{ width: "100%", height: 200 }}>
+              {isFileUri ? (
+                <Image
+                  source={{ uri: avatarUri }}
+                  style={{ width: "100%", height: 200 }}
+                  resizeMode="cover"
+                  onError={() => {
+                    setImageError(true);
+                  }}
+                />
+              ) : (
+                <ExpoImage
+                  source={{ uri: avatarUri }}
+                  style={{ width: "100%", height: 200 }}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  priority="high"
+                  placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+                  transition={200}
+                  onError={() => setImageError(true)}
+                  onLoad={() => {}}
+                />
+              )}
+              {/* Gradient Overlay - BỎ LỚP MỜ NÀY */}
+              {/* <LinearGradient
+                colors={['transparent', 'rgba(0, 0, 0, 0.3)']}
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: 100,
+                }}
+              /> */}
+            </View>
+          ) : (
+            <View
+              style={{
+                width: "100%",
+                height: 200,
+                backgroundColor: "#E5E7EB",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="people-outline" size={64} color="#9CA3AF" />
+            </View>
+          )}
         </TouchableOpacity>
         {/* Overlay Text */}
         <TouchableOpacity
           activeOpacity={0.9}
-          onPress={() => router.push(`/groups/${group.id}/info` as any)}
+          onPress={goToInfo}
           className="absolute bottom-4 left-4"
         >
-          <Text className="text-white text-xl font-bold mb-1">
+          <Text
+            className="text-white text-xl font-bold mb-1"
+            style={{
+              textShadowColor: "rgba(0, 0, 0, 0.75)",
+              textShadowOffset: { width: 0, height: 1 },
+              textShadowRadius: 3,
+            }}
+          >
             {group.name}
           </Text>
-          <Text className="text-white text-sm opacity-90">
-            {group.description}
-          </Text>
+          {group.description && (
+            <Text
+              className="text-white text-sm"
+              style={{
+                textShadowColor: "rgba(0, 0, 0, 0.75)",
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 3,
+              }}
+            >
+              {group.description}
+            </Text>
+          )}
         </TouchableOpacity>
         {/* Initial Icon - White rounded square with green text */}
         <View
@@ -64,9 +143,7 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
             justifyContent: "center",
           }}
         >
-          <Text className="text-primary font-bold text-xl">
-            {group.initial}
-          </Text>
+          <Text className="text-primary font-bold text-xl">{initial}</Text>
         </View>
       </View>
 
@@ -90,7 +167,7 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
               </View>
               <View>
                 <Text className="text-2xl font-bold text-black">
-                  {group.itineraryCount}
+                  {itineraryCount}
                 </Text>
                 <Text className="text-sm text-black">Lịch trình</Text>
               </View>
@@ -117,7 +194,7 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
               </View>
               <View>
                 <Text className="text-2xl font-bold text-black">
-                  {group.memberCount}
+                  {memberCount}
                 </Text>
                 <Text className="text-sm text-black">Thành viên</Text>
               </View>
@@ -125,7 +202,11 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
           </View>
 
           {/* Arrow Button */}
-          <View className="ml-4">
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={goToChat}
+            className="ml-4"
+          >
             <View
               style={{
                 width: 32,
@@ -138,9 +219,9 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group }) => {
             >
               <Ionicons name="chevron-forward" size={18} color="#34B27D" />
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 };

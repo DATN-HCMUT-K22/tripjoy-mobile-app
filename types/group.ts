@@ -1,4 +1,45 @@
+import { User } from "./user";
+
+/**
+ * GroupMemberResponse theo API doc
+ */
+export interface GroupMember {
+  id: string;                    // UUID của member record
+  user: {                        // Thông tin user
+    id: string;
+    username: string;
+    fullName: string;            // Tên đầy đủ
+    avatarUrl?: string;           // URL avatar (theo response format mới)
+  };
+  role: "LEADER" | "CO_LEADER" | "MEMBER";
+  created_at?: string;           // ISO 8601 format
+  created_by?: string;           // Optional
+  updated_at?: string;           // Optional
+  updated_by?: string;           // Optional
+}
+
+/**
+ * GroupResponse theo API doc
+ */
 export interface Group {
+  id: string;                    // UUID
+  name: string;                  // Tên group
+  description?: string | null;   // Mô tả
+  avatar?: string | null;        // URL avatar
+  theme?: string | null;         // Theme name
+  theme_color?: string | null;   // Hex color code
+  is_pro: boolean;               // Có phải pro group không
+  chatbot_count: number;          // Số lượng chatbot
+  isDeleted?: boolean | null;     // Đã bị xóa chưa (soft delete) - theo response format
+  members: GroupMember[];         // Danh sách thành viên
+  created_at?: string;           // ISO 8601 format
+  created_by?: string | null;     // Optional
+  updated_at?: string;           // Optional
+  updated_by?: string | null;     // Optional
+}
+
+// Legacy interface for backward compatibility
+export interface LegacyGroup {
   id: string;
   name: string;
   description: string;

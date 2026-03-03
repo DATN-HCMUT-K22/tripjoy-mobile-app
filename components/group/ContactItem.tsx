@@ -15,6 +15,15 @@ export const ContactItem: React.FC<ContactItemProps> = ({
   isSelected,
   onToggle,
 }) => {
+  const [imageError, setImageError] = React.useState(false);
+  
+  const avatarUri = contact.avatar && contact.avatar.trim() 
+    ? contact.avatar 
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.name || "User")}&background=34B27D&color=fff&size=128`;
+  
+  const displayName = contact.name || "User";
+  const initial = displayName.charAt(0).toUpperCase();
+
   return (
     <TouchableOpacity
       onPress={() => onToggle(contact.id)}
@@ -42,11 +51,35 @@ export const ContactItem: React.FC<ContactItemProps> = ({
       </View>
 
       {/* Avatar */}
-      <ExpoImage
-        source={{ uri: contact.avatar }}
-        style={{ width: 50, height: 50, borderRadius: 25 }}
-        contentFit="cover"
-      />
+      {!imageError ? (
+        <ExpoImage
+          source={{ uri: avatarUri }}
+          style={{ width: 50, height: 50, borderRadius: 25 }}
+          contentFit="cover"
+          placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+          transition={200}
+          onError={(error) => {
+            console.log("[ContactItem] Error loading avatar:", error, "URI:", avatarUri, "for contact:", contact.name);
+            setImageError(true);
+          }}
+          onLoad={() => {
+            console.log("[ContactItem] Avatar loaded successfully for:", contact.name, "URI:", avatarUri);
+          }}
+        />
+      ) : (
+        <View
+          style={{
+            width: 50,
+            height: 50,
+            borderRadius: 25,
+            backgroundColor: "#34B27D",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text className="text-white text-lg font-bold">{initial}</Text>
+        </View>
+      )}
 
       {/* Name */}
       <View className="flex-1 ml-3">

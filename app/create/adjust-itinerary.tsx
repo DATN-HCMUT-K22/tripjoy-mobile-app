@@ -6,7 +6,7 @@ import { mockItineraryItems } from "@/data/mockItineraryItems";
 import { ItineraryItem } from "@/types/itinerary";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, {
   useCallback,
   useEffect,
@@ -162,6 +162,7 @@ export default function AdjustItineraryScreen() {
     addItineraryItemsToDay,
   } = useItinerary();
   const { pendingLocationIds, clearPendingLocationIds } = useTempLocation();
+  const { dayKey: scrollDayKey } = useLocalSearchParams<{ dayKey?: string }>();
 
   // Tạo danh sách các ngày
   const days = useMemo(() => {
@@ -697,10 +698,15 @@ export default function AdjustItineraryScreen() {
           return prev; // Không thay đổi nếu index không hợp lệ
         }
 
-        const [removed] = dayItems.splice(fromIndex, 1);
-        if (removed) {
-          dayItems.splice(toIndex, 0, removed);
-        }
+        // Swap 2 vị trí, giữ timeRange tại slot
+        const itemFrom = { ...dayItems[fromIndex] };
+        const itemTo = { ...dayItems[toIndex] };
+
+        const timeAtFrom = { ...dayItems[fromIndex].timeRange };
+        const timeAtTo = { ...dayItems[toIndex].timeRange };
+
+        dayItems[fromIndex] = { ...itemTo, timeRange: timeAtFrom };
+        dayItems[toIndex] = { ...itemFrom, timeRange: timeAtTo };
 
         // Cập nhật selected locations theo thứ tự mới (sau khi move)
         const newLocationIds = dayItems.map((item) => item.locationId);
@@ -737,6 +743,20 @@ export default function AdjustItineraryScreen() {
     router.back();
   };
 
+  const scrollViewRef = useRef<ScrollView>(null);
+  const sectionPositions = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!scrollDayKey) return;
+    const timer = setTimeout(() => {
+      const y = sectionPositions.current[scrollDayKey];
+      if (y !== undefined) {
+        scrollViewRef.current?.scrollTo({ y, animated: true });
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [scrollDayKey, draftItemsByDay]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView className="flex-1 bg-white">
@@ -755,12 +775,22 @@ export default function AdjustItineraryScreen() {
         </View>
 
         {/* Content - Scrollable list of days */}
-        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollViewRef}
+          className="flex-1"
+          showsVerticalScrollIndicator={false}
+        >
           <View className="px-4 py-4 pb-24">
             {days.map((day) => {
               const dayItems = draftItemsByDay[day.key] || [];
               return (
-                <View key={day.key} className="mb-6">
+                <View
+                  key={day.key}
+                  className="mb-6"
+                  onLayout={(e) => {
+                    sectionPositions.current[day.key] = e.nativeEvent.layout.y;
+                  }}
+                >
                   {/* Day Header */}
                   <Text className="text-lg font-bold text-black mb-4">
                     Ngày {day.dayNumber}: {day.label}

@@ -60,7 +60,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       icon: "person-outline",
       activeIcon: "person",
       path: "/profile",
-      onPress: onProfilePress,
+      onPress: onProfilePress || (() => router.push("/profile")),
     },
   ];
 

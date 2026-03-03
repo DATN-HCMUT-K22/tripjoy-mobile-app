@@ -11,7 +11,7 @@ import { tripTypeOptions } from "@/data/tripTypeOptions";
 import { Location } from "@/types/trip";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -25,7 +25,8 @@ export default function CreateTripScreen() {
   const router = useRouter();
   const {
     tripData,
-    setLocation,
+    setDepartureLocation,
+    setDestinationLocation,
     setDateRange,
     setBudget,
     setTripTypes,
@@ -33,17 +34,20 @@ export default function CreateTripScreen() {
     setEndDate: setContextEndDate,
     resetTripData,
   } = useTripSetup();
-  const [locations, setLocations] = useState(
-    mockLocations.map((loc) => ({ ...loc, isSelected: false }))
-  );
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(
-    tripData.location || null
-  );
-  const [searchText, setSearchText] = useState("");
-  const [isLocationExpanded, setIsLocationExpanded] = useState(false);
-  const [isTimeExpanded, setIsTimeExpanded] = useState(false);
-  const [isBudgetExpanded, setIsBudgetExpanded] = useState(false);
-  const [isTypeExpanded, setIsTypeExpanded] = useState(false);
+  const [locations] = useState(mockLocations);
+  const [departureLocation, setDepartureLocationState] =
+    useState<Location | null>(tripData.departureLocation || null);
+  const [destinationLocation, setDestinationLocationState] =
+    useState<Location | null>(
+      tripData.destinationLocation || tripData.location || null
+    );
+  const [departureSearchText, setDepartureSearchText] = useState("");
+  const [destinationSearchText, setDestinationSearchText] = useState("");
+  const [isDepartureExpanded, setIsDepartureExpanded] = useState(true);
+  const [isDestinationExpanded, setIsDestinationExpanded] = useState(true);
+  const [isTimeExpanded, setIsTimeExpanded] = useState(true);
+  const [isBudgetExpanded, setIsBudgetExpanded] = useState(true);
+  const [isTypeExpanded, setIsTypeExpanded] = useState(true);
   const [selectedTripTypes, setSelectedTripTypes] = useState<string[]>(
     tripData.tripTypes || []
   );
@@ -55,7 +59,8 @@ export default function CreateTripScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   const hasAllCriteria =
-    !!selectedLocation &&
+    !!departureLocation &&
+    !!destinationLocation &&
     selectedTripTypes.length > 0 &&
     !!selectedBudgetId &&
     !!startDate &&
@@ -69,16 +74,16 @@ export default function CreateTripScreen() {
     }, [resetTripData])
   );
 
-  const handleLocationSelect = (location: Location) => {
-    setSelectedLocation(location);
-    setLocation(location);
-    setLocations((prev) =>
-      prev.map((loc) => ({
-        ...loc,
-        isSelected: loc.id === location.id,
-      }))
-    );
-    // Don't close dropdown - let user close it manually
+  const handleDepartureLocationSelect = (location: Location) => {
+    setDepartureLocationState(location);
+    setDepartureLocation(location);
+    // Không đụng vào state isSelected chung, để mỗi input dùng selected riêng
+  };
+
+  const handleDestinationLocationSelect = (location: Location) => {
+    setDestinationLocationState(location);
+    setDestinationLocation(location);
+    // Không đụng vào state isSelected chung, để mỗi input dùng selected riêng
   };
 
   const toggleTripType = (type: string) => {
@@ -116,8 +121,11 @@ export default function CreateTripScreen() {
 
   const handleComplete = () => {
     // Save all data to context before navigating
-    if (selectedLocation) {
-      setLocation(selectedLocation);
+    if (departureLocation) {
+      setDepartureLocation(departureLocation);
+    }
+    if (destinationLocation) {
+      setDestinationLocation(destinationLocation);
     }
     if (selectedTripTypes.length > 0) {
       setTripTypes(selectedTripTypes);
@@ -155,6 +163,30 @@ export default function CreateTripScreen() {
     });
   };
 
+  // Filter locations for departure
+  const filteredDepartureLocations = useMemo(() => {
+    if (!departureSearchText.trim()) return locations;
+    const searchLower = departureSearchText.toLowerCase();
+    return locations.filter(
+      (loc) =>
+        (loc.name?.toLowerCase() || "").includes(searchLower) ||
+        (loc.subtitle?.toLowerCase() || "").includes(searchLower) ||
+        (loc.specialty?.toLowerCase() || "").includes(searchLower)
+    );
+  }, [locations, departureSearchText]);
+
+  // Filter locations for destination
+  const filteredDestinationLocations = useMemo(() => {
+    if (!destinationSearchText.trim()) return locations;
+    const searchLower = destinationSearchText.toLowerCase();
+    return locations.filter(
+      (loc) =>
+        (loc.name?.toLowerCase() || "").includes(searchLower) ||
+        (loc.subtitle?.toLowerCase() || "").includes(searchLower) ||
+        (loc.specialty?.toLowerCase() || "").includes(searchLower)
+    );
+  }, [locations, destinationSearchText]);
+
   return (
     <SafeAreaView className="flex-1 bg-white">
       {/* Page Header */}
@@ -180,33 +212,33 @@ export default function CreateTripScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View>
-          {/* Location Section */}
+          {/* Departure Location Section (Điểm đi) */}
           <View className="px-4 py-5">
             {/* Header with Search Input on same line */}
             <View className="flex-row items-center gap-3">
               <Ionicons name="location-outline" size={20} color="#000" />
-              <Text className="text-base font-bold text-black">Địa điểm</Text>
+              <Text className="text-base font-bold text-black">Điểm đi</Text>
               <View className="flex-1 flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
                 <Ionicons name="search-outline" size={20} color="#666" />
                 <TextInput
                   className="flex-1 ml-2 text-base text-gray-800"
                   placeholder="Tìm địa điểm..."
                   placeholderTextColor="#999"
-                  value={searchText}
-                  onChangeText={setSearchText}
+                  value={departureSearchText}
+                  onChangeText={setDepartureSearchText}
                   onSubmitEditing={() => {
-                    setIsLocationExpanded(true);
+                    setIsDepartureExpanded(true);
                   }}
                   returnKeyType="search"
                 />
               </View>
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => setIsLocationExpanded(!isLocationExpanded)}
+                onPress={() => setIsDepartureExpanded(!isDepartureExpanded)}
               >
                 <Ionicons
                   name={
-                    isLocationExpanded
+                    isDepartureExpanded
                       ? "chevron-down-outline"
                       : "chevron-forward-outline"
                   }
@@ -217,36 +249,124 @@ export default function CreateTripScreen() {
             </View>
 
             {/* Selected Location - When collapsed */}
-            {!isLocationExpanded && selectedLocation && (
+            {!isDepartureExpanded && departureLocation && (
               <View className="mt-2">
                 <LocationItem
                   location={{
-                    ...selectedLocation,
+                    ...departureLocation,
                     isSelected: true,
                   }}
-                  onSelect={() => setIsLocationExpanded(true)}
+                  onSelect={() => setIsDepartureExpanded(true)}
                   showFlag={true}
                 />
               </View>
             )}
 
             {/* Results - When expanded */}
-            {isLocationExpanded && (
+            {isDepartureExpanded && (
               <>
                 <View className="flex-row items-center justify-between mt-2 mb-3">
                   <Text className="text-sm text-gray-600">
-                    <Text className="font-bold">{locations.length}</Text> Kết
-                    quả
+                    <Text className="font-bold">
+                      {filteredDepartureLocations.length}
+                    </Text>{" "}
+                    Kết quả
                   </Text>
                   <VietnamFlag size={20} />
                 </View>
 
-                {locations.map((location) => (
+                {filteredDepartureLocations.map((location) => (
                   <LocationItem
                     key={location.id}
-                    location={location}
+                    location={{
+                      ...location,
+                      isSelected: departureLocation?.id === location.id,
+                    }}
                     onSelect={(loc) => {
-                      handleLocationSelect(loc);
+                      handleDepartureLocationSelect(loc);
+                    }}
+                    showFlag={false}
+                  />
+                ))}
+              </>
+            )}
+          </View>
+
+          {/* Divider */}
+          <View className="h-px bg-gray-200 w-full" />
+
+          {/* Destination Location Section (Điểm đến) */}
+          <View className="px-4 py-5">
+            {/* Header with Search Input on same line */}
+            <View className="flex-row items-center gap-3">
+              <Ionicons name="location-outline" size={20} color="#000" />
+              <Text className="text-base font-bold text-black">Điểm đến</Text>
+              <View className="flex-1 flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+                <Ionicons name="search-outline" size={20} color="#666" />
+                <TextInput
+                  className="flex-1 ml-2 text-base text-gray-800"
+                  placeholder="Tìm địa điểm..."
+                  placeholderTextColor="#999"
+                  value={destinationSearchText}
+                  onChangeText={setDestinationSearchText}
+                  onSubmitEditing={() => {
+                    setIsDestinationExpanded(true);
+                  }}
+                  returnKeyType="search"
+                />
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setIsDestinationExpanded(!isDestinationExpanded)}
+              >
+                <Ionicons
+                  name={
+                    isDestinationExpanded
+                      ? "chevron-down-outline"
+                      : "chevron-forward-outline"
+                  }
+                  size={20}
+                  color="#666"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Selected Location - When collapsed */}
+            {!isDestinationExpanded && destinationLocation && (
+              <View className="mt-2">
+                <LocationItem
+                  location={{
+                    ...destinationLocation,
+                    isSelected: true,
+                  }}
+                  onSelect={() => setIsDestinationExpanded(true)}
+                  showFlag={true}
+                />
+              </View>
+            )}
+
+            {/* Results - When expanded */}
+            {isDestinationExpanded && (
+              <>
+                <View className="flex-row items-center justify-between mt-2 mb-3">
+                  <Text className="text-sm text-gray-600">
+                    <Text className="font-bold">
+                      {filteredDestinationLocations.length}
+                    </Text>{" "}
+                    Kết quả
+                  </Text>
+                  <VietnamFlag size={20} />
+                </View>
+
+                {filteredDestinationLocations.map((location) => (
+                  <LocationItem
+                    key={location.id}
+                    location={{
+                      ...location,
+                      isSelected: destinationLocation?.id === location.id,
+                    }}
+                    onSelect={(loc) => {
+                      handleDestinationLocationSelect(loc);
                     }}
                     showFlag={false}
                   />

@@ -8,19 +8,6 @@
     "scheme": "datntripjoy",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
-    },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
@@ -30,19 +17,47 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/logo/green.png",
+          "imageWidth": 220,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
-            "backgroundColor": "#000000"
+            "image": "./assets/logo/white_white.png",
+            "backgroundColor": "#020617"
           }
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "@rnmapbox/maps"
     ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.datntripjoy.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Ứng dụng cần truy cập vị trí để hiển thị bản đồ."
+      }
+    },
+    "android": {
+      "package": "com.datntripjoy.app",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "appRoot": "app"
+      }
     }
   }
 }
