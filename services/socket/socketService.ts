@@ -301,9 +301,17 @@ class SocketService {
    * Join vào conversation room
    */
   joinConversation(conversationId: string): void {
-    if (!this.socket?.connected) {
+    if (!this.socket) {
+      console.warn("\n⚠️ [SOCKET] Cannot join conversation - socket not initialized");
+      console.warn(`Conversation ID: ${conversationId}`);
+      console.warn("==========================================\n");
+      return;
+    }
+    
+    if (!this.socket.connected) {
       console.warn("\n⚠️ [SOCKET] Cannot join conversation - not connected");
       console.warn(`Conversation ID: ${conversationId}`);
+      console.warn(`Socket ID: ${this.socket.id || "N/A"}`);
       console.warn("==========================================\n");
       return;
     }
@@ -311,6 +319,8 @@ class SocketService {
     const timestamp = new Date().toISOString();
     console.log(`\n📥 [SOCKET] Joining conversation [${timestamp}]`);
     console.log(`Conversation ID: ${conversationId}`);
+    console.log(`Socket ID: ${this.socket.id}`);
+    console.log(`Socket connected: ${this.socket.connected}`);
     console.log("==========================================\n");
     this.socket.emit("join_conversation", conversationId);
   }
@@ -383,16 +393,21 @@ class SocketService {
         console.log(`Message Type: ${message.message_type}`);
         console.log(`Content: ${message.message_content.substring(0, 50)}...`);
         console.log(`Callbacks count: ${this.messageCallbacks.size}`);
-        console.log("==========================================\n");
         
         // Gọi tất cả callbacks
+        let callbackIndex = 0;
         this.messageCallbacks.forEach((cb) => {
           try {
+            callbackIndex++;
+            console.log(`[SOCKET] Calling callback #${callbackIndex}...`);
             cb(message);
+            console.log(`[SOCKET] ✅ Callback #${callbackIndex} completed`);
           } catch (error) {
-            console.error("Error in message callback:", error);
+            console.error(`[SOCKET] ❌ Error in callback #${callbackIndex}:`, error);
+            console.error("Error stack:", (error as Error).stack);
           }
         });
+        console.log("==========================================\n");
       });
     }
   }
@@ -689,17 +704,38 @@ class SocketService {
       return;
     }
 
-    // Wrap callback để log
-    this.socket.on("notification", (notification: NotificationObject) => {
-      const timestamp = new Date().toISOString();
-      console.log(`\n🔔 [SOCKET] Notification [${timestamp}]`);
-      console.log(`Notification ID: ${notification.id}`);
-      console.log(`Type: ${notification.type}`);
-      console.log(`Title: ${notification.title}`);
-      console.log(`Message: ${notification.message}`);
-      console.log("==========================================\n");
-      callback(notification);
-    });
+    // Thêm callback vào set
+    this.notificationCallbacks.add(callback);
+
+    // Chỉ đăng ký socket listener một lần
+    if (!this.isNotificationListenerRegistered) {
+      this.isNotificationListenerRegistered = true;
+      this.socket.on("notification", (notification: NotificationObject) => {
+        const timestamp = new Date().toISOString();
+        console.log(`\n🔔 [SOCKET] Notification event received [${timestamp}]`);
+        console.log(`Notification ID: ${notification.id}`);
+        console.log(`Type: ${notification.type}`);
+        console.log(`Title: ${notification.title}`);
+        console.log(`Message: ${notification.message}`);
+        console.log(`Data:`, notification.data);
+        console.log(`Callbacks count: ${this.notificationCallbacks.size}`);
+        
+        // Gọi tất cả callbacks
+        let callbackIndex = 0;
+        this.notificationCallbacks.forEach((cb) => {
+          try {
+            callbackIndex++;
+            console.log(`[SOCKET] Calling notification callback #${callbackIndex}...`);
+            cb(notification);
+            console.log(`[SOCKET] ✅ Notification callback #${callbackIndex} completed`);
+          } catch (error) {
+            console.error(`[SOCKET] ❌ Error in notification callback #${callbackIndex}:`, error);
+            console.error("Error stack:", (error as Error).stack);
+          }
+        });
+        console.log("==========================================\n");
+      });
+    }
   }
 
   /**
@@ -709,9 +745,21 @@ class SocketService {
     if (!this.socket) return;
 
     if (callback) {
-      this.socket.off("notification", callback);
+      // Remove callback khỏi set
+      this.notificationCallbacks.delete(callback);
+      
+      // Nếu không còn callback nào, remove socket listener
+      if (this.notificationCallbacks.size === 0 && this.isNotificationListenerRegistered) {
+        this.socket.off("notification");
+        this.isNotificationListenerRegistered = false;
+      }
     } else {
-      this.socket.off("notification");
+      // Remove tất cả
+      this.notificationCallbacks.clear();
+      if (this.isNotificationListenerRegistered) {
+        this.socket.off("notification");
+        this.isNotificationListenerRegistered = false;
+      }
     }
   }
 }

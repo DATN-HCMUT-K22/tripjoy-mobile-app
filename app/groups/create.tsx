@@ -315,11 +315,11 @@ export default function CreateGroupScreen() {
                             activeOpacity={0.7}
                             style={{
                               position: "absolute",
-                              top: -6,
-                              right: -6,
-                              width: 22,
-                              height: 22,
-                              borderRadius: 11,
+                              top: -8,
+                              right: -8,
+                              width: 24,
+                              height: 24,
+                              borderRadius: 12,
                               backgroundColor: "#EF4444",
                               alignItems: "center",
                               justifyContent: "center",
@@ -329,7 +329,7 @@ export default function CreateGroupScreen() {
                               elevation: 5,
                             }}
                           >
-                            <Ionicons name="close" size={14} color="#FFFFFF" />
+                            <Ionicons name="close" size={12} color="#FFFFFF" />
                           </TouchableOpacity>
                         </View>
                       ))}

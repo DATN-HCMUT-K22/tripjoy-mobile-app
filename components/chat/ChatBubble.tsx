@@ -25,6 +25,7 @@ interface ChatMessageProps {
   showSenderName?: boolean;
   showTimestamp?: boolean;
   onLike?: (messageId: string) => void;
+  onShowLikes?: (messageId: string) => void;
   onReply?: (message: ChatMessageResponse) => void;
   onLongPress?: () => void;
   isHighlighted?: boolean;
@@ -45,6 +46,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   showSenderName = true,
   showTimestamp = true,
   onLike,
+  onShowLikes,
   onReply,
   onLongPress,
   isHighlighted = false,
@@ -266,9 +268,14 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               <Ionicons name={heartName} size={16} color={heartColor} />
             </TouchableOpacity>
             {hasLikes ? (
-              <Text style={[styles.likeCount, { color: heartColor }]}>
-                {likeCount}
-              </Text>
+              <Pressable
+                onPress={() => onShowLikes && onShowLikes(message.id)}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Text style={[styles.likeCount, { color: heartColor }]}>
+                  {likeCount}
+                </Text>
+              </Pressable>
             ) : null}
           </View>
         </View>

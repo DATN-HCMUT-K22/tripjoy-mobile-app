@@ -24,6 +24,15 @@ interface UseMessagesReturn {
     sharePostUrl?: string;
     parentMessageId?: string;
   }) => Promise<ChatMessageResponse | null>;
+  /**
+   * Đồng bộ lại like_count/is_liked_by_current_user theo dữ liệu mới từ server
+   * (dùng khi mở modal danh sách người like để sửa lệch số like).
+   */
+  syncMessageLikes: (
+    messageId: string,
+    likesCount: number,
+    currentUserLiked: boolean
+  ) => void;
   likeMessage: (messageId: string) => Promise<void>;
   unlikeMessage: (messageId: string) => Promise<void>;
   pinMessage: (messageId: string) => Promise<void>;
@@ -383,12 +392,15 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
     try {
       const response = await messageService.likeMessage(messageId);
       if (response.code === 1000 || response.code === 0) {
-        // Đổi trạng thái like cho current user ngay (optimistic cho icon, KHÔNG đổi like_count)
+        // Đổi trạng thái like cho current user ngay (optimistic)
         setMessages((prev) =>
           prev.map((m) =>
             m.id === messageId
               ? {
                   ...m,
+                  // Tăng like_count theo tài liệu API Chat Message
+                  like_count: (m.like_count ?? m.likes_count ?? 0) + 1,
+                  likes_count: (m.like_count ?? m.likes_count ?? 0) + 1,
                   is_liked_by_current_user: true,
                   is_liked: true,
                 }
@@ -412,12 +424,21 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
     try {
       const response = await messageService.unlikeMessage(messageId);
       if (response.code === 1000 || response.code === 0) {
-        // Đổi trạng thái like cho current user ngay (optimistic cho icon, KHÔNG đổi like_count)
+        // Đổi trạng thái like cho current user ngay (optimistic)
         setMessages((prev) =>
           prev.map((m) =>
             m.id === messageId
               ? {
                   ...m,
+                  // Giảm like_count theo tài liệu API Chat Message (min 0)
+                  like_count: Math.max(
+                    (m.like_count ?? m.likes_count ?? 0) - 1,
+                    0
+                  ),
+                  likes_count: Math.max(
+                    (m.like_count ?? m.likes_count ?? 0) - 1,
+                    0
+                  ),
                   is_liked_by_current_user: false,
                   is_liked: false,
                 }
@@ -433,6 +454,29 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
       setError(err.message || "Không thể unlike tin nhắn");
     }
   }, []);
+
+  /**
+   * Đồng bộ like_count & trạng thái liked từ dữ liệu server (modal danh sách like)
+   * Đảm bảo số hiển thị cạnh tin nhắn trùng với list người like.
+   */
+  const syncMessageLikes = useCallback(
+    (messageId: string, likesCount: number, currentUserLiked: boolean) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                like_count: likesCount,
+                likes_count: likesCount,
+                is_liked_by_current_user: currentUserLiked,
+                is_liked: currentUserLiked,
+              }
+            : m
+        )
+      );
+    },
+    []
+  );
 
   /**
    * Pin message
@@ -513,25 +557,39 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
 
   // Setup Socket.IO listeners
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId) {
+      console.log("[useMessages] No conversationId, skipping socket setup");
+      return;
+    }
+
+    console.log(`[useMessages] Setting up socket for conversation: ${conversationId}`);
+    console.log(`[useMessages] Socket connected: ${socketService.isConnected()}`);
 
     // Join conversation khi mount hoặc khi socket vừa connect
     const ensureJoinConversation = () => {
-      if (socketService.isConnected() && conversationId) {
+      const isConnected = socketService.isConnected();
+      console.log(`[useMessages] ensureJoinConversation called, socket connected: ${isConnected}`);
+      if (isConnected && conversationId) {
+        console.log(`[useMessages] Calling joinConversation for: ${conversationId}`);
         socketService.joinConversation(conversationId);
+      } else {
+        console.warn(`[useMessages] Cannot join conversation - socket not connected or no conversationId`);
       }
     };
 
     if (socketService.isConnected()) {
+      console.log("[useMessages] Socket already connected, joining conversation immediately");
       ensureJoinConversation();
     } else {
+      console.log("[useMessages] Socket not connected, connecting first...");
       socketService
         .connect()
         .then(() => {
+          console.log("[useMessages] Socket connected successfully, joining conversation");
           ensureJoinConversation();
         })
         .catch((err) => {
-          console.error("Failed to connect socket:", err);
+          console.error("[useMessages] Failed to connect socket:", err);
         });
     }
 
@@ -637,14 +695,23 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         prev.map((m) => {
           if (m.id !== messageId) return m;
           const currentLikeCount = m.like_count ?? m.likes_count ?? 0;
-          const delta = isLiked ? 1 : -1;
-          const nextCount = Math.max(currentLikeCount + delta, 0);
+          const isCurrentUser = userId === currentUserId;
+
+          // Với client hiện tại, like_count đã được cập nhật optimistic trong likeMessage/unlikeMessage,
+          // nên không cộng/trừ lần nữa để tránh double-count.
+          // Với các client khác, dùng delta để cập nhật theo realtime event.
+          let nextCount = currentLikeCount;
+          if (!isCurrentUser) {
+            const delta = isLiked ? 1 : -1;
+            nextCount = Math.max(currentLikeCount + delta, 0);
+          }
+
           return {
             ...m,
             like_count: nextCount,
             likes_count: nextCount,
             is_liked_by_current_user:
-              userId === currentUserId ? isLiked : m.is_liked_by_current_user,
+              isCurrentUser ? isLiked : m.is_liked_by_current_user,
           };
         })
       );
@@ -702,6 +769,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
     loadMessages,
     loadMore,
     sendMessage,
+    syncMessageLikes,
     likeMessage,
     unlikeMessage,
     pinMessage,

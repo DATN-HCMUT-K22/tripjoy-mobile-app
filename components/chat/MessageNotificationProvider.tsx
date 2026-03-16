@@ -27,18 +27,43 @@ export function MessageNotificationProvider() {
 
   useEffect(() => {
     const handleReceiveMessage = (message: ChatMessageResponse) => {
-      if (appStateRef.current !== "active") {
-        return;
-      }
-
       const state = store.getState();
       const currentUserId = state.auth.user?.id;
       const currentOpenConversationId =
         state.messageNotification.currentOpenConversationId;
+      
+      const deviceId = currentUserId?.substring(0, 8) || "UNKNOWN";
+      
+      console.log(`\n[MessageNotificationProvider] [DEVICE: ${deviceId}] Received message:`, {
+        messageId: message.id,
+        conversationId: message.conversation_id,
+        senderId: message.sender_id,
+        currentUserId,
+        currentOpenConversationId,
+        appState: appStateRef.current,
+      });
 
-      if (!currentUserId) return;
-      if (message.sender_id === currentUserId) return;
-      if (message.conversation_id === currentOpenConversationId) return;
+      if (appStateRef.current !== "active") {
+        console.log(`[MessageNotificationProvider] [DEVICE: ${deviceId}] App not active, skipping`);
+        return;
+      }
+
+      if (!currentUserId) {
+        console.log(`[MessageNotificationProvider] [DEVICE: ${deviceId}] No currentUserId, skipping`);
+        return;
+      }
+      
+      if (message.sender_id === currentUserId) {
+        console.log(`[MessageNotificationProvider] [DEVICE: ${deviceId}] ⏭️ Message from self, skipping (this is for in-app banner, not push notification)`);
+        return;
+      }
+      
+      if (message.conversation_id === currentOpenConversationId) {
+        console.log(`[MessageNotificationProvider] [DEVICE: ${deviceId}] ⏭️ Message in current conversation, skipping`);
+        return;
+      }
+      
+      console.log(`[MessageNotificationProvider] [DEVICE: ${deviceId}] ✅ Adding to notification queue`);
 
       const sender = message.sender as Record<string, unknown> | undefined;
       const senderName =

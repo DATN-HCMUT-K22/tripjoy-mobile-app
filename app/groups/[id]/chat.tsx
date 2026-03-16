@@ -1,6 +1,7 @@
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { MessageActionSheet } from "@/components/chat/MessageActionSheet";
+import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
 import { PinnedMessageBar, PINNED_BAR_HEIGHT } from "@/components/chat/PinnedMessageBar";
 import { mockItineraries } from "@/data/mockItineraries";
 import { useMessages } from "@/hooks/useMessages";
@@ -9,6 +10,7 @@ import { conversationService } from "@/services/conversations";
 import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
+import { useChatStore } from "@/stores/chat.store";
 import { ChatMessageResponse } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -66,6 +68,8 @@ export default function GroupChatScreen() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
+  const [likesModalVisible, setLikesModalVisible] = useState(false);
+  const [likesModalMessageId, setLikesModalMessageId] = useState<string | null>(null);
 
   // ActionSheet, pin, highlight
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageResponse | null>(null);
@@ -107,6 +111,18 @@ export default function GroupChatScreen() {
       };
     }
   }, [conversationId, dispatch]);
+
+  // Zustand store integration - set current chat and reset unread
+  const { setCurrentChatId, resetUnread } = useChatStore();
+  useEffect(() => {
+    if (conversationId) {
+      setCurrentChatId(conversationId);
+      resetUnread(conversationId);
+      return () => {
+        setCurrentChatId(null);
+      };
+    }
+  }, [conversationId, setCurrentChatId, resetUnread]);
   
   // Load conversation info để lấy members và tên nhóm
   const { data: conversation } = useQuery({
@@ -327,6 +343,11 @@ export default function GroupChatScreen() {
     [messages, likeMessage, unlikeMessage]
   );
 
+  const handleShowLikes = useCallback((messageId: string) => {
+    setLikesModalMessageId(messageId);
+    setLikesModalVisible(true);
+  }, []);
+
   // Lấy lịch trình gần đây từ mockItineraries dựa trên groupId
   const recentItinerary = useMemo(() => {
     if (!params.id) return null;
@@ -385,16 +406,41 @@ export default function GroupChatScreen() {
   }, [pinnedMessages.length]);
 
   const scrollToEndParam = (params as any).scrollToEnd;
-  // Auto scroll to bottom khi có tin mới hoặc mở từ notification (scrollToEnd=1)
+  const lastMessageIdRef = useRef<string | null>(null);
+  const hasScrolledToBottomRef = useRef(false);
+  
+  // Auto scroll to bottom khi có tin mới, load messages lần đầu, hoặc mở từ notification (scrollToEnd=1)
   useEffect(() => {
     if (messages.length > 0) {
-      const delay = scrollToEndParam === "1" ? 300 : 100;
+      const lastMessage = messages[messages.length - 1];
+      const isNewMessage = lastMessage.id !== lastMessageIdRef.current;
+      const shouldScroll = isNewMessage || !hasScrolledToBottomRef.current || scrollToEndParam === "1";
+      
+      if (shouldScroll) {
+        lastMessageIdRef.current = lastMessage.id;
+        hasScrolledToBottomRef.current = true;
+        const delay = scrollToEndParam === "1" ? 300 : 100;
+        const t = setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, delay);
+        return () => clearTimeout(t);
+      }
+    } else {
+      // Reset khi không có messages
+      hasScrolledToBottomRef.current = false;
+      lastMessageIdRef.current = null;
+    }
+  }, [messages, scrollToEndParam]);
+
+  // Auto scroll to bottom khi có user đang typing
+  useEffect(() => {
+    if (typingUsers.length > 0) {
       const t = setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
-      }, delay);
+      }, 100);
       return () => clearTimeout(t);
     }
-  }, [messages.length, scrollToEndParam]);
+  }, [typingUsers.length]);
 
   // Handlers: long-press, pin, action sheet, pinned bar tap
   const handleLongPress = useCallback((msg: ChatMessageResponse) => {
@@ -468,6 +514,7 @@ export default function GroupChatScreen() {
           currentUserId={currentUser?.id}
           showSenderName={item.showSenderName}
           onLike={handleLike}
+          onShowLikes={handleShowLikes}
           onLongPress={() => handleLongPress(item.message)}
           isHighlighted={highlightMessageId === item.message.id}
         />
@@ -719,6 +766,14 @@ export default function GroupChatScreen() {
         onDismiss={handleActionSheetDismiss}
         onPin={handlePin}
         onUnpin={handleUnpin}
+      />
+      <MessageLikesModal
+        visible={likesModalVisible}
+        messageId={likesModalMessageId}
+        onClose={() => {
+          setLikesModalVisible(false);
+          setLikesModalMessageId(null);
+        }}
       />
     </SafeAreaView>
   );

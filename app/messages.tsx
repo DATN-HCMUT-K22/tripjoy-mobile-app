@@ -2,6 +2,7 @@ import { ConversationListSkeleton } from "@/components/conversation/Conversation
 import { SharedHeader } from "@/components/common/SharedHeader";
 import { useConversations } from "@/hooks/useConversations";
 import { useAppSelector } from "@/store/hooks";
+import { useChatStore } from "@/stores/chat.store";
 import { ConversationResponse } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -120,7 +121,11 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     return "Chưa có tin nhắn";
   };
   const lastMessageSubtitle = getLastMessageSubtitle();
-  const unreadCount = conversation.unread_count ?? 0;
+  // Get unread count from chat store (managed by useIncomingMessage)
+  const { getUnreadCount } = useChatStore();
+  const storeUnreadCount = getUnreadCount(conversation.id);
+  // Prefer store unread count if available, fallback to API unread_count
+  const unreadCount = storeUnreadCount > 0 ? storeUnreadCount : (conversation.unread_count ?? 0);
   const isPinned = conversation.is_pinned ?? false;
 
   return (

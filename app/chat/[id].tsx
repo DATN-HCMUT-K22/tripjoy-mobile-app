@@ -1,10 +1,13 @@
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { DateSeparator } from "@/components/chat/DateSeparator";
+import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
 import { useMessages } from "@/hooks/useMessages";
 import { conversationService } from "@/services/conversations";
+import { uploadImage } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
+import { useChatStore } from "@/stores/chat.store";
 import { ChatMessageResponse } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -52,6 +55,8 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [likesModalVisible, setLikesModalVisible] = useState(false);
+  const [likesModalMessageId, setLikesModalMessageId] = useState<string | null>(null);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
   const conversationId = params.id;
@@ -65,6 +70,18 @@ export default function ChatScreen() {
       };
     }
   }, [conversationId, dispatch]);
+
+  // Zustand store integration - set current chat and reset unread
+  const { setCurrentChatId, resetUnread } = useChatStore();
+  useEffect(() => {
+    if (conversationId) {
+      setCurrentChatId(conversationId);
+      resetUnread(conversationId);
+      return () => {
+        setCurrentChatId(null);
+      };
+    }
+  }, [conversationId, setCurrentChatId, resetUnread]);
 
   // Đảm bảo header bị tắt
   useLayoutEffect(() => {
@@ -170,16 +187,41 @@ export default function ChatScreen() {
     };
   }, [input, conversationId]);
 
-  // Auto scroll to bottom khi có message mới hoặc mở từ notification (scrollToEnd=1)
+  // Auto scroll to bottom khi có message mới, load messages lần đầu, hoặc mở từ notification (scrollToEnd=1)
+  const lastMessageIdRef = useRef<string | null>(null);
+  const hasScrolledToBottomRef = useRef(false);
+  
   useEffect(() => {
     if (messages.length > 0) {
-      const delay = params.scrollToEnd === "1" ? 300 : 100;
+      const lastMessage = messages[messages.length - 1];
+      const isNewMessage = lastMessage.id !== lastMessageIdRef.current;
+      const shouldScroll = isNewMessage || !hasScrolledToBottomRef.current || params.scrollToEnd === "1";
+      
+      if (shouldScroll) {
+        lastMessageIdRef.current = lastMessage.id;
+        hasScrolledToBottomRef.current = true;
+        const delay = params.scrollToEnd === "1" ? 300 : 100;
+        const t = setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, delay);
+        return () => clearTimeout(t);
+      }
+    } else {
+      // Reset khi không có messages
+      hasScrolledToBottomRef.current = false;
+      lastMessageIdRef.current = null;
+    }
+  }, [messages, params.scrollToEnd]);
+
+  // Auto scroll to bottom khi có user đang typing
+  useEffect(() => {
+    if (typingUsers.length > 0) {
       const t = setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
-      }, delay);
+      }, 100);
       return () => clearTimeout(t);
     }
-  }, [messages.length, params.scrollToEnd]);
+  }, [typingUsers.length]);
 
   // Prepare FlatList data với date separators
   const listData = React.useMemo(() => {
@@ -243,16 +285,36 @@ export default function ChatScreen() {
 
     try {
       if (imageToSend) {
-        // TODO: Upload image to server and get media_url
-        // For now, we'll send with local URI (backend needs to handle this)
+        // Upload ảnh trước khi gửi tin nhắn
         setUploadingImage(true);
-        const result = await sendMessage(content || "Đã gửi ảnh", {
-          messageType: "IMAGE",
-          mediaUrl: imageToSend,
-        });
-        setUploadingImage(false);
-        if (!result) {
-          Alert.alert("Lỗi", "Không thể gửi ảnh. Vui lòng thử lại.");
+        try {
+          const uploadResult = await uploadImage({
+            fileUri: imageToSend,
+            fileName: "message-image.jpg",
+            fileType: "image/jpeg",
+            folder: `tripjoy/messages/${conversationId}`,
+          });
+          
+          console.log("[ChatScreen] Image uploaded successfully:", uploadResult.secure_url);
+          
+          // Gửi tin nhắn với media URL đã upload
+          const result = await sendMessage(content || "Đã gửi ảnh", {
+            messageType: "IMAGE",
+            mediaUrl: uploadResult.secure_url,
+          });
+          
+          setUploadingImage(false);
+          if (!result) {
+            Alert.alert("Lỗi", "Không thể gửi ảnh. Vui lòng thử lại.");
+            setSelectedImage(imageToSend);
+          }
+        } catch (uploadError: any) {
+          console.error("[ChatScreen] Failed to upload image:", uploadError);
+          setUploadingImage(false);
+          Alert.alert(
+            "Lỗi",
+            uploadError?.message || "Không thể tải ảnh lên. Vui lòng thử lại."
+          );
           setSelectedImage(imageToSend);
         }
       } else {
@@ -280,6 +342,11 @@ export default function ChatScreen() {
     const isLiked = msg.is_liked_by_current_user === true;
     if (isLiked) await unlikeMessage(messageId);
     else await likeMessage(messageId);
+  };
+
+  const handleShowLikes = (messageId: string) => {
+    setLikesModalMessageId(messageId);
+    setLikesModalVisible(true);
   };
 
   const colorScheme = useColorScheme();
@@ -358,6 +425,7 @@ export default function ChatScreen() {
                 currentUserId={currentUser?.id}
                 showSenderName={item.showSenderName}
                 onLike={handleLike}
+                onShowLikes={handleShowLikes}
               />
             );
           }}
@@ -518,6 +586,16 @@ export default function ChatScreen() {
         </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      {/* Likes Modal */}
+      <MessageLikesModal
+        visible={likesModalVisible}
+        messageId={likesModalMessageId}
+        onClose={() => {
+          setLikesModalVisible(false);
+          setLikesModalMessageId(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
