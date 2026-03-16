@@ -127,6 +127,15 @@ async function request<T>(
     }
   }
 
+  // Log API URL để debug
+  console.log("\n========== API REQUEST ==========");
+  console.log(`[${new Date().toISOString()}] Request ID: req_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`);
+  console.log(`URL: ${url}`);
+  console.log(`Method: ${rest.method || "GET"}`);
+  console.log(`Base URL: ${cleanBaseUrl}`);
+  console.log(`Path: ${cleanPath}`);
+  console.log("================================");
+
   // Lấy token và thêm vào headers
   // skipAuth = true: bỏ qua hoàn toàn (cho login, register)
   // skipAuth = false/undefined: optional auth (có token thì gửi, không có thì không gửi)
@@ -145,10 +154,39 @@ async function request<T>(
     }
   }
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...((rest.headers as Record<string, string>) || {}),
-  };
+  // Kiểm tra FormData TRƯỚC khi tạo headers (React Native FormData có property _parts)
+  const isFormData = 
+    rest.body instanceof FormData || 
+    (rest.body && typeof rest.body === 'object' && rest.body !== null && '_parts' in rest.body);
+
+  console.log("[httpClient] isFormData check:", {
+    isFormData,
+    bodyType: typeof rest.body,
+    hasParts: rest.body && typeof rest.body === 'object' && '_parts' in rest.body,
+    bodyKeys: rest.body && typeof rest.body === 'object' ? Object.keys(rest.body) : null,
+  });
+
+  const headers: Record<string, string> = {};
+  
+  // Copy headers từ rest.headers, nhưng BỎ QUA Content-Type nếu là FormData
+  if (rest.headers) {
+    Object.entries(rest.headers as Record<string, string>).forEach(([key, value]) => {
+      // Bỏ qua Content-Type nếu là FormData
+      if (isFormData && key.toLowerCase() === 'content-type') {
+        console.log("[httpClient] Skipping Content-Type header for FormData");
+        return;
+      }
+      headers[key] = value;
+    });
+  }
+
+  // Chỉ set Content-Type là application/json nếu body không phải FormData
+  // FormData sẽ tự động set Content-Type với boundary (KHÔNG set header này)
+  if (!isFormData && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  } else if (isFormData) {
+    console.log("[httpClient] FormData detected - NOT setting Content-Type header");
+  }
 
   // Thêm token vào header nếu có token và không phải skipAuth
   if (token && skipAuth !== true) {
@@ -168,11 +206,15 @@ async function request<T>(
     console.log(`Token Preview: ${token.substring(0, 20)}...`);
   }
   if (rest.body) {
-    try {
-      const bodyObj = typeof rest.body === "string" ? JSON.parse(rest.body) : rest.body;
-      console.log(`Body:`, JSON.stringify(bodyObj, null, 2));
-    } catch {
-      console.log(`Body: ${rest.body}`);
+    if (isFormData) {
+      console.log(`Body: [FormData - multipart/form-data]`);
+    } else {
+      try {
+        const bodyObj = typeof rest.body === "string" ? JSON.parse(rest.body) : rest.body;
+        console.log(`Body:`, JSON.stringify(bodyObj, null, 2));
+      } catch {
+        console.log(`Body: ${rest.body}`);
+      }
     }
   }
   if (params && Object.keys(params).length > 0) {
@@ -187,11 +229,32 @@ async function request<T>(
   }, timeout);
 
   try {
+    // Loại bỏ headers và body khỏi rest để tránh override
+    const { headers: _, body: __, ...restWithoutHeadersAndBody } = rest;
+    
+    // Log headers trước khi gửi để debug
+    if (isFormData) {
+      console.log("[httpClient] Final headers for FormData:", JSON.stringify(headers, null, 2));
+      console.log("[httpClient] Body type:", typeof rest.body);
+      console.log("[httpClient] Body is FormData instance:", rest.body instanceof FormData);
+      console.log("[httpClient] Body has _parts:", rest.body && typeof rest.body === 'object' && '_parts' in rest.body);
+      if (rest.body && typeof rest.body === 'object' && '_parts' in rest.body) {
+        console.log("[httpClient] FormData _parts:", (rest.body as any)._parts);
+      }
+    }
+    
     const res = await fetch(url, {
-      ...rest,
+      ...restWithoutHeadersAndBody,
       headers,
+      body: rest.body, // Sử dụng body gốc (có thể là FormData)
       signal: controller.signal,
     });
+    
+    // Log response headers để debug
+    if (isFormData) {
+      console.log("[httpClient] Response status:", res.status);
+      console.log("[httpClient] Response headers:", Object.fromEntries(res.headers.entries()));
+    }
 
     // Clear timeout nếu request thành công
     clearTimeout(timeoutId);
@@ -215,9 +278,12 @@ async function request<T>(
           retryController.abort();
         }, timeout) as any;
 
+        // Loại bỏ headers và body khỏi rest để tránh override
+        const { headers: _retry, body: __retry, ...restWithoutHeadersAndBodyRetry } = rest;
         const retryRes = await fetch(url, {
-          ...rest,
+          ...restWithoutHeadersAndBodyRetry,
           headers,
+          body: rest.body, // Sử dụng body gốc (có thể là FormData)
           signal: retryController.signal,
         });
 
@@ -303,6 +369,14 @@ async function request<T>(
       console.error(`Error Message:`, errorMessage);
       console.error(`Error Code:`, errorData?.code);
       console.error(`Full Response:`, message);
+      console.error(`Parsed Error Data:`, JSON.stringify(errorData, null, 2));
+      // Không stringify FormData khi log
+      if (isFormData) {
+        console.error(`Request Body: [FormData - multipart/form-data]`);
+      } else {
+        console.error(`Request Body:`, rest.body ? (typeof rest.body === "string" ? rest.body : JSON.stringify(rest.body)) : "N/A");
+      }
+      console.error(`Request Headers:`, JSON.stringify(headers, null, 2));
       console.error("================================\n");
       
       // Tạo error object với response property để có thể access status và data
@@ -376,18 +450,30 @@ async function request<T>(
 export const httpClient = {
   get: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { method: "GET", ...options }),
-  post: <T, B = unknown>(path: string, body?: B, options?: RequestOptions) =>
-    request<T>(path, {
+  post: <T, B = unknown>(path: string, body?: B, options?: RequestOptions) => {
+    // Kiểm tra nếu body là FormData thì không stringify
+    const isFormData = 
+      body instanceof FormData || 
+      (body && typeof body === 'object' && body !== null && '_parts' in body);
+    
+    return request<T>(path, {
       method: "POST",
-      body: body ? JSON.stringify(body) : undefined,
+      body: body ? (isFormData ? (body as any) : JSON.stringify(body)) : undefined,
       ...options,
-    }),
-  put: <T, B = unknown>(path: string, body?: B, options?: RequestOptions) =>
-    request<T>(path, {
+    });
+  },
+  put: <T, B = unknown>(path: string, body?: B, options?: RequestOptions) => {
+    // Kiểm tra nếu body là FormData thì không stringify
+    const isFormData = 
+      body instanceof FormData || 
+      (body && typeof body === 'object' && body !== null && '_parts' in body);
+    
+    return request<T>(path, {
       method: "PUT",
-      body: body ? JSON.stringify(body) : undefined,
+      body: body ? (isFormData ? (body as any) : JSON.stringify(body)) : undefined,
       ...options,
-    }),
+    });
+  },
   delete: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { method: "DELETE", ...options }),
 };

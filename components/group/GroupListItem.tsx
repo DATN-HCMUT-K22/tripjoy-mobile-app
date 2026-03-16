@@ -47,6 +47,28 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
     } as any);
   };
 
+  const unreadCount = conversation?.unread_count ?? 0;
+  const lastMessage = conversation?.last_message;
+
+  const getLastMessageText = () => {
+    if (!lastMessage) return "Chưa có tin nhắn";
+    const senderName =
+      lastMessage.sender?.fullName || lastMessage.sender?.username || null;
+    let content = "";
+    if (lastMessage.message_type === "IMAGE") {
+      content = "Đã gửi một ảnh";
+    } else if (lastMessage.message_type === "SHARE_POST") {
+      content = "Đã chia sẻ một bài viết";
+    } else {
+      content = lastMessage.message_content?.trim() || "";
+    }
+    if (senderName && content) return `${senderName}: ${content}`;
+    if (content) return content;
+    return "Chưa có tin nhắn";
+  };
+
+  const lastMessageText = getLastMessageText();
+
   return (
     <View
       className={`mb-3 bg-white rounded-xl p-3 flex-row items-center shadow-sm ${
@@ -95,11 +117,12 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
           </Text>
         </TouchableOpacity>
         {group.description && (
-          <Text className="text-sm text-gray-500 mb-3">
+          <Text className="text-sm text-gray-500 mb-2">
             {group.description}
           </Text>
         )}
-        <View className="flex-row items-center gap-4">
+        {/* Metrics row */}
+        <View className="flex-row items-center gap-4 mb-1">
           {/* Lịch trình Metric */}
           <View className="flex-row items-center gap-2">
             <View
@@ -146,6 +169,19 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
               <Text className="text-xs text-black">thành viên</Text>
             </View>
           </View>
+        </View>
+        {/* Last message + unread badge */}
+        <View className="flex-row items-center">
+          <Text className="flex-1 text-xs text-gray-600" numberOfLines={1}>
+            {lastMessageText}
+          </Text>
+          {unreadCount > 0 && (
+            <View className="ml-2 bg-primary rounded-full min-w-[18px] h-4 items-center justify-center px-1.5">
+              <Text className="text-[10px] text-white font-bold">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 

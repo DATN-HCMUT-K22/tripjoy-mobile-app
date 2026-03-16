@@ -55,9 +55,9 @@ export default function GroupsScreen() {
     });
   }, [groups, isLoading, error]);
 
-  // Tính tổng unreadCount từ các groups để làm messageCount
-  const messageCount = groups.reduce(
-    (sum, group) => sum + ((group as any).unreadCount || 0),
+  // Tính tổng unreadCount từ các conversation nhóm để làm messageCount (badge ở header)
+  const messageCount = groupConversations.reduce(
+    (sum, conv) => sum + (conv.unread_count ?? 0),
     0
   );
 

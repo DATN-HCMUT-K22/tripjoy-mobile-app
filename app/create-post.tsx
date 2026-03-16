@@ -1,6 +1,7 @@
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useAppSelector } from "@/store/hooks";
 import { createPost } from "@/services/social";
+import { uploadImage } from "@/services/media";
 import { mockItineraries } from "@/data/mockItineraries";
 import type { Itinerary } from "@/types/group";
 import { Ionicons } from "@expo/vector-icons";
@@ -136,9 +137,35 @@ export default function CreatePostScreen() {
     await requireAuth(async () => {
       setIsSubmitting(true);
       try {
-        // TODO: Upload images to server and get URLs
-        const imageUrls = selectedImages; // For now, use local URIs
+        // Upload tất cả ảnh trước khi tạo post
+        let imageUrls: string[] = [];
         
+        if (selectedImages.length > 0) {
+          const uploadPromises = selectedImages.map((imageUri) =>
+            uploadImage({
+              fileUri: imageUri,
+              fileName: "post-image.jpg",
+              fileType: "image/jpeg",
+              folder: currentUser?.id ? `tripjoy/posts/${currentUser.id}` : "tripjoy/posts",
+            })
+          );
+          
+          try {
+            const uploadResults = await Promise.all(uploadPromises);
+            imageUrls = uploadResults.map((result) => result.secure_url);
+            console.log("[CreatePost] All images uploaded successfully:", imageUrls);
+          } catch (uploadError: any) {
+            console.error("[CreatePost] Failed to upload images:", uploadError);
+            Alert.alert(
+              "Lỗi",
+              uploadError?.message || "Không thể tải ảnh lên. Vui lòng thử lại."
+            );
+            setIsSubmitting(false);
+            return;
+          }
+        }
+        
+        // Tạo post với URLs đã upload
         await createPost({
           content: content.trim(),
           images: imageUrls.length > 0 ? imageUrls : undefined,

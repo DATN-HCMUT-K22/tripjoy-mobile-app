@@ -19,8 +19,13 @@ import { ItineraryProvider } from "@/contexts/ItineraryContext";
 import { TempLocationProvider } from "@/contexts/TempLocationContext";
 import { TripSetupProvider } from "@/contexts/TripSetupContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useIncomingMessage } from "@/hooks/useIncomingMessage";
+import { useIncomingNotification } from "@/hooks/useIncomingNotification";
+import { ONESIGNAL_APP_ID } from "@/config/env";
+import { notificationService } from "@/services/notification.service";
 import { getCurrentUser } from "@/services/users";
 import { store } from "@/store";
+import { useAppSelector } from "@/store/hooks";
 import { setCredentials } from "@/store/slices/authSlice";
 import { storage } from "@/utils/storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -78,6 +83,74 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * Component để initialize OneSignal khi app start và khi user login
+ */
+function NotificationInitializer() {
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const userId = useAppSelector((state) => state.auth.user?.id);
+
+  useEffect(() => {
+    async function initializeNotifications() {
+      // Chỉ initialize khi user đã authenticated
+      if (!isAuthenticated || !userId) {
+        console.log("[NotificationInitializer] User not authenticated, skipping initialization");
+        return;
+      }
+
+      try {
+        console.log("\n========== NOTIFICATION INITIALIZATION ==========");
+        console.log("[NotificationInitializer] User ID:", userId);
+        console.log("[NotificationInitializer] OneSignal App ID:", ONESIGNAL_APP_ID || "NOT SET");
+        
+        // Initialize với empty string nếu không có OneSignal App ID
+        // expo-notifications vẫn hoạt động bình thường
+        await notificationService.initialize(ONESIGNAL_APP_ID || "");
+        
+        // Set external user ID nếu có OneSignal
+        if (ONESIGNAL_APP_ID) {
+          await notificationService.setExternalUserId(userId);
+        }
+        
+        // Check và log status
+        const status = await notificationService.checkStatus();
+        console.log("\n========== NOTIFICATION STATUS ==========");
+        console.log("✅ Initialized:", status.isInitialized);
+        console.log("📱 Permission:", status.permissionStatus);
+        console.log("🔔 OneSignal App ID:", status.oneSignalAppId || "NOT SET (local notifications only)");
+        console.log("📦 OneSignal Available:", status.oneSignalAvailable);
+        console.log("📦 Expo Notifications Available:", status.expoNotificationsAvailable);
+        console.log("==========================================\n");
+        
+        if (status.permissionStatus === "granted") {
+          console.log("[NotificationInitializer] ✅ Notifications ready!");
+        } else {
+          console.warn("[NotificationInitializer] ⚠️ Permission not granted:", status.permissionStatus);
+        }
+      } catch (error) {
+        console.error("[NotificationInitializer] ❌ Failed to initialize:", error);
+      }
+    }
+
+    initializeNotifications();
+  }, [isAuthenticated, userId]);
+
+  return null;
+}
+
+/**
+ * Component để handle incoming messages và notifications
+ */
+function IncomingMessageHandler() {
+  useIncomingMessage();
+  return null;
+}
+
+function IncomingNotificationHandler() {
+  useIncomingNotification();
+  return null;
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -400,7 +473,10 @@ export default function RootLayout() {
                       </Stack>
                     </ErrorBoundary>
                   )}
+                  <NotificationInitializer />
                   <MessageNotificationProvider />
+                  <IncomingMessageHandler />
+                  <IncomingNotificationHandler />
                   <StatusBar style="auto" />
                   <Toast
                     config={{

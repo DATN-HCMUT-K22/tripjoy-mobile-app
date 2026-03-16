@@ -2,6 +2,7 @@ import { ContactItem } from "@/components/group/ContactItem";
 import { useCreateGroup } from "@/hooks/useGroups";
 import { useUsers } from "@/hooks/useUsers";
 import { useAppSelector } from "@/store/hooks";
+import { uploadImage } from "@/services/media";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -42,6 +43,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const slideAnim = useRef(new Animated.Value(windowHeight)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const sheetPositionRef = useRef(expandedY);
@@ -210,9 +212,37 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     }
 
     try {
+      let avatarUrl: string | undefined = undefined;
+
+      // Upload ảnh trước nếu có
+      if (selectedImage) {
+        setIsUploadingImage(true);
+        try {
+          const uploadResult = await uploadImage({
+            fileUri: selectedImage,
+            fileName: "group-avatar.jpg",
+            fileType: "image/jpeg",
+            folder: "tripjoy/avatars/groups",
+          });
+          avatarUrl = uploadResult.secure_url;
+          console.log("[CreateGroupModal] Image uploaded successfully:", avatarUrl);
+        } catch (uploadError: any) {
+          console.error("[CreateGroupModal] Failed to upload image:", uploadError);
+          Alert.alert(
+            "Lỗi",
+            uploadError?.message || "Không thể tải ảnh lên. Vui lòng thử lại."
+          );
+          setIsUploadingImage(false);
+          return;
+        } finally {
+          setIsUploadingImage(false);
+        }
+      }
+
+      // Tạo nhóm với avatar URL đã upload
       await createGroupMutation.mutateAsync({
         name: groupName.trim(),
-        avatar: selectedImage || undefined,
+        avatar: avatarUrl,
         description: groupDescription.trim() || undefined,
         theme_color: "#34B27D", // Màu mặc định, có thể thêm picker sau
         member_ids: selectedContacts,
@@ -476,11 +506,11 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                               activeOpacity={0.7}
                               style={{
                                 position: "absolute",
-                                top: -6,
-                                right: -6,
-                                width: 22,
-                                height: 22,
-                                borderRadius: 11,
+                                top: -8,
+                                right: -8,
+                                width: 24,
+                                height: 24,
+                                borderRadius: 12,
                                 backgroundColor: "#EF4444",
                                 alignItems: "center",
                                 justifyContent: "center",
@@ -492,7 +522,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                             >
                               <Ionicons
                                 name="close"
-                                size={14}
+                                size={12}
                                 color="#FFFFFF"
                               />
                             </TouchableOpacity>
@@ -510,7 +540,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   disabled={
                     !groupName.trim() ||
                     selectedContacts.length === 0 ||
-                    createGroupMutation.isPending
+                    createGroupMutation.isPending ||
+                    isUploadingImage
                   }
                   style={{
                     backgroundColor:

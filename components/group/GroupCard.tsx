@@ -45,6 +45,28 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => 
     } as any);
   };
 
+  const unreadCount = conversation?.unread_count ?? 0;
+  const lastMessage = conversation?.last_message;
+
+  const getLastMessageText = () => {
+    if (!lastMessage) return "Chưa có tin nhắn";
+    const senderName =
+      lastMessage.sender?.fullName || lastMessage.sender?.username || null;
+    let content = "";
+    if (lastMessage.message_type === "IMAGE") {
+      content = "Đã gửi một ảnh";
+    } else if (lastMessage.message_type === "SHARE_POST") {
+      content = "Đã chia sẻ một bài viết";
+    } else {
+      content = lastMessage.message_content?.trim() || "";
+    }
+    if (senderName && content) return `${senderName}: ${content}`;
+    if (content) return content;
+    return "Chưa có tin nhắn";
+  };
+
+  const lastMessageText = getLastMessageText();
+
   return (
     <View className="mb-4 bg-white rounded-xl overflow-hidden shadow-sm">
       {/* Image with Overlay */}
@@ -220,6 +242,19 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => 
               <Ionicons name="chevron-forward" size={18} color="#34B27D" />
             </View>
           </TouchableOpacity>
+        </View>
+        {/* Last message + unread badge */}
+        <View className="px-4 pb-3 flex-row items-center">
+          <Text className="flex-1 text-xs text-gray-600" numberOfLines={1}>
+            {lastMessageText}
+          </Text>
+          {unreadCount > 0 && (
+            <View className="ml-2 bg-primary rounded-full min-w-[20px] h-5 items-center justify-center px-1.5">
+              <Text className="text-[10px] text-white font-bold">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </View>

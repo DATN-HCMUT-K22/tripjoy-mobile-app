@@ -1,4 +1,5 @@
-import { useGroup } from "@/hooks/useGroups";
+import { useGroup, useGroupMembers } from "@/hooks/useGroups";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { formatCurrencyVND, formatDateRange } from "@/utils/format";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -109,7 +110,10 @@ export default function GroupInfoScreen() {
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: group, isLoading } = useGroup(id);
+  const { data: currentUser } = useCurrentUser();
+  const { data: members = [], isLoading: isLoadingMembers } = useGroupMembers(id);
   const [itineraryTab, setItineraryTab] = useState<ItineraryTab>("ongoing");
+  const [isMembersExpanded, setIsMembersExpanded] = useState(false);
   const itinerariesByTab = useMockItinerariesByTab(id);
 
   useLayoutEffect(() => {
@@ -202,41 +206,118 @@ export default function GroupInfoScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Thẻ Thành viên */}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={styles.card}
-          onPress={() => {}}
-        >
-          <View style={[styles.cardIconWrap, { backgroundColor: "#DBEAFE" }]}>
-            <Ionicons name="people" size={24} color="#2563EB" />
-          </View>
-          <View style={styles.cardTextWrap}>
-            <Text style={styles.cardTitle}>Thành viên</Text>
-            <Text style={styles.cardDesc}>{memberCount} người trong nhóm</Text>
-          </View>
-          <View style={styles.avatarStack}>
-            {displayedAvatars.map((uri, i) => (
-              <Image
-                key={i}
-                source={{ uri }}
-                style={[styles.avatarCircle, i > 0 && styles.avatarOverlap]}
-              />
-            ))}
-            {additionalMembers > 0 && (
-              <View
-                style={[
-                  styles.avatarCircle,
-                  styles.avatarMore,
-                  displayedAvatars.length > 0 && styles.avatarOverlap,
-                ]}
-              >
-                <Text style={styles.avatarMoreText}>+{additionalMembers}</Text>
-              </View>
-            )}
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-        </TouchableOpacity>
+        {/* Thẻ Thành viên - Expandable */}
+        <View style={[styles.card, styles.cardColumn]}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.cardRow}
+            onPress={() => setIsMembersExpanded(!isMembersExpanded)}
+          >
+            <View style={[styles.cardIconWrap, { backgroundColor: "#DBEAFE" }]}>
+              <Ionicons name="people" size={24} color="#2563EB" />
+            </View>
+            <View style={styles.cardTextWrap}>
+              <Text style={styles.cardTitle}>Thành viên</Text>
+              <Text style={styles.cardDesc}>{memberCount} người trong nhóm</Text>
+            </View>
+            <View style={styles.avatarStack}>
+              {displayedAvatars.map((uri, i) => (
+                <Image
+                  key={i}
+                  source={{ uri }}
+                  style={[styles.avatarCircle, i > 0 && styles.avatarOverlap]}
+                />
+              ))}
+              {additionalMembers > 0 && (
+                <View
+                  style={[
+                    styles.avatarCircle,
+                    styles.avatarMore,
+                    displayedAvatars.length > 0 && styles.avatarOverlap,
+                  ]}
+                >
+                  <Text style={styles.avatarMoreText}>+{additionalMembers}</Text>
+                </View>
+              )}
+            </View>
+            <Ionicons
+              name={isMembersExpanded ? "chevron-up" : "chevron-down"}
+              size={20}
+              color="#9CA3AF"
+            />
+          </TouchableOpacity>
+
+          {/* Danh sách thành viên khi expand */}
+          {isMembersExpanded && (
+            <View style={styles.membersList}>
+              {isLoadingMembers ? (
+                <View style={styles.membersLoading}>
+                  <ActivityIndicator size="small" color="#2563EB" />
+                  <Text style={styles.membersLoadingText}>Đang tải...</Text>
+                </View>
+              ) : members.length === 0 ? (
+                <View style={styles.membersEmpty}>
+                  <Text style={styles.membersEmptyText}>Chưa có thành viên</Text>
+                </View>
+              ) : (
+                members.map((member) => {
+                  const isCurrentUser = member.user.id === currentUser?.id;
+                  const roleLabel =
+                    member.role === "LEADER"
+                      ? "Trưởng nhóm"
+                      : member.role === "CO_LEADER"
+                        ? "Phó nhóm"
+                        : "Thành viên";
+                  const roleColor =
+                    member.role === "LEADER"
+                      ? "#EA580C"
+                      : member.role === "CO_LEADER"
+                        ? "#2563EB"
+                        : "#6B7280";
+
+                  return (
+                    <View key={member.id} style={styles.memberItem}>
+                      <Image
+                        source={{
+                          uri:
+                            member.user.avatarUrl ||
+                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                              member.user.fullName || member.user.username || "?"
+                            )}&background=2563EB&color=fff&size=128`,
+                        }}
+                        style={styles.memberAvatar}
+                        contentFit="cover"
+                      />
+                      <View style={styles.memberInfo}>
+                        <View style={styles.memberNameRow}>
+                          <Text style={styles.memberName} numberOfLines={1}>
+                            {member.user.fullName || member.user.username || "Người dùng"}
+                          </Text>
+                          {isCurrentUser && (
+                            <Text style={styles.memberYouLabel}> • Bạn</Text>
+                          )}
+                        </View>
+                        <Text style={styles.memberUsername} numberOfLines={1}>
+                          @{member.user.username}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.memberRoleBadge,
+                          { backgroundColor: roleColor + "20" },
+                        ]}
+                      >
+                        <Text style={[styles.memberRoleText, { color: roleColor }]}>
+                          {roleLabel}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+        </View>
 
         {/* Thẻ Lịch trình đã đi: có tab + danh sách thẻ con */}
         <View style={[styles.card, styles.cardColumn]}>
@@ -625,5 +706,73 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#fff",
+  },
+  membersList: {
+    marginTop: 16,
+    gap: 8,
+  },
+  membersLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    gap: 8,
+  },
+  membersLoadingText: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  membersEmpty: {
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  membersEmptyText: {
+    fontSize: 14,
+    color: "#9CA3AF",
+  },
+  memberItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    gap: 12,
+  },
+  memberAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  memberInfo: {
+    flex: 1,
+  },
+  memberNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  memberName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  memberYouLabel: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontStyle: "italic",
+  },
+  memberUsername: {
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  memberRoleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  memberRoleText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

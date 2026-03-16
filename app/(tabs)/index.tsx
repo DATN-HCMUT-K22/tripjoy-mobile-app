@@ -7,6 +7,7 @@ import { TabMenu } from "@/components/social/TabMenu";
 import { useAuthLogger } from "@/hooks/useAuthLogger";
 import { useConversations } from "@/hooks/useConversations";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useNotifications } from "@/hooks/useNotifications";
 import {
   useBookmarkPost,
   useCommentPost,
@@ -54,6 +55,7 @@ export default function HomeScreen() {
 
   // Lấy conversations để tính unread count
   const { conversations } = useConversations();
+  const { unreadCount: notificationUnreadCount } = useNotifications();
 
   // Tổng unread_count từ tất cả conversation
   const unreadConversationsCount = useMemo(() => {
@@ -121,14 +123,13 @@ export default function HomeScreen() {
     <SafeAreaView className="flex-1 bg-white">
       <View className="flex-1">
         <SocialHeader
-          notificationCount={3}
+          notificationCount={notificationUnreadCount}
           messageCount={unreadConversationsCount}
           activeIcon={activeIcon}
           onNotificationPress={async () => {
             await requireAuth(async () => {
               setActiveIcon("notification");
-              // TODO: Call API get notifications
-              console.log("Notification pressed");
+              router.push("/notifications");
             });
           }}
           onMessagePress={async () => {
