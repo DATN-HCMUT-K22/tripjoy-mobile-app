@@ -470,6 +470,10 @@ export default function RootLayout() {
                           name="select-itinerary"
                           options={{ headerShown: false }}
                         />
+                        <Stack.Screen
+                          name="notifications"
+                          options={{ headerShown: false }}
+                        />
                       </Stack>
                     </ErrorBoundary>
                   )}

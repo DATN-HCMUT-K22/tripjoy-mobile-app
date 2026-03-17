@@ -58,7 +58,9 @@ export interface PageResponse<T> {
   number: number;
 }
 
-const BASE_PATH = "/api/v1/notifications";
+// Lưu ý: EXPO_PUBLIC_API_URL đã bao gồm prefix `/api/v1`
+// nên ở đây chỉ dùng `/notifications` để tránh bị `/api/v1/api/v1/notifications`
+const BASE_PATH = "/notifications";
 
 export async function getNotifications(params: {
   unreadOnly?: boolean;
