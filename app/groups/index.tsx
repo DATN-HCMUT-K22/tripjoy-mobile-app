@@ -4,6 +4,7 @@ import { SocialHeader } from "@/components/social/SocialHeader";
 import { useConversations } from "@/hooks/useConversations";
 import { useGroups } from "@/hooks/useGroups";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useNotifications } from "@/hooks/useNotifications";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
@@ -61,21 +62,20 @@ export default function GroupsScreen() {
     0
   );
 
-  // Mock notification count (tương tự màn mạng xã hội)
-  const notificationCount = 3;
+  // Badge notification dùng chung với màn Home
+  const { unreadCount: notificationUnreadCount } = useNotifications();
 
   return (
     <SafeAreaView className="flex-1 bg-white">
       {/* Social Header với notification và chat icons */}
       <SocialHeader
-        notificationCount={notificationCount}
+        notificationCount={notificationUnreadCount}
         messageCount={messageCount}
         activeIcon={activeIcon}
         onNotificationPress={async () => {
           await requireAuth(async () => {
             setActiveIcon("notification");
-            // TODO: Call API get notifications
-            console.log("Notification pressed");
+            router.push("/notifications");
           });
         }}
         onMessagePress={async () => {
