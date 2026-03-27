@@ -1,3 +1,4 @@
+import { LocationSuggestionsSection } from "@/components/group/LocationSuggestionsSection";
 import { useGroup, useGroupMembers } from "@/hooks/useGroups";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { formatCurrencyVND, formatDateRange } from "@/utils/format";
@@ -150,7 +151,6 @@ export default function GroupInfoScreen() {
     group.members?.find((m) => m.role === "LEADER")?.user?.fullName ?? "Đình Đức";
   const pastItinerariesCount = 12;
   const draftCount = 5;
-  const suggestedCount = 18;
   const memberAvatars = (group.members
     ?.map((m) => m.user?.avatarUrl)
     .filter(Boolean) as string[]) || [
@@ -170,6 +170,8 @@ export default function GroupInfoScreen() {
         ? itinerariesByTab.completed
         : itinerariesByTab.draft;
   const tabStyle = TAB_CONFIG[itineraryTab];
+  const currentUserRole =
+    group.members?.find((m) => m.user?.id === currentUser?.id)?.role || "MEMBER";
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -245,6 +247,15 @@ export default function GroupInfoScreen() {
               size={20}
               color="#9CA3AF"
             />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.manageMembersButton}
+            onPress={() => router.push(`/groups/${id}/members` as any)}
+          >
+            <Ionicons name="settings-outline" size={16} color="#2563EB" />
+            <Text style={styles.manageMembersButtonText}>Quản lý thành viên</Text>
           </TouchableOpacity>
 
           {/* Danh sách thành viên khi expand */}
@@ -425,24 +436,11 @@ export default function GroupInfoScreen() {
           </View>
         </View>
 
-        {/* Thẻ Địa điểm gợi ý */}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={styles.card}
-          onPress={() => {}}
-        >
-          <View style={[styles.cardIconWrap, { backgroundColor: "#EDE9FE" }]}>
-            <Ionicons name="bulb" size={24} color="#7C3AED" />
-          </View>
-          <View style={styles.cardTextWrap}>
-            <Text style={styles.cardTitle}>Địa điểm gợi ý</Text>
-            <Text style={styles.cardDesc}>Đề xuất từ thành viên</Text>
-          </View>
-          <View style={styles.suggestedBadge}>
-            <Text style={styles.suggestedBadgeText}>{suggestedCount} gợi ý</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-        </TouchableOpacity>
+        <LocationSuggestionsSection
+          groupId={id}
+          currentUserId={currentUser?.id}
+          currentUserRole={currentUserRole}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -602,6 +600,24 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#fff",
   },
+  manageMembersButton: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  manageMembersButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#2563EB",
+  },
   tabBar: {
     flexDirection: "row",
     marginTop: 16,
@@ -694,18 +710,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginLeft: 8,
-  },
-  suggestedBadge: {
-    backgroundColor: "#7C3AED",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginRight: 10,
-  },
-  suggestedBadgeText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#fff",
   },
   membersList: {
     marginTop: 16,

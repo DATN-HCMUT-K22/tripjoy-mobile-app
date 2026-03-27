@@ -19,7 +19,8 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+  View,
+    
 } from "react-native";
 
 type TabType = "posts" | "saved" | "favorites";
@@ -381,7 +382,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Edit Profile Button */}
+        {/* Update Profile Button */}
         <TouchableOpacity
           className="bg-white border border-gray-300 rounded-lg py-2 px-4 items-center"
           activeOpacity={0.7}
@@ -392,7 +393,7 @@ export default function ProfileScreen() {
           }}
         >
           <Text className="text-base font-semibold text-black">
-            Chỉnh sửa thông tin
+            Cập nhật thông tin
           </Text>
         </TouchableOpacity>
       </View>
