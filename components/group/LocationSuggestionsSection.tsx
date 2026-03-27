@@ -370,33 +370,66 @@ export function LocationSuggestionsSection({
                       backgroundColor: "#fff",
                     }}
                   />
-                  <View style={{ marginTop: 8, maxHeight: 160 }}>
+                  <View
+                    style={{
+                      marginTop: 8,
+                      maxHeight: 200,
+                      width: "100%",
+                      alignSelf: "stretch",
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: "#E5E7EB",
+                      borderRadius: 10,
+                      backgroundColor: "#fff",
+                      overflow: "hidden",
+                    }}
+                  >
                     {isLoadingLocations ? (
-                      <ActivityIndicator color="#7C3AED" />
+                      <ActivityIndicator color="#7C3AED" style={{ marginVertical: 12 }} />
                     ) : (
-                      availableLocations
-                        .filter((item) =>
-                          item.name.toLowerCase().includes(locationQuery.trim().toLowerCase())
-                        )
-                        .slice(0, 12)
-                        .map((item) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            onPress={() => setSelectedLocationId(item.id)}
-                            style={{
-                              paddingVertical: 9,
-                              borderBottomWidth: 1,
-                              borderBottomColor: "#F3F4F6",
-                            }}
-                          >
-                            <Text style={{ fontWeight: selectedLocationId === item.id ? "700" : "500" }}>
-                              {item.name}
-                            </Text>
-                            {!!item.address && (
-                              <Text style={{ color: "#6B7280", fontSize: 12 }}>{item.address}</Text>
-                            )}
-                          </TouchableOpacity>
-                        ))
+                      <ScrollView
+                        keyboardShouldPersistTaps="handled"
+                        nestedScrollEnabled
+                        showsVerticalScrollIndicator
+                      >
+                        {availableLocations
+                          .filter((item) =>
+                            item.name.toLowerCase().includes(locationQuery.trim().toLowerCase())
+                          )
+                          .map((item) => (
+                            <TouchableOpacity
+                              key={item.id}
+                              onPress={() => setSelectedLocationId(item.id)}
+                              style={{
+                                paddingVertical: 10,
+                                paddingHorizontal: 8,
+                                borderBottomWidth: 1,
+                                borderBottomColor: "#F3F4F6",
+                                backgroundColor:
+                                  selectedLocationId === item.id ? "#EDE9FE" : "transparent",
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontWeight: selectedLocationId === item.id ? "700" : "500",
+                                  color: "#111827",
+                                  maxWidth: "100%",
+                                }}
+                                numberOfLines={2}
+                              >
+                                {item.name}
+                              </Text>
+                              {!!item.address && (
+                                <Text
+                                  style={{ color: "#6B7280", fontSize: 12, marginTop: 2, maxWidth: "100%" }}
+                                  numberOfLines={2}
+                                >
+                                  {item.address}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                      </ScrollView>
                     )}
                   </View>
                   {selectedLocation && (
