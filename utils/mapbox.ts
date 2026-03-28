@@ -21,8 +21,11 @@ const DEFAULT_HEIGHT = 300;
 const DEFAULT_ZOOM = 11;
 const DEFAULT_STYLE = "streets-v12";
 
-const getToken = () =>
+/** Token dùng cho static map và Geocoding API (ưu tiên env đã cấu hình). */
+export const getMapboxAccessToken = () =>
   EXPO_PUBLIC_MAP_API_KEY || MAP_API_KEY || EXPO_PUBLIC_MAPBOX_TOKEN || "";
+
+const getToken = () => getMapboxAccessToken();
 
 const buildOsmUrl = (
   locations: LocationForMap[],

@@ -62,6 +62,7 @@ export default function GroupChatScreen() {
     avatar?: string;
     memberCount?: string; // sẽ parse sang number
     scrollToEnd?: string; // "1" khi mở từ banner tin nhắn
+    messageId?: string | string[]; // mở từ search tin nhắn / deep link
   }>();
   const [input, setInput] = useState("");
   const flatListRef = useRef<FlatList>(null);
@@ -88,6 +89,13 @@ export default function GroupChatScreen() {
   // Lấy conversationId từ params
   const paramConversationId = (params as any).conversationId;
   const groupId = params.id;
+
+  const messageIdFromParams = (() => {
+    const raw = params.messageId as string | string[] | undefined;
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    if (Array.isArray(raw) && raw[0]) return raw[0];
+    return undefined;
+  })();
 
   // Giá trị ban đầu lấy từ params (từ danh sách conversations) để tránh nhảy tên/đếm mem
   const initialNameFromParams = (params as any).name as string | undefined;
@@ -201,47 +209,34 @@ export default function GroupChatScreen() {
     enabled: !!groupId, // Load trực tiếp từ groupId
   });
 
-  // Tính số thành viên - ưu tiên:
-  // 1. memberCount từ params (danh sách conversations) → hiển thị tức thời
-  // 2. groupInfo.members (getGroupById)
-  // 3. conversation.members (getConversationById)
+  // Tính số thành viên — ưu tiên API group/conversation (đúng dữ liệu); params chỉ fallback khi chưa load
   const memberCount = useMemo(() => {
-    if (typeof initialMemberCountFromParams === "number") {
-      return initialMemberCountFromParams;
-    }
-
     if (groupInfo?.members && Array.isArray(groupInfo.members) && groupInfo.members.length > 0) {
       return groupInfo.members.length;
     }
-    
     if (conversation?.members && Array.isArray(conversation.members) && conversation.members.length > 0) {
       return conversation.members.length;
     }
-    
+    if (typeof initialMemberCountFromParams === "number") {
+      return initialMemberCountFromParams;
+    }
     return 0;
   }, [initialMemberCountFromParams, conversation, groupInfo]);
 
-  // Lấy tên nhóm - ưu tiên:
-  // 1. name từ params (danh sách conversations)
-  // 2. groupInfo.name
-  // 3. conversation.name
+  // Tên nhóm — BE thường sai/khác ở field conversation.name trong inbox; GET /groups/{id} đáng tin hơn
   const groupName = useMemo(() => {
-    if (initialNameFromParams) return initialNameFromParams;
     if (groupInfo?.name) return groupInfo.name;
     if (conversation?.name) return conversation.name;
+    if (initialNameFromParams) return initialNameFromParams;
     return "Nhóm chat";
-  }, [initialNameFromParams, groupInfo?.name, conversation?.name]);
+  }, [groupInfo?.name, conversation?.name, initialNameFromParams]);
 
-  // Lấy avatar nhóm - ưu tiên:
-  // 1. avatar từ params
-  // 2. groupInfo.avatar
-  // 3. conversation.avatar
   const groupAvatar = useMemo(() => {
-    if (initialAvatarFromParams) return initialAvatarFromParams;
     if (groupInfo?.avatar) return groupInfo.avatar;
     if (conversation?.avatar) return conversation.avatar;
+    if (initialAvatarFromParams) return initialAvatarFromParams;
     return null;
-  }, [initialAvatarFromParams, groupInfo?.avatar, conversation?.avatar]);
+  }, [groupInfo?.avatar, conversation?.avatar, initialAvatarFromParams]);
 
   // Debounce typing indicator
   useEffect(() => {
@@ -408,14 +403,25 @@ export default function GroupChatScreen() {
   const scrollToEndParam = (params as any).scrollToEnd;
   const lastMessageIdRef = useRef<string | null>(null);
   const hasScrolledToBottomRef = useRef(false);
+  /** Chỉ cuộn tới messageId từ params một lần (tránh mỗi lần messages đổi lại nhảy) */
+  const appliedParamMessageScrollRef = useRef<string | null>(null);
   
   // Auto scroll to bottom khi có tin mới, load messages lần đầu, hoặc mở từ notification (scrollToEnd=1)
   useEffect(() => {
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
       const isNewMessage = lastMessage.id !== lastMessageIdRef.current;
-      const shouldScroll = isNewMessage || !hasScrolledToBottomRef.current || scrollToEndParam === "1";
-      
+      let shouldScroll = isNewMessage || !hasScrolledToBottomRef.current || scrollToEndParam === "1";
+      // Mở với messageId (search): không cuộn xuống đáy lần đầu khi tin đã có trong list — để effect bên dưới cuộn tới tin
+      if (
+        messageIdFromParams &&
+        !hasScrolledToBottomRef.current &&
+        scrollToEndParam !== "1" &&
+        messageIdToIndex.get(messageIdFromParams) !== undefined
+      ) {
+        shouldScroll = false;
+      }
+
       if (shouldScroll) {
         lastMessageIdRef.current = lastMessage.id;
         hasScrolledToBottomRef.current = true;
@@ -430,7 +436,45 @@ export default function GroupChatScreen() {
       hasScrolledToBottomRef.current = false;
       lastMessageIdRef.current = null;
     }
-  }, [messages, scrollToEndParam]);
+  }, [messages, scrollToEndParam, messageIdFromParams, messageIdToIndex]);
+
+  // Cuộn tới tin khi mở từ search (giống app/chat/[id])
+  useEffect(() => {
+    if (!messageIdFromParams) {
+      appliedParamMessageScrollRef.current = null;
+      return;
+    }
+    if (appliedParamMessageScrollRef.current === messageIdFromParams) return;
+
+    const idx = messageIdToIndex.get(messageIdFromParams);
+    if (idx === undefined) {
+      if (!loading && messages.length > 0) {
+        const t = setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+          const last = messages[messages.length - 1];
+          if (last) {
+            lastMessageIdRef.current = last.id;
+            hasScrolledToBottomRef.current = true;
+          }
+          appliedParamMessageScrollRef.current = messageIdFromParams;
+        }, 200);
+        return () => clearTimeout(t);
+      }
+      return;
+    }
+    const t = setTimeout(() => {
+      flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+      setHighlightMessageId(messageIdFromParams);
+      setTimeout(() => setHighlightMessageId(null), 1500);
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage) {
+        lastMessageIdRef.current = lastMessage.id;
+        hasScrolledToBottomRef.current = true;
+      }
+      appliedParamMessageScrollRef.current = messageIdFromParams;
+    }, 250);
+    return () => clearTimeout(t);
+  }, [messageIdFromParams, messageIdToIndex, messages, loading]);
 
   // Auto scroll to bottom khi có user đang typing
   useEffect(() => {
@@ -533,11 +577,9 @@ export default function GroupChatScreen() {
         <View className="flex-row items-center">
           <TouchableOpacity
             onPress={() => {
-              // Quay lại màn trước đó
               if (router.canGoBack()) {
                 router.back();
               } else {
-                // Nếu không thể back, về màn messages
                 router.push("/messages");
               }
             }}

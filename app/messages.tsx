@@ -1,18 +1,24 @@
 import { ConversationListSkeleton } from "@/components/conversation/ConversationSkeleton";
 import { SharedHeader } from "@/components/common/SharedHeader";
 import { useConversations } from "@/hooks/useConversations";
+import { searchService } from "@/services/search";
 import { useAppSelector } from "@/store/hooks";
 import { useChatStore } from "@/stores/chat.store";
 import { ConversationResponse } from "@/types/message";
+import { MessageSearchResponse, UserSimpleResponse } from "@/types/search";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import debounce from "lodash.debounce";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useColorScheme,
@@ -21,6 +27,50 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 type TabType = "personal" | "group";
+
+const SEARCH_PAGE_SIZE = 20;
+
+/** Chỉ user đã chọn từ kết quả tìm — lưu local AsyncStorage */
+type RecentSearchUser = {
+  userId: string;
+  username: string;
+  fullName?: string | null;
+  avatarUrl?: string | null;
+};
+
+const RECENT_USERS_KEY = "@tripjoy:messageSearchRecentUsers";
+const RECENT_V2_KEY = "@tripjoy:messageSearchRecentV2";
+
+function parseRecentUsersFromStorage(stored: string | null): RecentSearchUser[] {
+  if (!stored) return [];
+  try {
+    const raw = JSON.parse(stored) as unknown;
+    if (!Array.isArray(raw)) return [];
+    const out: RecentSearchUser[] = [];
+    for (const x of raw) {
+      if (!x || typeof x !== "object") continue;
+      const o = x as Record<string, unknown>;
+      if (typeof o.userId === "string" && typeof o.username === "string") {
+        out.push({
+          userId: o.userId,
+          username: o.username,
+          fullName: (o.fullName as string) ?? null,
+          avatarUrl: (o.avatarUrl as string) ?? null,
+        });
+      } else if (o.type === "user" && typeof o.userId === "string" && typeof o.username === "string") {
+        out.push({
+          userId: o.userId,
+          username: o.username,
+          fullName: (o.fullName as string) ?? null,
+          avatarUrl: (o.avatarUrl as string) ?? null,
+        });
+      }
+    }
+    return out.slice(0, 12);
+  } catch {
+    return [];
+  }
+}
 
 // Helper function để format time
 const formatTime = (dateString?: string): string => {
@@ -41,6 +91,137 @@ const formatTime = (dateString?: string): string => {
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   return `${day}/${month}`;
+};
+
+const renderHighlightedText = (
+  text: string,
+  keyword: string,
+  defaultClassName: string
+) => {
+  const query = keyword.trim();
+  if (!query) {
+    return <Text className={defaultClassName}>{text}</Text>;
+  }
+
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escaped})`, "gi");
+  const parts = text.split(regex);
+
+  return (
+    <Text className={defaultClassName}>
+      {parts.map((part, idx) => {
+        const matched = part.toLowerCase() === query.toLowerCase();
+        return (
+          <Text key={`${part}-${idx}`} className={matched ? "text-primary font-semibold" : undefined}>
+            {part}
+          </Text>
+        );
+      })}
+    </Text>
+  );
+};
+
+/** Một dòng kết quả tìm tin nhắn: tên + ảnh nhóm (hoặc chat riêng), người gửi, nội dung */
+interface SearchMessageResultRowProps {
+  message: MessageSearchResponse;
+  conversation?: ConversationResponse;
+  trimmedKeyword: string;
+  onPress: () => void;
+  currentUserId?: string;
+}
+
+const SearchMessageResultRow: React.FC<SearchMessageResultRowProps> = ({
+  message,
+  conversation,
+  trimmedKeyword,
+  onPress,
+  currentUserId,
+}) => {
+  const isGroup = conversation?.type === "GROUP" && !!conversation.group_id;
+
+  const { data: groupInfo } = useQuery({
+    queryKey: ["group", conversation?.group_id],
+    queryFn: async () => {
+      if (!conversation?.group_id) return null;
+      const { getGroupById } = await import("@/services/groups");
+      const response = await getGroupById(conversation.group_id);
+      if (response.code === 1000 && response.data) return response.data;
+      return null;
+    },
+    enabled: isGroup,
+  });
+
+  const groupTitle = isGroup
+    ? groupInfo?.name || conversation?.name || "Nhóm chat"
+    : null;
+  const groupAvatarUri = isGroup
+    ? groupInfo?.avatar || conversation?.avatar || null
+    : null;
+
+  let headerTitle = groupTitle;
+  let avatarUri: string | null = groupAvatarUri;
+
+  if (!isGroup && conversation?.type === "DIRECT" && conversation.members?.length) {
+    const other = conversation.members.find((m) => m.id !== currentUserId);
+    headerTitle = other?.fullName || other?.username || "Chat riêng";
+    avatarUri = other?.avatarUrl || null;
+  } else if (!isGroup && !headerTitle) {
+    headerTitle = "Tin nhắn";
+    avatarUri = null;
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      className="flex-row py-3 border-b border-gray-100"
+    >
+      <View>
+        {avatarUri ? (
+          <Image
+            source={{ uri: avatarUri }}
+            style={{ width: 44, height: 44, borderRadius: 22 }}
+            contentFit="cover"
+          />
+        ) : (
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: "#34B27D",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {isGroup ? (
+              <Ionicons name="people" size={22} color="#fff" />
+            ) : (
+              <Text className="text-white font-bold text-base">
+                {(headerTitle || "T").charAt(0).toUpperCase()}
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+      <View className="flex-1 ml-3 min-w-0">
+        <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
+          {headerTitle}
+        </Text>
+        <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={1}>
+          {message.sender?.fullName || message.sender?.username || "Người dùng"} ·{" "}
+          {formatTime(message.created_at)}
+        </Text>
+        <View className="mt-1">
+          {renderHighlightedText(
+            message.message_content || "",
+            trimmedKeyword,
+            "text-sm text-gray-800"
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 };
 
 // Conversation Item Component
@@ -69,13 +250,14 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
       }
       return null;
     },
-    enabled: conversation.type === "GROUP" && !!conversation.group_id && !conversation.name,
+    // Luôn gọi GET /groups/{id} cho nhóm: inbox có thể trả conversation.name sai nhưng vẫn non-null
+    enabled: conversation.type === "GROUP" && !!conversation.group_id,
   });
 
   // Lấy avatar - ưu tiên conversation avatar, sau đó là member avatar (nếu DIRECT)
   const getAvatar = () => {
-    if (conversation.avatar) return conversation.avatar;
     if (conversation.type === "GROUP" && groupInfo?.avatar) return groupInfo.avatar;
+    if (conversation.avatar) return conversation.avatar;
     if (conversation.type === "DIRECT" && conversation.members && conversation.members.length > 0) {
       const otherMember = conversation.members.find(
         (m) => m.id !== currentUserId
@@ -87,23 +269,21 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
 
   // Lấy tên hiển thị
   const getDisplayName = () => {
-    // Ưu tiên conversation.name
-    if (conversation.name) return conversation.name;
-    
-    // Nếu là DIRECT, lấy từ member
     if (conversation.type === "DIRECT" && conversation.members && conversation.members.length > 0) {
       const otherMember = conversation.members.find(
         (m) => m.id !== currentUserId
       );
       return otherMember?.fullName || otherMember?.username || "Người dùng";
     }
-    
-    // Nếu là GROUP và không có name, load từ groupInfo
+
+    // GROUP: ưu tiên tên từ GET /groups/{id} (đúng với bảng group), conversation.name từ inbox thường lệch BE
     if (conversation.type === "GROUP" && conversation.group_id) {
       if (groupInfo?.name) return groupInfo.name;
+      if (conversation.name) return conversation.name;
       return "Nhóm chat";
     }
-    
+
+    if (conversation.name) return conversation.name;
     return "Nhóm chat";
   };
 
@@ -206,7 +386,21 @@ export default function MessagesScreen() {
   const iconColor = isDark ? "#F3F4F6" : "#111827";
   const textColor = isDark ? "#F3F4F6" : "#111827";
   const [activeTab, setActiveTab] = useState<TabType>("personal");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchUsers, setSearchUsers] = useState<UserSimpleResponse[]>([]);
+  const [searchMessages, setSearchMessages] = useState<MessageSearchResponse[]>([]);
+  const [searchPage, setSearchPage] = useState(0);
+  const [hasMoreSearchMessages, setHasMoreSearchMessages] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchLoadingMore, setSearchLoadingMore] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [recentUsers, setRecentUsers] = useState<RecentSearchUser[]>([]);
+  /** Chỉ hiện "Tìm kiếm gần đây" khi đang focus ô tìm kiếm */
+  const [searchInputFocused, setSearchInputFocused] = useState(false);
   const currentUser = useAppSelector((state) => state.auth.user);
+  const userSearchAbortRef = useRef<AbortController | null>(null);
+  const messageSearchAbortRef = useRef<AbortController | null>(null);
+  const latestSearchRequestRef = useRef(0);
 
   const {
     directConversations,
@@ -214,14 +408,219 @@ export default function MessagesScreen() {
     isLoading,
     error,
     refetch,
+    createConversation,
     updateConversation,
   } = useConversations();
 
   const conversations =
     activeTab === "personal" ? directConversations : groupConversations;
 
+  /** Map conversationId -> conversation (nhóm + cá nhân) để mở đúng màn từ kết quả search tin nhắn */
+  const conversationById = useMemo(() => {
+    const map = new Map<string, ConversationResponse>();
+    for (const c of groupConversations) map.set(c.id, c);
+    for (const c of directConversations) map.set(c.id, c);
+    return map;
+  }, [groupConversations, directConversations]);
+
+  const trimmedKeyword = searchKeyword.trim();
+  /** Cả tab Cá nhân và Nhóm đều có ô tìm kiếm */
+  const shouldShowSearchUI = true;
+  const isSearching = trimmedKeyword.length > 0;
+
+  const matchedLocalConversations = useMemo(() => {
+    if (!isSearching) return [];
+    const query = trimmedKeyword.toLowerCase();
+    if (activeTab === "group") {
+      return groupConversations.filter((conversation) =>
+        (conversation.name || "Nhóm chat").toLowerCase().includes(query)
+      );
+    }
+    return directConversations.filter((conversation) => {
+      if (conversation.type !== "DIRECT" || !conversation.members?.length) return false;
+      const other = conversation.members.find((m) => m.id !== currentUser?.id);
+      const label = (other?.fullName || other?.username || "").toLowerCase();
+      return label.includes(query);
+    });
+  }, [
+    activeTab,
+    directConversations,
+    groupConversations,
+    isSearching,
+    trimmedKeyword,
+    currentUser?.id,
+  ]);
+
+  const matchedConversationsSectionTitle =
+    activeTab === "group" ? "Nhóm chat" : "Tin nhắn cá nhân";
+
+  useEffect(() => {
+    const loadRecent = async () => {
+      let stored = await AsyncStorage.getItem(RECENT_USERS_KEY);
+      if (!stored) {
+        const v2 = await AsyncStorage.getItem(RECENT_V2_KEY);
+        if (v2) {
+          const users = parseRecentUsersFromStorage(v2);
+          if (users.length > 0) {
+            await AsyncStorage.setItem(RECENT_USERS_KEY, JSON.stringify(users));
+            stored = await AsyncStorage.getItem(RECENT_USERS_KEY);
+          }
+        }
+      }
+      setRecentUsers(parseRecentUsersFromStorage(stored));
+    };
+    loadRecent();
+  }, []);
+
+  const addRecentUser = useCallback((user: UserSimpleResponse) => {
+    setRecentUsers((prev) => {
+      const filtered = prev.filter((item) => item.userId !== user.id);
+      const next: RecentSearchUser[] = [
+        {
+          userId: user.id,
+          username: user.username,
+          fullName: user.fullName,
+          avatarUrl: user.avatarUrl,
+        },
+        ...filtered,
+      ].slice(0, 12);
+      AsyncStorage.setItem(RECENT_USERS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  /** Đổi tab: reset ô tìm kiếm và kết quả về trạng thái ban đầu */
+  useEffect(() => {
+    userSearchAbortRef.current?.abort();
+    messageSearchAbortRef.current?.abort();
+    debouncedSearch.cancel();
+    setSearchKeyword("");
+    setSearchUsers([]);
+    setSearchMessages([]);
+    setSearchPage(0);
+    setHasMoreSearchMessages(false);
+    setSearchError(null);
+    setSearchLoading(false);
+    setSearchLoadingMore(false);
+    setSearchInputFocused(false);
+  }, [activeTab, debouncedSearch]);
+
+  const runSearch = async (keyword: string) => {
+    const q = keyword.trim();
+    if (!q) {
+      userSearchAbortRef.current?.abort();
+      messageSearchAbortRef.current?.abort();
+      setSearchUsers([]);
+      setSearchMessages([]);
+      setSearchPage(0);
+      setHasMoreSearchMessages(false);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    const requestId = Date.now();
+    latestSearchRequestRef.current = requestId;
+    userSearchAbortRef.current?.abort();
+    messageSearchAbortRef.current?.abort();
+    const userController = new AbortController();
+    const messageController = new AbortController();
+    userSearchAbortRef.current = userController;
+    messageSearchAbortRef.current = messageController;
+    setSearchLoading(true);
+    setSearchError(null);
+    setSearchPage(0);
+
+    try {
+      const [usersRes, messagesRes] = await Promise.all([
+        searchService.searchUsers(q, userController.signal),
+        searchService.searchMessagesGlobal(q, 0, SEARCH_PAGE_SIZE, messageController.signal),
+      ]);
+      if (latestSearchRequestRef.current !== requestId) return;
+      setSearchUsers(usersRes.code === 1000 ? usersRes.data || [] : []);
+      const nextMessages = messagesRes.code === 1000 ? messagesRes.data || [] : [];
+      setSearchMessages(nextMessages);
+      setHasMoreSearchMessages(nextMessages.length >= SEARCH_PAGE_SIZE);
+      // Không lưu "gần đây" chỉ vì gõ tìm — tránh lưu khi user chỉ mở tin nhắn từ kết quả
+    } catch (error: any) {
+      if (error?.name === "AbortError") return;
+      setSearchError(error?.message || "Không thể tìm kiếm, vui lòng thử lại.");
+    } finally {
+      if (latestSearchRequestRef.current === requestId) {
+        setSearchLoading(false);
+      }
+    }
+  };
+
+  const debouncedSearch = useMemo(() => debounce((value: string) => void runSearch(value), 300), []);
+
+  useEffect(() => {
+    debouncedSearch(searchKeyword);
+    return () => {
+      debouncedSearch.cancel();
+    };
+  }, [debouncedSearch, searchKeyword]);
+
+  useEffect(() => {
+    return () => {
+      userSearchAbortRef.current?.abort();
+      messageSearchAbortRef.current?.abort();
+      debouncedSearch.cancel();
+    };
+  }, [debouncedSearch]);
+
+  /** Xóa ô tìm kiếm + kết quả (khi mở nhóm từ search để lúc quay lại thấy danh sách sạch) */
+  const resetGroupSearchState = useCallback(() => {
+    userSearchAbortRef.current?.abort();
+    messageSearchAbortRef.current?.abort();
+    debouncedSearch.cancel();
+    setSearchKeyword("");
+    setSearchUsers([]);
+    setSearchMessages([]);
+    setSearchPage(0);
+    setHasMoreSearchMessages(false);
+    setSearchError(null);
+    setSearchLoading(false);
+    setSearchLoadingMore(false);
+  }, [debouncedSearch]);
+
+  const handleLoadMoreSearchMessages = async () => {
+    if (!isSearching || searchLoadingMore || !hasMoreSearchMessages) return;
+    try {
+      setSearchLoadingMore(true);
+      messageSearchAbortRef.current?.abort();
+      const controller = new AbortController();
+      messageSearchAbortRef.current = controller;
+      const nextPage = searchPage + 1;
+      const res = await searchService.searchMessagesGlobal(
+        trimmedKeyword,
+        nextPage,
+        SEARCH_PAGE_SIZE,
+        controller.signal
+      );
+      const nextData = res.code === 1000 ? res.data || [] : [];
+      setSearchMessages((prev) => [...prev, ...nextData]);
+      setSearchPage(nextPage);
+      setHasMoreSearchMessages(nextData.length >= SEARCH_PAGE_SIZE);
+    } catch (error: any) {
+      if (error?.name !== "AbortError") {
+        setSearchError(error?.message || "Không thể tải thêm kết quả.");
+      }
+    } finally {
+      setSearchLoadingMore(false);
+    }
+  };
+
   // Handle navigate to chat
-  const handleConversationPress = (conversation: ConversationResponse) => {
+  const handleConversationPress = (
+    conversation: ConversationResponse,
+    options?: { fromSearch?: boolean }
+  ) => {
+    const fromSearch = options?.fromSearch === true;
+    if (fromSearch) {
+      resetGroupSearchState();
+    }
+
     // Sử dụng conversationId cho cả DIRECT và GROUP
     if (conversation.type === "GROUP" && conversation.group_id) {
       // Navigate to group chat với conversationId + thông tin cơ bản để hiển thị header ngay lập tức
@@ -241,6 +640,39 @@ export default function MessagesScreen() {
     } else {
       // Navigate to direct chat
       router.push(`/chat/${conversation.id}` as any);
+    }
+  };
+
+  /** Mở chat từ kết quả search tin nhắn — nhóm dùng cùng route/params như danh sách để header đúng */
+  const handleSearchMessagePress = (message: MessageSearchResponse) => {
+    resetGroupSearchState();
+    const conv = conversationById.get(message.conversation_id);
+    if (conv?.type === "GROUP" && conv.group_id) {
+      router.push({
+        pathname: `/groups/${conv.group_id}/chat` as any,
+        params: {
+          conversationId: conv.id,
+          name: conv.name || undefined,
+          avatar: conv.avatar || undefined,
+          memberCount: conv.members?.length ? String(conv.members.length) : undefined,
+          messageId: message.id,
+        },
+      } as any);
+      return;
+    }
+    router.push({
+      pathname: `/chat/${message.conversation_id}` as any,
+      params: { messageId: message.id },
+    } as any);
+  };
+
+  const handleUserSearchPress = async (user: UserSimpleResponse) => {
+    addRecentUser(user);
+    try {
+      const conversation = await createConversation(user.id);
+      router.push(`/chat/${conversation.id}` as any);
+    } catch (err: any) {
+      Alert.alert("Lỗi", err?.message || "Không thể mở cuộc trò chuyện.");
     }
   };
 
@@ -340,6 +772,35 @@ export default function MessagesScreen() {
         </TouchableOpacity>
       </View>
 
+      {shouldShowSearchUI && (
+        <View className="px-4 py-3 border-b border-gray-100 bg-white">
+          <View className="flex-row items-center rounded-xl bg-gray-100 px-3">
+            <Ionicons name="search-outline" size={18} color="#6b7280" />
+            <TextInput
+              value={searchKeyword}
+              onChangeText={setSearchKeyword}
+              onFocus={() => setSearchInputFocused(true)}
+              onBlur={() => setSearchInputFocused(false)}
+              placeholder={
+                activeTab === "group"
+                  ? "Tìm nhóm, tin nhắn, người dùng..."
+                  : "Tìm người dùng, tin nhắn..."
+              }
+              placeholderTextColor="#9CA3AF"
+              className="flex-1 text-[15px] py-2.5 ml-2"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {!!searchKeyword && (
+              <TouchableOpacity onPress={() => setSearchKeyword("")} activeOpacity={0.7}>
+                <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Content */}
       <ScrollView
         className="flex-1"
@@ -352,7 +813,205 @@ export default function MessagesScreen() {
           />
         }
       >
-        {isLoading && conversations.length === 0 ? (
+        {/* Chỉ khi focus ô tìm kiếm; khi đang gõ (isSearching) ẩn block này */}
+        {shouldShowSearchUI && searchInputFocused && !isSearching && (
+          <View className="py-3 border-b border-gray-100">
+            {recentUsers.length > 0 ? (
+              <>
+                <Text className="text-sm font-semibold text-gray-500 mb-2 px-4">Tìm kiếm gần đây</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{
+                    flexDirection: "row",
+                    paddingHorizontal: 16,
+                    paddingBottom: 4,
+                  }}
+                >
+                  {recentUsers.map((item, idx) => (
+                    <TouchableOpacity
+                      key={item.userId}
+                      onPress={() => {
+                        const u: UserSimpleResponse = {
+                          id: item.userId,
+                          username: item.username,
+                          fullName: item.fullName,
+                          avatarUrl: item.avatarUrl,
+                        };
+                        void handleUserSearchPress(u);
+                      }}
+                      activeOpacity={0.7}
+                      style={{
+                        width: 72,
+                        alignItems: "center",
+                        marginRight: idx < recentUsers.length - 1 ? 14 : 0,
+                      }}
+                    >
+                      {item.avatarUrl ? (
+                        <Image
+                          source={{ uri: item.avatarUrl }}
+                          style={{ width: 56, height: 56, borderRadius: 28 }}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: 28,
+                            backgroundColor: "#34B27D",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Text className="text-white text-lg font-bold">
+                            {(item.fullName || item.username || "U").charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <Text
+                        className="text-[11px] text-gray-800 mt-1.5 text-center w-full"
+                        numberOfLines={1}
+                      >
+                        {item.fullName || item.username}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            ) : (
+              <View className="py-10 items-center px-4">
+                <Ionicons name="search-outline" size={40} color="#D1D5DB" />
+                <Text className="text-gray-400 text-sm mt-3 text-center">
+                  {activeTab === "group"
+                    ? "Gõ để tìm nhóm, tin nhắn hoặc người dùng"
+                    : "Gõ để tìm người dùng hoặc tin nhắn"}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {shouldShowSearchUI && isSearching ? (
+          <View className="px-4 py-4">
+            {searchLoading ? (
+              <View className="items-center py-8">
+                <ActivityIndicator color="#34B27D" />
+                <Text className="text-gray-500 mt-2">Đang tìm kiếm...</Text>
+              </View>
+            ) : searchError ? (
+              <View className="items-center py-8">
+                <Ionicons name="alert-circle-outline" size={36} color="#ef4444" />
+                <Text className="text-red-500 mt-2 text-center">{searchError}</Text>
+              </View>
+            ) : (
+              <>
+                {matchedLocalConversations.length > 0 && (
+                  <View className="mb-5">
+                    <Text className="text-sm font-semibold text-gray-500 mb-2">
+                      {matchedConversationsSectionTitle}
+                    </Text>
+                    {matchedLocalConversations.map((conversation) => {
+                      const label =
+                        activeTab === "group"
+                          ? conversation.name || "Nhóm chat"
+                          : (() => {
+                              const other = conversation.members?.find(
+                                (m) => m.id !== currentUser?.id
+                              );
+                              return other?.fullName || other?.username || "Người dùng";
+                            })();
+                      return (
+                        <TouchableOpacity
+                          key={`conv-${conversation.id}`}
+                          onPress={() =>
+                            handleConversationPress(conversation, { fromSearch: true })
+                          }
+                          activeOpacity={0.7}
+                          className="py-2"
+                        >
+                          {renderHighlightedText(label, trimmedKeyword, "text-base text-black")}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {searchUsers.length > 0 && (
+                  <View className="mb-5">
+                    <Text className="text-sm font-semibold text-gray-500 mb-2">Người dùng</Text>
+                    {searchUsers.map((user) => (
+                      <TouchableOpacity
+                        key={`user-${user.id}`}
+                        onPress={() => void handleUserSearchPress(user)}
+                        activeOpacity={0.7}
+                        className="flex-row items-center py-2"
+                      >
+                        {user.avatarUrl ? (
+                          <Image
+                            source={{ uri: user.avatarUrl }}
+                            style={{ width: 36, height: 36, borderRadius: 18, marginRight: 12 }}
+                            contentFit="cover"
+                          />
+                        ) : (
+                          <View className="w-9 h-9 rounded-full bg-primary items-center justify-center mr-3">
+                            <Text className="text-white font-bold">
+                              {(user.fullName || user.username || "U").charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <View className="flex-1">
+                          {renderHighlightedText(user.fullName || user.username, trimmedKeyword, "text-base text-black")}
+                          <Text className="text-xs text-gray-500">@{user.username}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                {searchMessages.length > 0 && (
+                  <View>
+                    <Text className="text-sm font-semibold text-gray-500 mb-2">Tin nhắn</Text>
+                    {searchMessages.map((message) => (
+                      <SearchMessageResultRow
+                        key={`msg-${message.id}`}
+                        message={message}
+                        conversation={conversationById.get(message.conversation_id)}
+                        trimmedKeyword={trimmedKeyword}
+                        onPress={() => handleSearchMessagePress(message)}
+                        currentUserId={currentUser?.id}
+                      />
+                    ))}
+                    {hasMoreSearchMessages && (
+                      <TouchableOpacity
+                        onPress={handleLoadMoreSearchMessages}
+                        activeOpacity={0.7}
+                        className="mt-3 py-2 items-center rounded-lg bg-gray-100"
+                        disabled={searchLoadingMore}
+                      >
+                        {searchLoadingMore ? (
+                          <ActivityIndicator size="small" color="#34B27D" />
+                        ) : (
+                          <Text className="text-sm text-gray-700 font-medium">Tải thêm tin nhắn</Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {matchedLocalConversations.length === 0 &&
+                  searchUsers.length === 0 &&
+                  searchMessages.length === 0 && (
+                    <View className="items-center py-10">
+                      <Ionicons name="search-outline" size={40} color="#9CA3AF" />
+                      <Text className="text-gray-500 mt-3">Không tìm thấy kết quả phù hợp</Text>
+                    </View>
+                  )}
+              </>
+            )}
+          </View>
+        ) : shouldShowSearchUI && searchInputFocused ? null : isLoading && conversations.length === 0 ? (
           <ConversationListSkeleton count={8} showPin={true} />
         ) : error ? (
           <View className="flex-1 items-center justify-center py-20 px-4">

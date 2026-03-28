@@ -48,7 +48,7 @@ const shouldShowDateSeparator = (
 export default function ChatScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const params = useLocalSearchParams<{ id?: string; scrollToEnd?: string }>();
+  const params = useLocalSearchParams<{ id?: string; scrollToEnd?: string; messageId?: string }>();
   const [input, setInput] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -224,11 +224,12 @@ export default function ChatScreen() {
   }, [typingUsers.length]);
 
   // Prepare FlatList data với date separators
-  const listData = React.useMemo(() => {
-    const list: Array<
+  const { listData, messageIdToIndex } = React.useMemo(() => {
+    const list: (
       | { type: "date"; key: string; date: string }
       | { type: "message"; key: string; message: ChatMessageResponse; showSenderName: boolean }
-    > = [];
+    )[] = [];
+    const map = new Map<string, number>();
     let prev: ChatMessageResponse | null = null;
     messages.forEach((msg) => {
       const showSep = shouldShowDateSeparator(msg, prev);
@@ -237,10 +238,21 @@ export default function ChatScreen() {
         list.push({ type: "date", key: `date-${msg.id}-${msg.created_at}`, date: msg.created_at });
       }
       list.push({ type: "message", key: msg.id, message: msg, showSenderName: showSender });
+      map.set(msg.id, list.length - 1);
       prev = msg;
     });
-    return list;
+    return { listData: list, messageIdToIndex: map };
   }, [messages]);
+
+  useEffect(() => {
+    if (!params.messageId) return;
+    const idx = messageIdToIndex.get(params.messageId);
+    if (idx === undefined) return;
+    const t = setTimeout(() => {
+      flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [params.messageId, messageIdToIndex]);
 
   // Handle pick image
   const handlePickImage = async () => {
@@ -324,7 +336,7 @@ export default function ChatScreen() {
           setInput(content);
         }
       }
-    } catch (error) {
+    } catch {
       setUploadingImage(false);
       Alert.alert("Lỗi", "Đã xảy ra lỗi. Vui lòng thử lại.");
       if (imageToSend) {

@@ -1,9 +1,10 @@
 import { useGroup, useGroupMembers, useAddGroupMember, useUpdateGroupMemberRole, useRemoveGroupMember, useTransferGroupLeadership, useLeaveGroupFromMembers } from "@/hooks/useGroups";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { searchService } from "@/services/search";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,8 +16,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { GroupMember } from "@/types/group";
+import { UserSimpleResponse } from "@/types/search";
 
 type Role = "LEADER" | "CO_LEADER" | "MEMBER";
+
+const roleSortOrder = (role: Role) =>
+  role === "LEADER" ? 0 : role === "CO_LEADER" ? 1 : 2;
 
 export default function GroupMembersScreen() {
   const router = useRouter();
@@ -38,51 +44,115 @@ export default function GroupMembersScreen() {
   const transferLeaderMutation = useTransferGroupLeadership(groupId);
   const leaveGroupMutation = useLeaveGroupFromMembers(groupId);
 
-  const [newMemberId, setNewMemberId] = useState("");
-  const [newMemberRole, setNewMemberRole] = useState<Role>("MEMBER");
+  const [memberSearch, setMemberSearch] = useState("");
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const [userResults, setUserResults] = useState<UserSimpleResponse[]>([]);
+  const [selectedUser, setSelectedUser] = useState<UserSimpleResponse | null>(null);
+  const [activeMemberActionId, setActiveMemberActionId] = useState<string | null>(null);
+  const [confirmRemoveMemberId, setConfirmRemoveMemberId] = useState<string | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   const myMembership = useMemo(() => {
     if (!currentUser) return null;
     return members.find((m) => m.user.id === currentUser.id) ?? null;
   }, [members, currentUser]);
 
+  /** Luôn hiển thị Trưởng nhóm đầu tiên, sau đó Phó nhóm, rồi Thành viên */
+  const sortedMembers = useMemo(() => {
+    return [...members].sort((a: GroupMember, b: GroupMember) => {
+      const d = roleSortOrder(a.role) - roleSortOrder(b.role);
+      if (d !== 0) return d;
+      const na = (a.user.fullName || a.user.username || "").toLowerCase();
+      const nb = (b.user.fullName || b.user.username || "").toLowerCase();
+      return na.localeCompare(nb, "vi");
+    });
+  }, [members]);
+
   const myRole = myMembership?.role ?? null;
   const canManageMembers = myRole === "LEADER" || myRole === "CO_LEADER";
   const isLeader = myRole === "LEADER";
+  const hasOtherMember = members.some((m) => m.user.id !== currentUser?.id);
 
-  const handleChangeRole = (memberId: string, currentRole: Role) => {
-    if (!groupId) return;
+  const getRoleLabel = (role: Role) => {
+    if (role === "LEADER") return "Trưởng nhóm";
+    if (role === "CO_LEADER") return "Phó nhóm";
+    return "Thành viên";
+  };
+
+  useEffect(() => {
+    const keyword = memberSearch.trim();
+    if (!canManageMembers || !keyword) {
+      setUserResults([]);
+      setIsSearchingUsers(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        searchAbortRef.current?.abort();
+        const controller = new AbortController();
+        searchAbortRef.current = controller;
+        setIsSearchingUsers(true);
+        const res = await searchService.searchUsers(keyword, controller.signal);
+        if (res.code === 1000 || res.code === 0) {
+          const existingIds = new Set(members.map((m) => m.user.id));
+          setUserResults((res.data || []).filter((u) => !existingIds.has(u.id)));
+        } else {
+          setUserResults([]);
+        }
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          setUserResults([]);
+        }
+      } finally {
+        setIsSearchingUsers(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [memberSearch, canManageMembers, members]);
+
+  const handleTransferLeader = (memberId: string) => {
+    transferLeaderMutation.mutate({ newLeaderId: memberId });
+  };
+
+  const handleUpdateRole = (memberId: string, role: Role) => {
+    updateRoleMutation.mutate({ memberId, payload: { role } });
+  };
+
+  const handleMemberActions = (memberId: string, currentRole: Role, name: string) => {
     if (!canManageMembers) return;
+    const actions: { text: string; onPress?: () => void; style?: "destructive" | "cancel" | "default" }[] = [];
 
-    // Không cho self-change role từ đây
-    if (myMembership && myMembership.id === memberId) {
-      return;
+    // Leader có thể chuyển quyền cho MEMBER/CO_LEADER
+    if (isLeader && currentRole !== "LEADER") {
+      actions.push({
+        text: "Chuyển quyền Trưởng nhóm",
+        onPress: () => handleTransferLeader(memberId),
+      });
     }
 
-    const nextRole: Role =
-      currentRole === "MEMBER" ? "CO_LEADER" : currentRole === "CO_LEADER" ? "MEMBER" : "LEADER";
-
-    // Nếu nextRole là LEADER thì bắt buộc confirm chuyển leader
-    if (nextRole === "LEADER") {
-      if (!isLeader) return; // Chỉ leader mới được chuyển leader
-      Alert.alert(
-        "Chuyển trưởng nhóm",
-        "Bạn có chắc muốn chuyển quyền trưởng nhóm cho thành viên này?",
-        [
-          { text: "Hủy", style: "cancel" },
-          {
-            text: "Đồng ý",
-            style: "destructive",
-            onPress: () => {
-              transferLeaderMutation.mutate({ newLeaderId: memberId });
-            },
-          },
-        ]
-      );
-      return;
+    if (currentRole === "MEMBER") {
+      actions.push({
+        text: "Đổi thành Phó nhóm",
+        onPress: () => handleUpdateRole(memberId, "CO_LEADER"),
+      });
+    }
+    if (currentRole === "CO_LEADER") {
+      actions.push({
+        text: "Hạ về Thành viên",
+        onPress: () => handleUpdateRole(memberId, "MEMBER"),
+      });
     }
 
-    updateRoleMutation.mutate({ memberId, payload: { role: nextRole } });
+    actions.push({
+      text: "Xóa khỏi nhóm",
+      style: "destructive",
+      onPress: () => handleRemoveMember(memberId),
+    });
+    actions.push({ text: "Hủy", style: "cancel" });
+
+    Alert.alert(name, `Vai trò hiện tại: ${getRoleLabel(currentRole)}`, actions);
   };
 
   const handleRemoveMember = (memberId: string) => {
@@ -104,19 +174,19 @@ export default function GroupMembersScreen() {
     );
   };
 
-  const handleAddMember = () => {
+  const handleAddMember = (role: Role = "MEMBER") => {
     if (!groupId || !canManageMembers) return;
-    const trimmed = newMemberId.trim();
-    if (!trimmed) return;
+    if (!selectedUser?.id) return;
     addMemberMutation.mutate(
       {
-        member_id: trimmed,
-        role: newMemberRole,
+        member_id: selectedUser.id,
+        role,
       },
       {
         onSuccess: () => {
-          setNewMemberId("");
-          setNewMemberRole("MEMBER");
+          setMemberSearch("");
+          setUserResults([]);
+          setSelectedUser(null);
         },
       }
     );
@@ -124,6 +194,13 @@ export default function GroupMembersScreen() {
 
   const handleLeaveGroup = () => {
     if (!groupId || !myMembership) return;
+    if (myRole === "LEADER" && hasOtherMember) {
+      Alert.alert(
+        "Không thể rời nhóm ngay",
+        "Bạn đang là Trưởng nhóm. Hãy chuyển quyền trưởng nhóm cho thành viên khác trước khi rời nhóm."
+      );
+      return;
+    }
     Alert.alert(
       "Rời nhóm",
       "Bạn có chắc chắn muốn rời khỏi nhóm này?",
@@ -205,67 +282,172 @@ export default function GroupMembersScreen() {
         </Text>
       </View>
 
-      {/* Add member quick section */}
+      {/* Mời thành viên — mặc định vai trò Thành viên */}
       {canManageMembers && (
         <View style={styles.addSection}>
-          <Text style={styles.addLabel}>Thêm thành viên (nhập ID nhanh)</Text>
-          <View style={styles.addRow}>
-            <TextInput
-              style={styles.addInput}
-              placeholder="Nhập User ID..."
-              placeholderTextColor="#9CA3AF"
-              value={newMemberId}
-              onChangeText={setNewMemberId}
-              autoCapitalize="none"
-            />
-            <TouchableOpacity
-              style={[
-                styles.addRoleButton,
-                newMemberRole === "MEMBER" && styles.addRoleButtonActive,
-              ]}
-              onPress={() => setNewMemberRole("MEMBER")}
-            >
-              <Text
-                style={[
-                  styles.addRoleButtonText,
-                  newMemberRole === "MEMBER" && styles.addRoleButtonTextActive,
-                ]}
-              >
-                Member
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.addRoleButton,
-                newMemberRole === "CO_LEADER" && styles.addRoleButtonActive,
-              ]}
-              onPress={() => setNewMemberRole("CO_LEADER")}
-            >
-              <Text
-                style={[
-                  styles.addRoleButtonText,
-                  newMemberRole === "CO_LEADER" && styles.addRoleButtonTextActive,
-                ]}
-              >
-                Co-leader
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.addSubmitButton,
-              (!newMemberId.trim() || addMemberMutation.isPending) && styles.addSubmitButtonDisabled,
-            ]}
-            onPress={handleAddMember}
-            activeOpacity={0.8}
-            disabled={!newMemberId.trim() || addMemberMutation.isPending}
-          >
-            {addMemberMutation.isPending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.addSubmitText}>Thêm thành viên</Text>
+          <View style={styles.addCard}>
+            <View style={styles.addCardTitleRow}>
+              <View style={styles.addCardIconWrap}>
+                <Ionicons name="person-add" size={20} color="#FFFFFF" />
+              </View>
+              <View style={styles.addCardTitleTextCol}>
+                <Text style={styles.addCardTitle}>Mời thêm thành viên</Text>
+                <Text style={styles.addCardSubtitle}>Tìm theo username hoặc email</Text>
+              </View>
+            </View>
+
+            <View style={styles.searchPill}>
+              <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+              <TextInput
+                style={styles.searchPillInput}
+                placeholder="Tìm người để mời..."
+                placeholderTextColor="#9CA3AF"
+                value={memberSearch}
+                onChangeText={(text) => {
+                  setMemberSearch(text);
+                  setSelectedUser(null);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {memberSearch.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setMemberSearch("");
+                    setUserResults([]);
+                    setSelectedUser(null);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close-circle" size={22} color="#D1D5DB" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isSearchingUsers ? (
+              <View style={styles.searchLoadingWrap}>
+                <ActivityIndicator size="small" color="#16A34A" />
+                <Text style={styles.searchLoadingText}>Đang tìm...</Text>
+              </View>
+            ) : userResults.length > 0 ? (
+              <View style={styles.searchResultsCard}>
+                <Text style={styles.searchResultsLabel}>Gợi ý</Text>
+                {userResults.slice(0, 6).map((u) => (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={styles.searchResultRow}
+                    onPress={() => {
+                      setSelectedUser(u);
+                      setMemberSearch(u.username || u.fullName || "");
+                      setUserResults([]);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    {u.avatarUrl ? (
+                      <Image
+                        source={{ uri: u.avatarUrl }}
+                        style={styles.searchResultAvatar}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={styles.searchResultAvatarPh}>
+                        <Text style={styles.searchResultAvatarLetter}>
+                          {(u.fullName || u.username || "?").charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.searchResultTextCol}>
+                      <Text style={styles.searchResultName} numberOfLines={1}>
+                        {u.fullName || u.username}
+                      </Text>
+                      <Text style={styles.searchResultMeta} numberOfLines={1}>
+                        @{u.username}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+
+            {selectedUser && (
+              <View style={styles.selectedUserCard}>
+                <View style={styles.selectedUserRow}>
+                  {selectedUser.avatarUrl ? (
+                    <Image
+                      source={{ uri: selectedUser.avatarUrl }}
+                      style={styles.selectedUserAvatar}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View style={styles.selectedUserAvatarPh}>
+                      <Text style={styles.selectedUserAvatarLetter}>
+                        {(selectedUser.fullName || selectedUser.username || "?")
+                          .charAt(0)
+                          .toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.selectedUserInfo}>
+                    <Text style={styles.selectedUserName} numberOfLines={1}>
+                      {selectedUser.fullName || selectedUser.username}
+                    </Text>
+                    <Text style={styles.selectedUserMeta} numberOfLines={1}>
+                      @{selectedUser.username}
+                    </Text>
+                    <View style={styles.roleHintBadge}>
+                      <Ionicons name="person-outline" size={12} color="#166534" />
+                      <Text style={styles.roleHintBadgeText}>Vai trò: Thành viên</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedUser(null);
+                      setMemberSearch("");
+                    }}
+                    style={styles.selectedUserClear}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={22} color="#6B7280" />
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.addPrimaryBtn,
+                    (!selectedUser?.id || addMemberMutation.isPending) && styles.addPrimaryBtnDisabled,
+                  ]}
+                  onPress={() => handleAddMember("MEMBER")}
+                  activeOpacity={0.85}
+                  disabled={!selectedUser?.id || addMemberMutation.isPending}
+                >
+                  {addMemberMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+                      <Text style={styles.addPrimaryBtnText}>Thêm vào nhóm</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.addSecondaryBtn,
+                    (!selectedUser?.id || addMemberMutation.isPending) && styles.addSecondaryBtnDisabled,
+                  ]}
+                  onPress={() => handleAddMember("CO_LEADER")}
+                  activeOpacity={0.8}
+                  disabled={!selectedUser?.id || addMemberMutation.isPending}
+                >
+                  <Ionicons name="shield-outline" size={18} color="#2563EB" />
+                  <Text style={styles.addSecondaryBtnText}>Thêm làm Phó nhóm</Text>
+                </TouchableOpacity>
+              </View>
             )}
-          </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -294,7 +476,7 @@ export default function GroupMembersScreen() {
             <Text style={styles.emptyText}>Nhóm chưa có thành viên</Text>
           </View>
         ) : (
-          members.map((m) => {
+          sortedMembers.map((m) => {
             const isMe = !!currentUser && m.user.id === currentUser.id;
             const canManageThis =
               canManageMembers &&
@@ -305,7 +487,8 @@ export default function GroupMembersScreen() {
             const name = m.user.fullName || m.user.username || "Thành viên";
 
             return (
-              <View key={m.id} style={styles.memberItem}>
+              <React.Fragment key={m.id}>
+              <View style={styles.memberItem}>
                 {m.user.avatarUrl ? (
                   <Image
                     source={{ uri: m.user.avatarUrl }}
@@ -332,21 +515,97 @@ export default function GroupMembersScreen() {
                   <View style={styles.memberActions}>
                     <TouchableOpacity
                       style={styles.memberActionButton}
-                      onPress={() => handleChangeRole(m.id, m.role)}
+                      onPress={() =>
+                        setActiveMemberActionId((prev) => (prev === m.id ? null : m.id))
+                      }
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="swap-vertical" size={18} color="#2563EB" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.memberActionButton, styles.memberActionDanger]}
-                      onPress={() => handleRemoveMember(m.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="trash" size={18} color="#EF4444" />
+                      <Ionicons name="ellipsis-horizontal" size={18} color="#2563EB" />
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
+              {activeMemberActionId === m.id && canManageThis && (
+                <View style={styles.memberActionPanel}>
+                  {isLeader && m.role !== "LEADER" && (
+                    <TouchableOpacity
+                      style={styles.memberActionPanelBtn}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setActiveMemberActionId(null);
+                        handleTransferLeader(m.id);
+                      }}
+                    >
+                      <Ionicons name="shield-checkmark-outline" size={16} color="#EA580C" />
+                      <Text style={[styles.memberActionPanelText, { color: "#EA580C" }]}>
+                        Chuyển quyền trưởng nhóm
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {m.role === "MEMBER" && (
+                    <TouchableOpacity
+                      style={styles.memberActionPanelBtn}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setActiveMemberActionId(null);
+                        handleUpdateRole(m.id, "CO_LEADER");
+                      }}
+                    >
+                      <Ionicons name="arrow-up-circle-outline" size={16} color="#2563EB" />
+                      <Text style={styles.memberActionPanelText}>Đổi thành phó nhóm</Text>
+                    </TouchableOpacity>
+                  )}
+                  {m.role === "CO_LEADER" && (
+                    <TouchableOpacity
+                      style={styles.memberActionPanelBtn}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setActiveMemberActionId(null);
+                        handleUpdateRole(m.id, "MEMBER");
+                      }}
+                    >
+                      <Ionicons name="arrow-down-circle-outline" size={16} color="#4B5563" />
+                      <Text style={styles.memberActionPanelText}>Hạ về thành viên</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.memberActionPanelBtn}
+                    activeOpacity={0.7}
+                    onPress={() => setConfirmRemoveMemberId(m.id)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                    <Text style={[styles.memberActionPanelText, { color: "#EF4444" }]}>
+                      Xóa khỏi nhóm
+                    </Text>
+                  </TouchableOpacity>
+                  {confirmRemoveMemberId === m.id && (
+                    <View style={styles.confirmRemoveWrap}>
+                      <Text style={styles.confirmRemoveText}>Xác nhận xóa thành viên này?</Text>
+                      <View style={styles.confirmRemoveActions}>
+                        <TouchableOpacity
+                          style={styles.confirmCancelBtn}
+                          onPress={() => setConfirmRemoveMemberId(null)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.confirmCancelText}>Hủy</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.confirmDeleteBtn}
+                          onPress={() => {
+                            setConfirmRemoveMemberId(null);
+                            setActiveMemberActionId(null);
+                            handleRemoveMember(m.id);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.confirmDeleteText}>Xóa</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+              </React.Fragment>
             );
           })
         )}
@@ -422,69 +681,244 @@ const styles = StyleSheet.create({
   },
   addSection: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingTop: 12,
+    paddingBottom: 14,
     backgroundColor: "#F3F4F6",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#E5E7EB",
   },
-  addLabel: {
-    fontSize: 13,
-    color: "#4B5563",
-    marginBottom: 6,
+  addCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  addRow: {
+  addCardTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 14,
   },
-  addInput: {
+  addCardIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#16A34A",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  addCardTitleTextCol: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
+  },
+  addCardTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+    letterSpacing: -0.2,
+  },
+  addCardSubtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  searchPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
-    marginRight: 8,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    minHeight: 48,
+  },
+  searchPillInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 15,
+    color: "#111827",
+    paddingVertical: 10,
+  },
+  searchLoadingWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 12,
+    paddingVertical: 4,
+  },
+  searchLoadingText: {
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  searchResultsCard: {
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FAFAFA",
+    overflow: "hidden",
+  },
+  searchResultsLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  searchResultRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#F3F4F6",
+  },
+  searchResultAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    marginRight: 12,
+  },
+  searchResultAvatarPh: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    marginRight: 12,
+    backgroundColor: "#DCFCE7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchResultAvatarLetter: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#166534",
+  },
+  searchResultTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  searchResultName: {
+    fontSize: 15,
+    fontWeight: "600",
     color: "#111827",
   },
-  addRoleButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    marginLeft: 4,
+  searchResultMeta: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
   },
-  addRoleButtonActive: {
+  selectedUserCard: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#E5E7EB",
+  },
+  selectedUserRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  selectedUserAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  selectedUserAvatarPh: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
     backgroundColor: "#DCFCE7",
-    borderColor: "#16A34A",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  addRoleButtonText: {
-    fontSize: 12,
-    color: "#4B5563",
-  },
-  addRoleButtonTextActive: {
+  selectedUserAvatarLetter: {
+    fontSize: 18,
+    fontWeight: "700",
     color: "#166534",
-    fontWeight: "600",
   },
-  addSubmitButton: {
-    marginTop: 4,
+  selectedUserInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  selectedUserName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  selectedUserMeta: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  roleHintBadge: {
+    flexDirection: "row",
+    alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: "#16A34A",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
+    gap: 4,
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "#ECFDF5",
   },
-  addSubmitButtonDisabled: {
+  roleHintBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#166534",
+  },
+  selectedUserClear: {
+    padding: 4,
+  },
+  addPrimaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#16A34A",
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  addPrimaryBtnDisabled: {
     backgroundColor: "#9CA3AF",
   },
-  addSubmitText: {
-    fontSize: 13,
-    fontWeight: "600",
+  addPrimaryBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
     color: "#FFFFFF",
+  },
+  addSecondaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 10,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#F8FAFC",
+  },
+  addSecondaryBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#2563EB",
+  },
+  addSecondaryBtnDisabled: {
+    opacity: 0.45,
+    borderColor: "#E5E7EB",
   },
   scroll: {
     flex: 1,
@@ -596,6 +1030,69 @@ const styles = StyleSheet.create({
   memberActionDanger: {
     borderColor: "#FCA5A5",
     backgroundColor: "#FEF2F2",
+  },
+  memberActionPanel: {
+    marginTop: 8,
+    marginLeft: 56,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+  },
+  memberActionPanelBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E5E7EB",
+  },
+  memberActionPanelText: {
+    fontSize: 13,
+    color: "#111827",
+    fontWeight: "600",
+  },
+  confirmRemoveWrap: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#FEF2F2",
+  },
+  confirmRemoveText: {
+    fontSize: 12,
+    color: "#991B1B",
+    marginBottom: 8,
+    fontWeight: "600",
+  },
+  confirmRemoveActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  confirmCancelBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  confirmCancelText: {
+    fontSize: 12,
+    color: "#4B5563",
+    fontWeight: "600",
+  },
+  confirmDeleteBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#DC2626",
+  },
+  confirmDeleteText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   leaveWrap: {
     paddingHorizontal: 16,

@@ -6,6 +6,58 @@ import {
 import { ApiResponse } from "@/types/user";
 import { httpClient } from "./http/client";
 
+/** Một số BE chỉ trả { code: 1000 } khi POST /conversations — lấy lại từ danh sách */
+async function findDirectConversationWithUser(
+  targetUserId: string
+): Promise<ConversationResponse | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    const listRes = await httpClient.get<ApiResponse<ConversationResponse[]>>("/conversations");
+    if (listRes.code !== 1000 || !listRes.data?.length) continue;
+    const found = listRes.data.find(
+      (c) =>
+        c.type === "DIRECT" &&
+        Array.isArray(c.members) &&
+        c.members.some((m) => m.id === targetUserId)
+    );
+    if (found?.id) return found;
+  }
+  return null;
+}
+
+/** Gỡ conversation từ body tạo hội thoại (hỗ trợ nhiều kiểu BE) */
+function parseConversationFromCreateResponse(
+  body: unknown,
+  targetUserId: string
+): ConversationResponse | null {
+  if (!body || typeof body !== "object") return null;
+  const r = body as Record<string, unknown>;
+  const data = r.data as Record<string, unknown> | undefined | null;
+
+  if (data && typeof data === "object" && typeof (data as { id?: string }).id === "string") {
+    const conv = data as unknown as ConversationResponse;
+    if (conv.id) return conv;
+  }
+
+  const idFromRoot =
+    typeof r.conversationId === "string"
+      ? r.conversationId
+      : typeof r.id === "string"
+        ? r.id
+        : null;
+  if (idFromRoot) {
+    return {
+      id: idFromRoot,
+      type: "DIRECT",
+      members: [{ id: targetUserId, username: null, fullName: null, avatarUrl: null }],
+    } as ConversationResponse;
+  }
+
+  return null;
+}
+
 /**
  * Conversation Service - Xử lý tất cả API calls liên quan đến conversations
  */
@@ -38,12 +90,35 @@ export const conversationService = {
     console.log(`Target User ID: ${payload.targetUserId}`);
     try {
       const response = await httpClient.post<
-        ApiResponse<ConversationResponse>,
+        ApiResponse<ConversationResponse> & Record<string, unknown>,
         CreateDirectConversationRequest
       >("/conversations", payload);
+
+      if (response.code !== 1000) {
+        throw new Error((response as ApiResponse<ConversationResponse>).message || "Tạo hội thoại thất bại");
+      }
+
+      let conv =
+        response.data && typeof response.data === "object" && "id" in response.data && (response.data as ConversationResponse).id
+          ? (response.data as ConversationResponse)
+          : parseConversationFromCreateResponse(response, payload.targetUserId);
+
+      if (!conv?.id) {
+        console.warn(
+          "⚠️ [CONVERSATION SERVICE] POST /conversations không có data.id — thử GET /conversations để tìm DIRECT"
+        );
+        conv = (await findDirectConversationWithUser(payload.targetUserId)) || null;
+      }
+
+      if (!conv?.id) {
+        throw new Error(
+          "Server báo thành công nhưng không trả về cuộc trò chuyện. Cập nhật BE: POST /conversations trả { code, data: { id, type, members, ... } } hoặc đảm bảo GET /conversations có hội thoại vừa tạo."
+        );
+      }
+
       console.log(`✅ [CONVERSATION SERVICE] Conversation created`);
-      console.log(`Conversation ID: ${response.data?.id}`);
-      return response;
+      console.log(`Conversation ID: ${conv.id}`);
+      return { code: 1000, data: conv };
     } catch (error: any) {
       console.error(`❌ [CONVERSATION SERVICE] Failed to create conversation`);
       console.error(`Error:`, error.message);
