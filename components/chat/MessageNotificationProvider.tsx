@@ -102,7 +102,12 @@ export function MessageNotificationProvider() {
         callbackRef.current = handleReceiveMessage;
         socketService.onReceiveMessage(handleReceiveMessage);
       } catch (error) {
-        console.error("[MessageNotificationProvider] Failed to setup socket listener:", error);
+        // Tránh hiện thanh lỗi đỏ (LogBox) ở môi trường dev.
+        // Luồng chat chính vẫn hoạt động, chỉ mất banner in-app nếu socket setup lỗi.
+        console.log(
+          "[MessageNotificationProvider] Setup socket listener failed, skip in-app banner:",
+          error
+        );
       }
     };
 

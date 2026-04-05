@@ -40,7 +40,7 @@ const variantIcon = (v: AppDialogVariant) => {
 };
 
 /**
- * Modal thông báo / lỗi tùy chỉnh — thay Alert hệ thống.
+ * Modal xác nhận / cảnh báo tùy chỉnh (vd. xóa, rời nhóm). Kết quả tạo/cập nhật API → dùng toast (xem `.cursor/rules/error-ui-consistency.mdc`).
  */
 export function AppDialogModal({
   visible,

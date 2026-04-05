@@ -1,4 +1,5 @@
 import { ChatMessageResponse } from "@/types/message";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import React from "react";
@@ -112,12 +113,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       ) : (
         <Image
           source={{
-            uri:
-              s?.avatar_url ||
-              s?.avatarUrl ||
-              `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                s?.fullName || s?.full_name || s?.username || "?"
-              )}&background=9CA3AF&color=fff`,
+            uri: resolveUserAvatarUri(
+              s?.avatar_url || s?.avatarUrl,
+              s?.fullName || s?.full_name || s?.username
+            ),
           }}
           style={styles.avatar}
           contentFit="cover"

@@ -1,7 +1,7 @@
 import { conversationService } from "@/services/conversations";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { dismissCurrent } from "@/store/slices/messageNotificationSlice";
-import { Ionicons } from "@expo/vector-icons";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import React, { useCallback, useEffect, useRef } from "react";
@@ -106,7 +106,10 @@ export function MessageNotificationBanner() {
   const groupName = current.groupName?.trim() || "Tin nhắn";
   const senderName = current.senderName?.trim() || "Ai đó";
   const content = truncateOneLine(current.messageContent || "", MAX_CONTENT_LENGTH);
-  const avatarUrl = current.senderAvatarUrl?.trim() || null;
+  const resolvedAvatarUri = resolveUserAvatarUri(
+    current.senderAvatarUrl,
+    senderName
+  );
 
   const opacity = animValue.interpolate({
     inputRange: [0, 1],
@@ -133,13 +136,7 @@ export function MessageNotificationBanner() {
         accessibilityLabel={`Tin nhắn mới từ ${senderName} trong ${groupName}`}
       >
         <View style={styles.avatarWrap}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Ionicons name="person" size={20} color="#fff" />
-            </View>
-          )}
+          <Image source={{ uri: resolvedAvatarUri }} style={styles.avatar} />
         </View>
         <View style={styles.content}>
           <Text style={styles.groupName} numberOfLines={1}>
@@ -191,14 +188,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-  },
-  avatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#2EC989",
-    alignItems: "center",
-    justifyContent: "center",
   },
   content: {
     flex: 1,

@@ -20,7 +20,6 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -30,6 +29,8 @@ import {
   useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+const isApiSuccess = (code?: number) => code === 0 || code === 1000;
 
 // Helper function để check xem có cần hiển thị date separator không
 // Nếu khoảng cách giữa 2 messages > 15 phút thì hiển thị separator
@@ -145,7 +146,7 @@ export default function GroupChatScreen() {
       const response = await conversationService.getConversationById(
         conversationId
       );
-      if (response.code === 1000 && response.data) {
+      if (isApiSuccess(response.code) && response.data) {
         console.log("✅ [GROUP CHAT] Conversation loaded from API");
         console.log(`API conversation members:`, response.data.members);
         console.log(`API conversation members length:`, response.data.members?.length);
@@ -199,9 +200,9 @@ export default function GroupChatScreen() {
     queryKey: ["group", groupId],
     queryFn: async () => {
       if (!groupId) return null;
-      const { groupService } = await import("@/services/groups");
+      const { groupService, isGroupApiSuccess } = await import("@/services/groups");
       const response = await groupService.getGroupById(groupId);
-      if (response.code === 1000 && response.data) {
+      if (isGroupApiSuccess(response.code) && response.data) {
         return response.data;
       }
       return null;
@@ -278,10 +279,6 @@ export default function GroupChatScreen() {
       console.error("❌ [CHAT] Cannot send message - conversationId is missing");
       console.error("Params:", params);
       console.error("Group ID:", groupId);
-      Alert.alert(
-        "Lỗi", 
-        "Không tìm thấy cuộc trò chuyện. Vui lòng thử lại sau."
-      );
       return;
     }
 
@@ -302,9 +299,6 @@ export default function GroupChatScreen() {
       const result = await sendMessage(content);
       if (!result) {
         console.error("❌ [CHAT] Failed to send message - result is null");
-        // Lấy error message từ hook nếu có
-        const errorMsg = error || "Không thể gửi tin nhắn. Vui lòng thử lại.";
-        Alert.alert("Lỗi", errorMsg);
         setInput(content); // Restore input nếu lỗi
       } else {
         console.log("✅ [CHAT] Message sent successfully");
@@ -318,10 +312,6 @@ export default function GroupChatScreen() {
         data: err?.response?.data,
         stack: err?.stack,
       });
-      const errorMsg = err?.response?.data?.message || 
-                      err?.message || 
-                      "Không thể gửi tin nhắn. Vui lòng thử lại.";
-      Alert.alert("Lỗi", errorMsg);
       setInput(content); // Restore input nếu lỗi
     }
   };
@@ -713,22 +703,10 @@ export default function GroupChatScreen() {
               <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
             </View>
           ) : (error || hasConversationIdError) && messages.length === 0 ? (
-            <View className="py-8 items-center px-4">
-              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-                <Ionicons name="alert-circle" size={32} color="#ef4444" />
-              </View>
-              <Text className="text-red-500 text-base font-semibold mt-2 text-center">
-                {hasConversationIdError ? "Không tìm thấy cuộc trò chuyện. Vui lòng quay lại và thử lại." : error || "Đã xảy ra lỗi khi tải tin nhắn"}
-              </Text>
-              {!hasConversationIdError ? (
-                <TouchableOpacity onPress={() => refresh()} className="mt-6 bg-primary px-6 py-3 rounded-full" activeOpacity={0.8}>
-                  <Text className="text-white text-sm font-semibold">Thử lại</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={() => { if (router.canGoBack()) router.back(); else router.push("/messages"); }} className="mt-6 bg-primary px-6 py-3 rounded-full" activeOpacity={0.8}>
-                  <Text className="text-white text-sm font-semibold">Quay lại</Text>
-                </TouchableOpacity>
-              )}
+            <View className="py-8 items-center">
+              <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+              <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
+              <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
             </View>
           ) : null
         }

@@ -1,7 +1,13 @@
 import { LocationSuggestionsSection } from "@/components/group/LocationSuggestionsSection";
 import { useGroup, useGroupMembers } from "@/hooks/useGroups";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import {
+  useGroupItinerariesByTab,
+  type GroupInfoItineraryListItem,
+  type GroupItineraryTab,
+} from "@/hooks/useItineraries";
 import { formatCurrencyVND, formatDateRange } from "@/utils/format";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
@@ -16,76 +22,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type ItineraryTab = "ongoing" | "completed" | "draft";
-
-interface ItineraryItem {
-  id: string;
-  name: string;
-  image: string;
-  startDate: string;
-  endDate: string;
-  budget?: number;
-  createdAtLabel: string;
-}
-
-// Mock danh sách theo từng tab (sau có thể lấy từ API theo status)
-function useMockItinerariesByTab(groupId: string | undefined) {
-  return useMemo(() => {
-    if (!groupId) return { ongoing: [], completed: [], draft: [] };
-    const base = [
-      {
-        id: "o1",
-        name: "Hội An trip",
-        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
-        startDate: "2025-08-16",
-        endDate: "2025-08-20",
-        budget: 9000000,
-        createdAtLabel: "Đã tạo 2 ngày trước",
-      },
-      {
-        id: "c1",
-        name: "Hội An trip",
-        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
-        startDate: "2025-08-16",
-        endDate: "2025-08-20",
-        createdAtLabel: "Đã tạo 2 ngày trước",
-      },
-      {
-        id: "c2",
-        name: "Hội An trip",
-        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
-        startDate: "2025-07-01",
-        endDate: "2025-07-05",
-        createdAtLabel: "Đã tạo 1 tuần trước",
-      },
-      {
-        id: "d1",
-        name: "Hội An trip",
-        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
-        startDate: "2025-09-01",
-        endDate: "2025-09-05",
-        createdAtLabel: "Đã tạo 1 ngày trước",
-      },
-      {
-        id: "d2",
-        name: "Hội An trip",
-        image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400",
-        startDate: "2025-09-10",
-        endDate: "2025-09-12",
-        createdAtLabel: "Đã tạo 3 ngày trước",
-      },
-    ];
-    return {
-      ongoing: base.slice(0, 1) as ItineraryItem[],
-      completed: base.slice(1, 3) as ItineraryItem[],
-      draft: base.slice(3, 5) as ItineraryItem[],
-    };
-  }, [groupId]);
-}
-
 const TAB_CONFIG: Record<
-  ItineraryTab,
-  { label: string; count?: number; dotColor: string; borderColor: string }
+  GroupItineraryTab,
+  { label: string; dotColor: string; borderColor: string }
 > = {
   ongoing: {
     label: "Đang diễn ra",
@@ -94,13 +33,11 @@ const TAB_CONFIG: Record<
   },
   completed: {
     label: "Đã hoàn thành",
-    count: 2,
     dotColor: "#2563EB",
     borderColor: "#2563EB",
   },
   draft: {
     label: "Nháp",
-    count: 5,
     dotColor: "#EA580C",
     borderColor: "#EA580C",
   },
@@ -113,9 +50,26 @@ export default function GroupInfoScreen() {
   const { data: group, isLoading } = useGroup(id);
   const { data: currentUser } = useCurrentUser();
   const { data: members = [], isLoading: isLoadingMembers } = useGroupMembers(id);
-  const [itineraryTab, setItineraryTab] = useState<ItineraryTab>("ongoing");
+  const {
+    data: itinerariesData,
+    isLoading: isLoadingItineraries,
+    isError: isItinerariesError,
+    refetch: refetchItineraries,
+  } = useGroupItinerariesByTab(id);
+  const [itineraryTab, setItineraryTab] = useState<GroupItineraryTab>("ongoing");
   const [isMembersExpanded, setIsMembersExpanded] = useState(false);
-  const itinerariesByTab = useMockItinerariesByTab(id);
+  const [isItineraryExpanded, setIsItineraryExpanded] = useState(false);
+
+  const itinerariesByTab = useMemo(
+    () =>
+      itinerariesData ?? {
+        ongoing: [] as GroupInfoItineraryListItem[],
+        completed: [] as GroupInfoItineraryListItem[],
+        draft: [] as GroupInfoItineraryListItem[],
+        totalCount: 0,
+      },
+    [itinerariesData]
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -149,8 +103,7 @@ export default function GroupInfoScreen() {
     group.members?.length ?? (group as { memberCount?: number }).memberCount ?? 0;
   const creatorName =
     group.members?.find((m) => m.role === "LEADER")?.user?.fullName ?? "Đình Đức";
-  const pastItinerariesCount = 12;
-  const draftCount = 5;
+  const pastItinerariesCount = itinerariesByTab.totalCount;
   const memberAvatars = (group.members
     ?.map((m) => m.user?.avatarUrl)
     .filter(Boolean) as string[]) || [
@@ -161,7 +114,6 @@ export default function GroupInfoScreen() {
     "https://i.pravatar.cc/150?img=5",
   ];
   const displayedAvatars = memberAvatars.slice(0, 3);
-  const additionalMembers = memberCount > 3 ? memberCount - 3 : 0;
 
   const currentItineraries =
     itineraryTab === "ongoing"
@@ -230,17 +182,6 @@ export default function GroupInfoScreen() {
                   style={[styles.avatarCircle, i > 0 && styles.avatarOverlap]}
                 />
               ))}
-              {additionalMembers > 0 && (
-                <View
-                  style={[
-                    styles.avatarCircle,
-                    styles.avatarMore,
-                    displayedAvatars.length > 0 && styles.avatarOverlap,
-                  ]}
-                >
-                  <Text style={styles.avatarMoreText}>+{additionalMembers}</Text>
-                </View>
-              )}
             </View>
             <Ionicons
               name={isMembersExpanded ? "chevron-up" : "chevron-down"}
@@ -290,11 +231,10 @@ export default function GroupInfoScreen() {
                     <View key={member.id} style={styles.memberItem}>
                       <Image
                         source={{
-                          uri:
-                            member.user.avatarUrl ||
-                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                              member.user.fullName || member.user.username || "?"
-                            )}&background=2563EB&color=fff&size=128`,
+                          uri: resolveUserAvatarUri(
+                            member.user.avatarUrl,
+                            member.user.fullName || member.user.username
+                          ),
                         }}
                         style={styles.memberAvatar}
                         contentFit="cover"
@@ -330,9 +270,13 @@ export default function GroupInfoScreen() {
           )}
         </View>
 
-        {/* Thẻ Lịch trình đã đi: có tab + danh sách thẻ con */}
+        {/* Thẻ Lịch trình đã đi: có tab + danh sách thẻ con — mặc định thu gọn */}
         <View style={[styles.card, styles.cardColumn]}>
-          <View style={styles.cardRow}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.cardRow}
+            onPress={() => setIsItineraryExpanded(!isItineraryExpanded)}
+          >
             <View style={[styles.cardIconWrap, { backgroundColor: "#D1FAE5" }]}>
               <Ionicons name="trail-sign-outline" size={24} color="#16A34A" />
             </View>
@@ -340,18 +284,26 @@ export default function GroupInfoScreen() {
               <Text style={styles.cardTitle}>Lịch trình đã đi</Text>
               <Text style={styles.cardDesc}>{pastItinerariesCount} chuyến đi</Text>
             </View>
-            <Ionicons name="chevron-up" size={20} color="#9CA3AF" />
-          </View>
+            <Ionicons
+              name={isItineraryExpanded ? "chevron-up" : "chevron-down"}
+              size={20}
+              color="#9CA3AF"
+            />
+          </TouchableOpacity>
 
           {/* Tab bar: chấm tròn + text */}
+          {isItineraryExpanded && (
           <View style={styles.tabBar}>
             {(["ongoing", "completed", "draft"] as const).map((tab) => {
               const config = TAB_CONFIG[tab];
               const isActive = itineraryTab === tab;
-              const label =
-                config.count !== undefined
-                  ? `${config.label} (${config.count})`
-                  : config.label;
+              const tabCount =
+                tab === "ongoing"
+                  ? itinerariesByTab.ongoing.length
+                  : tab === "completed"
+                    ? itinerariesByTab.completed.length
+                    : itinerariesByTab.draft.length;
+              const label = `${config.label} (${tabCount})`;
               return (
                 <TouchableOpacity
                   key={tab}
@@ -378,62 +330,87 @@ export default function GroupInfoScreen() {
               );
             })}
           </View>
+          )}
 
           {/* Danh sách thẻ lịch trình theo tab */}
+          {isItineraryExpanded && (
           <View style={styles.itineraryList}>
-            {currentItineraries.map((it) => (
-              <View
-                key={it.id}
-                style={[
-                  styles.itineraryCard,
-                  { borderColor: tabStyle.borderColor },
-                ]}
-              >
-                <Image
-                  source={{ uri: it.image }}
-                  style={styles.itineraryThumb}
-                  contentFit="cover"
-                />
-                <View style={styles.itineraryBody}>
-                  <Text style={styles.itineraryName}>{it.name}</Text>
-                  <Text style={styles.itineraryCreated}>{it.createdAtLabel}</Text>
-                  <View style={styles.itineraryRow}>
-                    <Text style={styles.itineraryCalendar}>📅</Text>
-                    <Text style={styles.itineraryLabel}>Thời gian: </Text>
-                    <Text
-                      style={[
-                        styles.itineraryDate,
-                        { color: tabStyle.borderColor },
-                      ]}
-                    >
-                      {formatDateRange(it.startDate, it.endDate)}
-                    </Text>
-                  </View>
-                  {itineraryTab === "ongoing" && it.budget != null && (
-                    <Text style={styles.itineraryBudget}>
-                      Ngân sách: {formatCurrencyVND(it.budget)}
-                    </Text>
-                  )}
-                  {itineraryTab === "draft" && (
-                    <Text
-                      style={[
-                        styles.itineraryApply,
-                        { color: tabStyle.borderColor, alignSelf: "flex-end" },
-                      ]}
-                    >
-                      Áp dụng
-                    </Text>
-                  )}
-                </View>
+            {isLoadingItineraries ? (
+              <View style={styles.itineraryStatusWrap}>
+                <ActivityIndicator size="small" color="#16A34A" />
+                <Text style={styles.itineraryStatusText}>Đang tải lịch trình...</Text>
+              </View>
+            ) : isItinerariesError ? (
+              <View style={styles.itineraryStatusWrap}>
+                <Text style={styles.itineraryErrorText}>Không tải được lịch trình</Text>
                 <TouchableOpacity
-                  style={[styles.itineraryBtn, { backgroundColor: tabStyle.borderColor }]}
+                  onPress={() => refetchItineraries()}
+                  style={styles.itineraryRetryBtn}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="chevron-forward" size={18} color="#fff" />
+                  <Text style={styles.itineraryRetryText}>Thử lại</Text>
                 </TouchableOpacity>
               </View>
-            ))}
+            ) : currentItineraries.length === 0 ? (
+              <View style={styles.itineraryStatusWrap}>
+                <Text style={styles.itineraryEmptyText}>Chưa có lịch trình trong mục này</Text>
+              </View>
+            ) : (
+              currentItineraries.map((it) => (
+                <View
+                  key={it.id}
+                  style={[
+                    styles.itineraryCard,
+                    { borderColor: tabStyle.borderColor },
+                  ]}
+                >
+                  <Image
+                    source={{ uri: it.image }}
+                    style={styles.itineraryThumb}
+                    contentFit="cover"
+                  />
+                  <View style={styles.itineraryBody}>
+                    <Text style={styles.itineraryName}>{it.name}</Text>
+                    <Text style={styles.itineraryCreated}>{it.createdAtLabel}</Text>
+                    <View style={styles.itineraryRow}>
+                      <Text style={styles.itineraryCalendar}>📅</Text>
+                      <Text style={styles.itineraryLabel}>Thời gian: </Text>
+                      <Text
+                        style={[
+                          styles.itineraryDate,
+                          { color: tabStyle.borderColor },
+                        ]}
+                      >
+                        {formatDateRange(it.startDate, it.endDate)}
+                      </Text>
+                    </View>
+                    {itineraryTab === "ongoing" && it.budget != null && (
+                      <Text style={styles.itineraryBudget}>
+                        Ngân sách: {formatCurrencyVND(it.budget)}
+                      </Text>
+                    )}
+                    {itineraryTab === "draft" && (
+                      <Text
+                        style={[
+                          styles.itineraryApply,
+                          { color: tabStyle.borderColor, alignSelf: "flex-end" },
+                        ]}
+                      >
+                        Áp dụng
+                      </Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.itineraryBtn, { backgroundColor: tabStyle.borderColor }]}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="chevron-forward" size={18} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
           </View>
+          )}
         </View>
 
         <LocationSuggestionsSection
@@ -539,11 +516,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     flexDirection: "row",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
   },
   cardColumn: {
     flexDirection: "column",
@@ -590,16 +562,6 @@ const styles = StyleSheet.create({
   avatarOverlap: {
     marginLeft: -12,
   },
-  avatarMore: {
-    backgroundColor: "#9CA3AF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarMoreText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#fff",
-  },
   manageMembersButton: {
     marginTop: 12,
     alignSelf: "flex-start",
@@ -644,6 +606,37 @@ const styles = StyleSheet.create({
   },
   itineraryList: {
     gap: 12,
+  },
+  itineraryStatusWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 24,
+    gap: 10,
+  },
+  itineraryStatusText: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  itineraryErrorText: {
+    fontSize: 14,
+    color: "#DC2626",
+    textAlign: "center",
+  },
+  itineraryEmptyText: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    textAlign: "center",
+  },
+  itineraryRetryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#16A34A",
+  },
+  itineraryRetryText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#fff",
   },
   itineraryCard: {
     flexDirection: "row",

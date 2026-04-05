@@ -6,6 +6,7 @@ import {
   AddMemberPayload,
   UpdateMemberRolePayload,
   TransferLeadershipPayload,
+  isGroupApiSuccess,
 } from "@/services/groups";
 import { Group, GroupMember } from "@/types/group";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
@@ -20,24 +21,14 @@ export function useGroups() {
   return useQuery({
     queryKey: ["groups"],
     queryFn: async () => {
-      console.log("🔍 [useGroups] EXPO_PUBLIC_MOCK_DATA:", EXPO_PUBLIC_MOCK_DATA);
-      
-      // Nếu dùng mock data
       if (EXPO_PUBLIC_MOCK_DATA) {
-        console.log("📦 [useGroups] Using mock data");
-        // Simulate API delay
         await new Promise((resolve) => setTimeout(resolve, 500));
         return mockGroups;
       }
 
-      // Call API thật
-      console.log("🌐 [useGroups] Calling API to get groups...");
       const response = await groupService.getGroups();
-      console.log("✅ [useGroups] API response:", response);
-      // Response format: { code: 1000, data: Group[] }
-      if (response.code === 1000) {
-        console.log(`✅ [useGroups] Got ${response.data?.length || 0} groups from API`);
-        return response.data || [];
+      if (isGroupApiSuccess(response.code) && Array.isArray(response.data)) {
+        return response.data;
       }
       throw new Error(response.message || "Failed to fetch groups");
     },
@@ -61,7 +52,7 @@ export function useGroup(groupId: string | undefined) {
         return found as Group | null;
       }
       const response = await groupService.getGroupById(groupId);
-      if (response.code === 1000 && response.data) return response.data;
+      if (isGroupApiSuccess(response.code) && response.data) return response.data;
       throw new Error(response.message || "Failed to fetch group");
     },
     enabled: !!groupId,
@@ -79,9 +70,7 @@ export function useCreateGroup() {
   return useMutation({
     mutationFn: async (payload: CreateGroupPayload) => {
       const response = await groupService.createGroup(payload);
-      console.log("response", response);
-      // Response format: { code: 1000, message: string, data: Group }
-      if (response.code === 1000 && response.data) {
+      if (isGroupApiSuccess(response.code) && response.data) {
         return response.data;
       }
       throw new Error(response.message || "Failed to create group");
@@ -97,7 +86,6 @@ export function useCreateGroup() {
       router.push("/groups");
     },
     onError: (error: Error) => {
-      console.error("Create group error:", error);
       showErrorToast("Tạo nhóm thất bại", error);
     },
   });
@@ -122,7 +110,6 @@ export function useJoinGroup() {
       showSuccessToast("Tham gia nhóm thành công!");
     },
     onError: (error: Error) => {
-      console.error("Join group error:", error);
       showErrorToast("Tham gia nhóm thất bại", error);
     },
   });
@@ -136,18 +123,15 @@ export function useLeaveGroup() {
 
   return useMutation({
     mutationFn: async (groupId: string) => {
-      const { leaveGroup } = await import("@/services/social");
-      const response = await leaveGroup(groupId);
-      const code = (response as any).code;
-      if (code === 0 || code === 1000) return (response as any).data;
-      throw new Error((response as any).message || "Failed to leave group");
+      const response = await groupService.leaveGroup(groupId);
+      if (isGroupApiSuccess(response.code)) return response.data;
+      throw new Error(response.message || "Failed to leave group");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] });
       showSuccessToast("Rời nhóm thành công!");
     },
     onError: (error: Error) => {
-      console.error("Leave group error:", error);
       showErrorToast("Rời nhóm thất bại", error);
     },
   });
@@ -171,7 +155,7 @@ export function useGroupMembers(groupId: string | undefined) {
       }
 
       const response = await groupService.getMembers(groupId);
-      if ((response.code === 1000 || response.code === 0) && response.data) {
+      if (isGroupApiSuccess(response.code) && response.data) {
         return response.data;
       }
       throw new Error(response.message || "Failed to fetch group members");
@@ -191,7 +175,7 @@ export function useAddGroupMember(groupId: string | undefined) {
     mutationFn: async (payload: AddMemberPayload) => {
       if (!groupId) throw new Error("Missing group id");
       const response = await groupService.addMember(groupId, payload);
-      if (response.code === 1000 || response.code === 0) {
+      if (isGroupApiSuccess(response.code)) {
         return response.data;
       }
       throw new Error(response.message || "Failed to add member");
@@ -205,7 +189,6 @@ export function useAddGroupMember(groupId: string | undefined) {
       showSuccessToast("Thêm thành viên thành công!");
     },
     onError: (error: Error) => {
-      console.error("Add group member error:", error);
       showErrorToast("Thêm thành viên thất bại", error);
     },
   });
@@ -222,7 +205,7 @@ export function useUpdateGroupMemberRole(groupId: string | undefined) {
       const { memberId, payload } = params;
       if (!groupId) throw new Error("Missing group id");
       const response = await groupService.updateMemberRole(groupId, memberId, payload);
-      if (response.code === 1000 || response.code === 0) {
+      if (isGroupApiSuccess(response.code)) {
         return response.data;
       }
       throw new Error(response.message || "Failed to update member role");
@@ -236,7 +219,6 @@ export function useUpdateGroupMemberRole(groupId: string | undefined) {
       showSuccessToast("Cập nhật vai trò thành viên thành công!");
     },
     onError: (error: Error) => {
-      console.error("Update member role error:", error);
       showErrorToast("Cập nhật vai trò thất bại", error);
     },
   });
@@ -252,7 +234,7 @@ export function useRemoveGroupMember(groupId: string | undefined) {
     mutationFn: async (memberId: string) => {
       if (!groupId) throw new Error("Missing group id");
       const response = await groupService.removeMember(groupId, memberId);
-      if (response.code === 1000 || response.code === 0) {
+      if (isGroupApiSuccess(response.code)) {
         return response.data;
       }
       throw new Error(response.message || "Failed to remove member");
@@ -266,7 +248,6 @@ export function useRemoveGroupMember(groupId: string | undefined) {
       showSuccessToast("Đã xóa thành viên khỏi nhóm");
     },
     onError: (error: Error) => {
-      console.error("Remove member error:", error);
       showErrorToast("Xóa thành viên thất bại", error);
     },
   });
@@ -282,7 +263,7 @@ export function useTransferGroupLeadership(groupId: string | undefined) {
     mutationFn: async (payload: TransferLeadershipPayload) => {
       if (!groupId) throw new Error("Missing group id");
       const response = await groupService.transferLeadership(groupId, payload);
-      if (response.code === 1000 || response.code === 0) {
+      if (isGroupApiSuccess(response.code)) {
         return response.data;
       }
       throw new Error(response.message || "Failed to transfer leadership");
@@ -296,7 +277,6 @@ export function useTransferGroupLeadership(groupId: string | undefined) {
       showSuccessToast("Chuyển quyền trưởng nhóm thành công!");
     },
     onError: (error: Error) => {
-      console.error("Transfer leadership error:", error);
       showErrorToast("Chuyển quyền trưởng nhóm thất bại", error);
     },
   });
@@ -312,7 +292,7 @@ export function useLeaveGroupFromMembers(groupId: string | undefined) {
     mutationFn: async () => {
       if (!groupId) throw new Error("Missing group id");
       const response = await groupService.leaveGroup(groupId);
-      if (response.code === 1000 || response.code === 0) {
+      if (isGroupApiSuccess(response.code)) {
         return response.data;
       }
       throw new Error(response.message || "Failed to leave group");
@@ -326,7 +306,6 @@ export function useLeaveGroupFromMembers(groupId: string | undefined) {
       showSuccessToast("Bạn đã rời nhóm");
     },
     onError: (error: Error) => {
-      console.error("Leave group (members) error:", error);
       showErrorToast("Rời nhóm thất bại", error);
     },
   });

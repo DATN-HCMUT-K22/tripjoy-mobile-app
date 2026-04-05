@@ -1,291 +1,279 @@
 import { Group, GroupMember } from "@/types/group";
+import type {
+  SuggestLocationRequest,
+  SuggestLocationResponse,
+} from "@/types/locationSuggestion";
 import { ApiResponse } from "@/types/user";
 import { httpClient } from "./http/client";
 
-/**
- * Request payload để tạo group
- */
-export interface CreateGroupPayload {
-  name: string;                    // Required
-  avatar?: string;                // URL của avatar
-  description?: string;            // Mô tả group
-  theme_color?: string;            // Hex color code
-  member_ids?: string[];           // Danh sách user IDs để thêm vào group ngay
+/** Đường dẫn API nhóm — giữ tập trung theo docs/modules/groups.md */
+export const GROUP_API = {
+  list: "/groups",
+  byId: (groupId: string) => `/groups/${groupId}`,
+  members: (groupId: string) => `/groups/${groupId}/members`,
+  memberById: (groupId: string, memberId: string) =>
+    `/groups/${groupId}/members/${memberId}`,
+  leaveMe: (groupId: string) => `/groups/${groupId}/members/me`,
+  transferLeadership: (groupId: string) =>
+    `/groups/${groupId}/transfer-leadership`,
+  locationSuggestions: (groupId: string) =>
+    `/groups/${groupId}/location-suggestions`,
+} as const;
+
+/** Theo FE Notes: validate code trước khi bind data (hỗ trợ 0 hoặc 1000) */
+export function isGroupApiSuccess(code: number | undefined | null): boolean {
+  return code === 0 || code === 1000;
 }
 
-/**
- * Request payload để cập nhật group
- */
-export interface UpdateGroupPayload {
-  name?: string;
+export type GroupMemberRole = "LEADER" | "CO_LEADER" | "MEMBER";
+
+/** GroupRequest — POST/PUT /api/v1/groups */
+export interface GroupRequest {
+  name: string;
   avatar?: string;
   description?: string;
+  chatbotCount?: number;
+  isPro?: boolean;
   theme_color?: string;
+  member_ids?: string[];
 }
 
-/**
- * Request payload để thêm member vào group
- */
-export interface AddMemberPayload {
-  member_id: string;  // UUID của user cần thêm
-  role?: "LEADER" | "CO_LEADER" | "MEMBER";  // Default: "MEMBER"
+export interface AddMemberRequest {
+  role: GroupMemberRole;
+  member_id: string;
 }
 
-/**
- * Request payload để cập nhật role của member
- */
-export interface UpdateMemberRolePayload {
-  role: "LEADER" | "CO_LEADER" | "MEMBER";
+export interface UpdateMemberRoleRequest {
+  role: GroupMemberRole;
 }
 
-/**
- * Request payload để chuyển quyền leader
- */
-export interface TransferLeadershipPayload {
-  newLeaderId: string;  // UUID của member sẽ trở thành leader mới
+export interface TransferLeadershipRequest {
+  newLeaderId: string;
 }
 
-/**
- * Group Service - Xử lý tất cả API calls liên quan đến groups
- */
+export type ApiResponseVoid = ApiResponse<Record<string, unknown>>;
+
+/** @deprecated dùng GroupRequest */
+export type CreateGroupPayload = GroupRequest;
+/** @deprecated dùng GroupRequest */
+export type UpdateGroupPayload = GroupRequest;
+export type AddMemberPayload = AddMemberRequest;
+export type UpdateMemberRolePayload = UpdateMemberRoleRequest;
+export type TransferLeadershipPayload = TransferLeadershipRequest;
+
+function normalizeMemberRole(value: unknown): GroupMemberRole {
+  const s = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/-/g, "_");
+  if (s === "LEADER" || s === "GROUP_LEADER" || s === "OWNER") return "LEADER";
+  if (
+    s === "CO_LEADER" ||
+    s === "COLEADER" ||
+    s === "DEPUTY" ||
+    s === "VICE_LEADER" ||
+    s === "SUB_LEADER"
+  ) {
+    return "CO_LEADER";
+  }
+  return "MEMBER";
+}
+
+function mapUserSimple(
+  raw: unknown
+): GroupMember["user"] {
+  if (!raw || typeof raw !== "object") {
+    return { id: "", username: "", fullName: "" };
+  }
+  const r = raw as Record<string, unknown>;
+  return {
+    id: String(r.id ?? ""),
+    username: String(r.username ?? ""),
+    fullName: String(r.fullName ?? r.full_name ?? ""),
+    avatarUrl:
+      (r.avatarUrl ?? r.avatar_url ?? undefined) as string | undefined,
+  };
+}
+
+export function mapGroupMemberFromApi(raw: unknown): GroupMember {
+  const m = (raw && typeof raw === "object" ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  const roleSource = m.role ?? m.groupRole ?? m.memberRole;
+  return {
+    id: String(m.id ?? ""),
+    user: mapUserSimple(m.user),
+    role: normalizeMemberRole(roleSource),
+    created_at: m.created_at as string | undefined,
+    created_by: m.created_by as string | undefined,
+    updated_at: m.updated_at as string | undefined,
+    updated_by: m.updated_by as string | undefined,
+  };
+}
+
+export function mapGroupFromApi(raw: unknown): Group {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  const membersRaw = r.members;
+  const members = Array.isArray(membersRaw)
+    ? membersRaw.map((x) => mapGroupMemberFromApi(x))
+    : [];
+  return {
+    id: String(r.id ?? ""),
+    name: String(r.name ?? ""),
+    description: (r.description as string | null | undefined) ?? null,
+    avatar: (r.avatar as string | null | undefined) ?? null,
+    theme: (r.theme as string | null | undefined) ?? null,
+    theme_color: (r.theme_color as string | null | undefined) ?? null,
+    is_pro: Boolean(r.is_pro ?? r.isPro ?? false),
+    chatbot_count: Number(r.chatbot_count ?? r.chatbotCount ?? 0),
+    isDeleted: (r.isDeleted as boolean | null | undefined) ?? null,
+    members,
+    created_at: r.created_at as string | undefined,
+    created_by: (r.created_by as string | null | undefined) ?? null,
+    updated_at: r.updated_at as string | undefined,
+    updated_by: (r.updated_by as string | null | undefined) ?? null,
+  };
+}
+
 export const groupService = {
-  /**
-   * Lấy danh sách groups của user
-   * GET /api/v1/groups
-   */
   async getGroups(): Promise<ApiResponse<Group[]>> {
-    console.log("\n📋 [GROUP SERVICE] Getting groups");
-    try {
-      const response = await httpClient.get<ApiResponse<Group[]>>("/groups", {
-        skipAuth: false, // Optional auth - có token thì gửi, không có thì không gửi
-      });
-      console.log(`✅ [GROUP SERVICE] Got ${response.data?.length || 0} groups`);
+    const response = await httpClient.get<ApiResponse<Group[]>>(
+      GROUP_API.list,
+      { skipAuth: false }
+    );
+    const list = response.data;
+    if (!isGroupApiSuccess(response.code) || !Array.isArray(list)) {
       return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to get groups`);
-      console.error(`Error:`, error.message);
-      throw error;
     }
+    return { ...response, data: list.map(mapGroupFromApi) };
   },
 
-  /**
-   * Lấy chi tiết group
-   * GET /api/v1/groups/{groupId}
-   */
   async getGroupById(groupId: string): Promise<ApiResponse<Group>> {
-    console.log(`\n📄 [GROUP SERVICE] Getting group: ${groupId}`);
-    try {
-      const response = await httpClient.get<ApiResponse<Group>>(`/groups/${groupId}`, {
-        skipAuth: false, // Optional auth
-      });
-      console.log(`✅ [GROUP SERVICE] Got group details`);
+    const response = await httpClient.get<ApiResponse<Group>>(
+      GROUP_API.byId(groupId),
+      { skipAuth: false }
+    );
+    if (!isGroupApiSuccess(response.code) || response.data == null) {
       return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to get group`);
-      console.error(`Error:`, error.message);
-      throw error;
     }
+    return { ...response, data: mapGroupFromApi(response.data) };
   },
 
-  /**
-   * Tạo group mới
-   * POST /api/v1/groups
-   */
-  async createGroup(payload: CreateGroupPayload): Promise<ApiResponse<Group>> {
-    console.log("\n➕ [GROUP SERVICE] Creating group");
-    console.log(`Payload:`, JSON.stringify(payload, null, 2));
-    try {
-      const response = await httpClient.post<ApiResponse<Group>, CreateGroupPayload>(
-        "/groups",
-        payload
-      );
-      console.log(`✅ [GROUP SERVICE] Group created successfully`);
-      console.log(`Group ID: ${response.data?.id}`);
+  async createGroup(payload: GroupRequest): Promise<ApiResponse<Group>> {
+    const response = await httpClient.post<ApiResponse<Group>, GroupRequest>(
+      GROUP_API.list,
+      payload
+    );
+    if (!isGroupApiSuccess(response.code) || response.data == null) {
       return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to create group`);
-      console.error(`Error:`, error.message);
-      throw error;
     }
+    return { ...response, data: mapGroupFromApi(response.data) };
   },
 
-  /**
-   * Cập nhật group
-   * PUT /api/v1/groups/{groupId}
-   */
   async updateGroup(
     groupId: string,
-    payload: UpdateGroupPayload
+    payload: GroupRequest
   ): Promise<ApiResponse<Group>> {
-    console.log(`\n✏️ [GROUP SERVICE] Updating group: ${groupId}`);
-    console.log(`Payload:`, JSON.stringify(payload, null, 2));
-    try {
-      const response = await httpClient.put<ApiResponse<Group>, UpdateGroupPayload>(
-        `/groups/${groupId}`,
-        payload
-      );
-      console.log(`✅ [GROUP SERVICE] Group updated successfully`);
+    const response = await httpClient.put<ApiResponse<Group>, GroupRequest>(
+      GROUP_API.byId(groupId),
+      payload
+    );
+    if (!isGroupApiSuccess(response.code) || response.data == null) {
       return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to update group`);
-      console.error(`Error:`, error.message);
-      throw error;
     }
+    return { ...response, data: mapGroupFromApi(response.data) };
   },
 
-  /**
-   * Xóa group (soft delete)
-   * DELETE /api/v1/groups/{groupId}
-   */
-  async deleteGroup(groupId: string): Promise<ApiResponse<null>> {
-    console.log(`\n🗑️ [GROUP SERVICE] Deleting group: ${groupId}`);
-    try {
-      const response = await httpClient.delete<ApiResponse<null>>(`/groups/${groupId}`);
-      console.log(`✅ [GROUP SERVICE] Group deleted successfully`);
-      return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to delete group`);
-      console.error(`Error:`, error.message);
-      throw error;
-    }
+  async deleteGroup(groupId: string): Promise<ApiResponseVoid> {
+    return httpClient.delete<ApiResponseVoid>(GROUP_API.byId(groupId));
   },
 
-  /**
-   * Thêm member vào group
-   * POST /api/v1/groups/{groupId}/members
-   */
   async addMember(
     groupId: string,
-    payload: AddMemberPayload
-  ): Promise<ApiResponse<null>> {
-    console.log(`\n➕ [GROUP SERVICE] Adding member to group: ${groupId}`);
-    console.log(`Member ID: ${payload.member_id}, Role: ${payload.role || "MEMBER"}`);
-    try {
-      const response = await httpClient.post<ApiResponse<null>, AddMemberPayload>(
-        `/groups/${groupId}/members`,
-        payload
-      );
-      console.log(`✅ [GROUP SERVICE] Member added successfully`);
-      return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to add member`);
-      console.error(`Error:`, error.message);
-      throw error;
-    }
+    payload: AddMemberRequest
+  ): Promise<ApiResponseVoid> {
+    return httpClient.post<ApiResponseVoid, AddMemberRequest>(
+      GROUP_API.members(groupId),
+      {
+        role: payload.role,
+        member_id: payload.member_id,
+      }
+    );
   },
 
-  /**
-   * Lấy danh sách members của group
-   * GET /api/v1/groups/{groupId}/members
-   */
   async getMembers(groupId: string): Promise<ApiResponse<GroupMember[]>> {
-    console.log(`\n👥 [GROUP SERVICE] Getting members of group: ${groupId}`);
-    try {
-      const response = await httpClient.get<ApiResponse<GroupMember[]>>(
-        `/groups/${groupId}/members`
-      );
-      console.log(`✅ [GROUP SERVICE] Got ${response.data?.length || 0} members`);
+    const response = await httpClient.get<ApiResponse<GroupMember[]>>(
+      GROUP_API.members(groupId)
+    );
+    const list = response.data;
+    if (!isGroupApiSuccess(response.code) || !Array.isArray(list)) {
       return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to get members`);
-      console.error(`Error:`, error.message);
-      throw error;
     }
+    return { ...response, data: list.map(mapGroupMemberFromApi) };
   },
 
-  /**
-   * Xóa member khỏi group
-   * DELETE /api/v1/groups/{groupId}/members/{memberId}
-   */
   async removeMember(
     groupId: string,
     memberId: string
-  ): Promise<ApiResponse<null>> {
-    console.log(`\n➖ [GROUP SERVICE] Removing member from group: ${groupId}`);
-    console.log(`Member ID: ${memberId}`);
-    try {
-      const response = await httpClient.delete<ApiResponse<null>>(
-        `/groups/${groupId}/members/${memberId}`
-      );
-      console.log(`✅ [GROUP SERVICE] Member removed successfully`);
-      return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to remove member`);
-      console.error(`Error:`, error.message);
-      throw error;
-    }
+  ): Promise<ApiResponseVoid> {
+    return httpClient.delete<ApiResponseVoid>(
+      GROUP_API.memberById(groupId, memberId)
+    );
   },
 
-  /**
-   * Rời group (self-initiated)
-   * DELETE /api/v1/groups/{groupId}/members/me
-   */
-  async leaveGroup(groupId: string): Promise<ApiResponse<null>> {
-    console.log(`\n👋 [GROUP SERVICE] Leaving group: ${groupId}`);
-    try {
-      const response = await httpClient.delete<ApiResponse<null>>(
-        `/groups/${groupId}/members/me`
-      );
-      console.log(`✅ [GROUP SERVICE] Left group successfully`);
-      return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to leave group`);
-      console.error(`Error:`, error.message);
-      throw error;
-    }
+  async leaveGroup(groupId: string): Promise<ApiResponseVoid> {
+    return httpClient.delete<ApiResponseVoid>(GROUP_API.leaveMe(groupId));
   },
 
-  /**
-   * Cập nhật role của member
-   * PUT /api/v1/groups/{groupId}/members/{memberId}
-   */
   async updateMemberRole(
     groupId: string,
     memberId: string,
-    payload: UpdateMemberRolePayload
+    payload: UpdateMemberRoleRequest
   ): Promise<ApiResponse<GroupMember>> {
-    console.log(`\n👑 [GROUP SERVICE] Updating member role`);
-    console.log(`Group ID: ${groupId}, Member ID: ${memberId}, New Role: ${payload.role}`);
-    try {
-      const response = await httpClient.put<ApiResponse<GroupMember>, UpdateMemberRolePayload>(
-        `/groups/${groupId}/members/${memberId}`,
-        payload
-      );
-      console.log(`✅ [GROUP SERVICE] Member role updated successfully`);
+    const response = await httpClient.put<
+      ApiResponse<GroupMember>,
+      UpdateMemberRoleRequest
+    >(GROUP_API.memberById(groupId, memberId), payload);
+    if (!isGroupApiSuccess(response.code) || response.data == null) {
       return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to update member role`);
-      console.error(`Error:`, error.message);
-      throw error;
     }
+    return { ...response, data: mapGroupMemberFromApi(response.data) };
   },
 
-  /**
-   * Chuyển quyền leader
-   * POST /api/v1/groups/{groupId}/transfer-leadership
-   */
   async transferLeadership(
     groupId: string,
-    payload: TransferLeadershipPayload
-  ): Promise<ApiResponse<null>> {
-    console.log(`\n👑 [GROUP SERVICE] Transferring leadership`);
-    console.log(`Group ID: ${groupId}, New Leader ID: ${payload.newLeaderId}`);
-    try {
-      const response = await httpClient.post<ApiResponse<null>, TransferLeadershipPayload>(
-        `/groups/${groupId}/transfer-leadership`,
-        payload
-      );
-      console.log(`✅ [GROUP SERVICE] Leadership transferred successfully`);
-      return response;
-    } catch (error: any) {
-      console.error(`❌ [GROUP SERVICE] Failed to transfer leadership`);
-      console.error(`Error:`, error.message);
-      throw error;
-    }
+    payload: TransferLeadershipRequest
+  ): Promise<ApiResponseVoid> {
+    return httpClient.post<ApiResponseVoid, TransferLeadershipRequest>(
+      GROUP_API.transferLeadership(groupId),
+      payload
+    );
+  },
+
+  async getLocationSuggestions(
+    groupId: string
+  ): Promise<ApiResponse<SuggestLocationResponse[]>> {
+    return httpClient.get<ApiResponse<SuggestLocationResponse[]>>(
+      GROUP_API.locationSuggestions(groupId)
+    );
+  },
+
+  async suggestLocation(
+    groupId: string,
+    payload: SuggestLocationRequest
+  ): Promise<ApiResponse<SuggestLocationResponse>> {
+    return httpClient.post<
+      ApiResponse<SuggestLocationResponse>,
+      SuggestLocationRequest
+    >(GROUP_API.locationSuggestions(groupId), payload);
   },
 };
 
-// Legacy exports for backward compatibility
 export const getGroups = () => groupService.getGroups();
 export const getGroupById = (id: string) => groupService.getGroupById(id);
-export const createGroup = (payload: CreateGroupPayload) => groupService.createGroup(payload);
+export const createGroup = (payload: GroupRequest) =>
+  groupService.createGroup(payload);

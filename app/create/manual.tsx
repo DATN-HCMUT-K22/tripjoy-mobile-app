@@ -2,7 +2,8 @@ import InteractiveMap from "@/components/InteractiveMap";
 import TimePickerModal from "@/components/TimePickerModal";
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
-import { budgetOptions } from "@/data/budgetOptions";
+import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
+import { formatCurrencyVND } from "@/utils/format";
 import { mockAttractions } from "@/data/mockAttractions";
 import { mockItineraryItems } from "@/data/mockItineraryItems";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
@@ -11,14 +12,35 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
+import { Linking, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import {
-  Linking,
   SafeAreaView,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+
+function ManualItineraryHeader({ onBack }: { onBack: () => void }) {
+  return (
+    <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
+      <TouchableOpacity
+        onPress={onBack}
+        className="h-10 w-12 items-center justify-center"
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="arrow-back-outline" size={24} color="#000" />
+      </TouchableOpacity>
+      <View className="min-w-0 flex-1 items-center justify-center px-1">
+        <Text
+          className="text-center text-xl font-bold text-black"
+          numberOfLines={1}
+        >
+          Thiết lập lịch trình
+        </Text>
+      </View>
+      <View className="h-10 w-12" />
+    </View>
+  );
+}
 
 // Component hiển thị một itinerary item card
 function ItineraryItemCard({
@@ -175,6 +197,7 @@ function ItineraryItemCard({
 
 export default function ManualItineraryScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { tripData } = useTripSetup();
   const {
     selectedLocationsByDay,
@@ -383,26 +406,26 @@ export default function ManualItineraryScreen() {
     ])
   );
 
-  return (
-    <SafeAreaView className="flex-1 bg-white">
-      {/* Header */}
-      <View className="flex-row items-center px-4 py-3">
-        <TouchableOpacity
-          onPress={() => {
-            resetItinerary();
-            router.back();
-          }}
-          className="absolute left-4 z-10"
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back-outline" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text className="text-xl font-bold text-black flex-1 text-center">
-          Thiết lập lịch trình
-        </Text>
-      </View>
+  const bottomInset = Math.max(16, insets.bottom);
+  const footerBarHeight = 16 + 56 + bottomInset;
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+  return (
+    <SafeAreaView
+      className="flex-1 bg-white"
+      edges={["top", "left", "right"]}
+    >
+      <ManualItineraryHeader
+        onBack={() => {
+          resetItinerary();
+          router.back();
+        }}
+      />
+
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: footerBarHeight + 24 }}
+      >
         {/* Trip Header */}
         {tripData.location && (
           <View className="px-4 pt-2 pb-4">
@@ -434,10 +457,16 @@ export default function ManualItineraryScreen() {
                       : "Chưa chọn ngày"}
                   </Text>
                   <Text className="text-xs text-emerald-600 font-semibold">
-                    {tripData.budget
-                      ? budgetOptions.find((b) => b.id === tripData.budget)
-                          ?.priceRange ?? ""
-                      : ""}
+                    {tripData.budget === BUDGET_CUSTOM_ID &&
+                    tripData.budgetMinVnd != null &&
+                    tripData.budgetMaxVnd != null
+                      ? `${formatCurrencyVND(
+                          tripData.budgetMinVnd,
+                        )} – ${formatCurrencyVND(tripData.budgetMaxVnd)}`
+                      : tripData.budget
+                        ? (budgetOptions.find((b) => b.id === tripData.budget)
+                            ?.priceRange ?? "")
+                        : ""}
                   </Text>
                 </View>
 
@@ -628,7 +657,8 @@ export default function ManualItineraryScreen() {
       {itineraryItemsForDay.length > 0 && (
         <TouchableOpacity
           activeOpacity={0.8}
-          className="absolute bottom-24 right-6 w-14 h-14 rounded-full bg-primary items-center justify-center shadow-lg"
+          className="absolute right-6 w-14 h-14 rounded-full bg-primary items-center justify-center shadow-lg"
+          style={{ bottom: footerBarHeight + 12 }}
           onPress={() => {
             router.push({
               pathname: "/create/adjust-itinerary",
@@ -641,7 +671,10 @@ export default function ManualItineraryScreen() {
       )}
 
       {/* Button Chọn nhóm du lịch ở dưới cùng */}
-      <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-white border-t border-gray-200">
+      <View
+        className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-4 pt-4"
+        style={{ paddingBottom: bottomInset }}
+      >
         <TouchableOpacity
           activeOpacity={0.8}
           className="bg-primary rounded-full py-4 items-center justify-center"

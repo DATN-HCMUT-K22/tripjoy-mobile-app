@@ -2,6 +2,7 @@ import { ContactItem } from "@/components/group/ContactItem";
 import { useCreateGroup } from "@/hooks/useGroups";
 import { useUsers } from "@/hooks/useUsers";
 import { useAppSelector } from "@/store/hooks";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
@@ -288,28 +289,16 @@ export default function CreateGroupScreen() {
                     <View className="flex-row items-center gap-2">
                       {selectedUsersData.map((user) => (
                         <View key={user.id} className="relative">
-                          {user.avatarUrl ? (
-                            <ExpoImage
-                              source={{ uri: user.avatarUrl }}
-                              style={{ width: 40, height: 40, borderRadius: 20 }}
-                              contentFit="cover"
-                            />
-                          ) : (
-                            <View
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: "#34B27D",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Text className="text-white text-sm font-bold">
-                                {(user.fullName || user.username || "U").charAt(0).toUpperCase()}
-                              </Text>
-                            </View>
-                          )}
+                          <ExpoImage
+                            source={{
+                              uri: resolveUserAvatarUri(
+                                user.avatarUrl,
+                                user.fullName || user.username
+                              ),
+                            }}
+                            style={{ width: 40, height: 40, borderRadius: 20 }}
+                            contentFit="cover"
+                          />
                           <TouchableOpacity
                             onPress={() => removeContact(user.id)}
                             activeOpacity={0.7}

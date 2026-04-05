@@ -1,29 +1,40 @@
 import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
 import { SocialHeader } from "@/components/social/SocialHeader";
+import { useConversations } from "@/hooks/useConversations";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { useConversations } from "@/hooks/useConversations";
+import {
+  changePassword,
+  updateCurrentUser,
+  UserUpdateRequest,
+} from "@/services/users";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { updateUser as updateUserInStore } from "@/store/slices/authSlice";
-import { updateUserById, UserUpdateRequest } from "@/services/users";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
 import DatePicker from "react-native-date-picker";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface BasicInfoCardProps {
   fullName: string;
@@ -32,8 +43,6 @@ interface BasicInfoCardProps {
   setBio: (value: string) => void;
   dateOfBirth: string | null;
   onOpenDatePicker: () => void;
-  confirmPassword: string;
-  setConfirmPassword: (value: string) => void;
 }
 
 function BasicInfoCard({
@@ -43,15 +52,17 @@ function BasicInfoCard({
   setBio,
   dateOfBirth,
   onOpenDatePicker,
-  confirmPassword,
-  setConfirmPassword,
 }: BasicInfoCardProps) {
   return (
     <View className="bg-white rounded-2xl px-4 py-4 mb-4">
-      <Text className="text-base font-semibold text-black mb-3">Thông tin tài khoản cơ bản</Text>
+      <Text className="text-base font-semibold text-black mb-3">
+        Thông tin tài khoản cơ bản
+      </Text>
 
       <View style={{ marginBottom: 16 }}>
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Họ và tên</Text>
+        <Text className="text-sm font-semibold text-gray-700 mb-2">
+          Họ và tên
+        </Text>
         <TextInput
           value={fullName}
           onChangeText={setFullName}
@@ -61,7 +72,9 @@ function BasicInfoCard({
       </View>
 
       <View style={{ marginBottom: 16 }}>
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Giới thiệu</Text>
+        <Text className="text-sm font-semibold text-gray-700 mb-2">
+          Giới thiệu
+        </Text>
         <TextInput
           value={bio}
           onChangeText={setBio}
@@ -72,33 +85,27 @@ function BasicInfoCard({
           textAlignVertical="top"
           style={{ minHeight: 100 }}
         />
+        <Text className="text-xs text-gray-500 mt-1.5">
+          Mô tả tối thiểu 8 ký tự (có thể để trống).
+        </Text>
       </View>
 
       <View style={{ marginBottom: 16 }}>
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Ngày sinh</Text>
+        <Text className="text-sm font-semibold text-gray-700 mb-2">
+          Ngày sinh
+        </Text>
         <TouchableOpacity
           onPress={onOpenDatePicker}
           activeOpacity={0.7}
           className="border border-gray-200 rounded-xl px-4 py-3 bg-[#FAFAFA] flex-row items-center justify-between"
         >
           <Text className="text-base text-gray-800">
-            {dateOfBirth ? new Date(dateOfBirth).toLocaleDateString("vi-VN") : "Chọn ngày sinh"}
+            {dateOfBirth
+              ? new Date(dateOfBirth).toLocaleDateString("vi-VN")
+              : "Chọn ngày sinh"}
           </Text>
           <Ionicons name="calendar-outline" size={18} color="#6B7280" />
         </TouchableOpacity>
-      </View>
-
-      <View>
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Mật khẩu xác nhận</Text>
-        <TextInput
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          placeholder="Nhập mật khẩu để lưu thông tin cơ bản"
-          className="border border-gray-200 rounded-xl px-4 py-3 text-base bg-[#FAFAFA]"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
       </View>
     </View>
   );
@@ -121,47 +128,101 @@ function ChangePasswordCard({
   confirmNewPassword,
   setConfirmNewPassword,
 }: ChangePasswordCardProps) {
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
   return (
     <View className="bg-white rounded-2xl px-4 py-4 mb-4">
-      <Text className="text-base font-semibold text-black mb-3">Đổi mật khẩu</Text>
+      <Text className="text-base font-semibold text-black mb-3">
+        Đổi mật khẩu
+      </Text>
 
       <View style={{ marginBottom: 12 }}>
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Mật khẩu hiện tại</Text>
-        <TextInput
-          value={currentPassword}
-          onChangeText={setCurrentPassword}
-          placeholder="Nhập mật khẩu hiện tại"
-          className="border border-gray-200 rounded-xl px-4 py-3 text-base bg-[#FAFAFA]"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <Text className="text-sm font-semibold text-gray-700 mb-2">
+          Mật khẩu hiện tại
+        </Text>
+        <View className="flex-row items-center border border-gray-200 rounded-xl bg-[#FAFAFA] pr-1">
+          <TextInput
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
+            placeholder="Nhập mật khẩu hiện tại"
+            className="flex-1 px-4 py-3 text-base text-gray-900"
+            secureTextEntry={!showCurrent}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            onPress={() => setShowCurrent((v) => !v)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={showCurrent ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+          >
+            <Ionicons
+              name={showCurrent ? "eye-off-outline" : "eye-outline"}
+              size={22}
+              color="#6B7280"
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={{ marginBottom: 12 }}>
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Mật khẩu mới</Text>
-        <TextInput
-          value={newPassword}
-          onChangeText={setNewPassword}
-          placeholder="Nhập mật khẩu mới"
-          className="border border-gray-200 rounded-xl px-4 py-3 text-base bg-[#FAFAFA]"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <Text className="text-sm font-semibold text-gray-700 mb-2">
+          Mật khẩu mới
+        </Text>
+        <View className="flex-row items-center border border-gray-200 rounded-xl bg-[#FAFAFA] pr-1">
+          <TextInput
+            value={newPassword}
+            onChangeText={setNewPassword}
+            placeholder="Tối thiểu 6 ký tự"
+            className="flex-1 px-4 py-3 text-base text-gray-900"
+            secureTextEntry={!showNew}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            onPress={() => setShowNew((v) => !v)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={showNew ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+          >
+            <Ionicons
+              name={showNew ? "eye-off-outline" : "eye-outline"}
+              size={22}
+              color="#6B7280"
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View>
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Nhập lại mật khẩu mới</Text>
-        <TextInput
-          value={confirmNewPassword}
-          onChangeText={setConfirmNewPassword}
-          placeholder="Nhập lại mật khẩu mới"
-          className="border border-gray-200 rounded-xl px-4 py-3 text-base bg-[#FAFAFA]"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <Text className="text-sm font-semibold text-gray-700 mb-2">
+          Xác nhận mật khẩu mới
+        </Text>
+        <View className="flex-row items-center border border-gray-200 rounded-xl bg-[#FAFAFA] pr-1">
+          <TextInput
+            value={confirmNewPassword}
+            onChangeText={setConfirmNewPassword}
+            placeholder="Nhập lại mật khẩu mới"
+            className="flex-1 px-4 py-3 text-base text-gray-900"
+            secureTextEntry={!showConfirm}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            onPress={() => setShowConfirm((v) => !v)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={showConfirm ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+          >
+            <Ionicons
+              name={showConfirm ? "eye-off-outline" : "eye-outline"}
+              size={22}
+              color="#6B7280"
+            />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -176,28 +237,33 @@ export default function EditProfileScreen() {
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const userFromRedux = useAppSelector((state) => state.auth.user);
 
-  const { data: currentUser } = useCurrentUser(isAuthenticated && !userFromRedux);
+  const { data: currentUser } = useCurrentUser(
+    isAuthenticated && !userFromRedux,
+  );
   const user = userFromRedux || currentUser;
 
   const { conversations } = useConversations();
   const { unreadCount: notificationUnreadCount } = useNotifications();
 
   const unreadConversationsCount = useMemo(
-    () => conversations.reduce((sum, conv) => sum + (conv.unread_count ?? 0), 0),
-    [conversations]
+    () =>
+      conversations.reduce((sum, conv) => sum + (conv.unread_count ?? 0), 0),
+    [conversations],
   );
 
   const [fullName, setFullName] = useState(user?.fullName || "");
   const [bio, setBio] = useState(user?.bio || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || "");
-  const [dateOfBirth, setDateOfBirth] = useState<string | null>(user?.dateOfBirth || null);
+  const [dateOfBirth, setDateOfBirth] = useState<string | null>(
+    user?.dateOfBirth || null,
+  );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const hasProfileChanges =
     (fullName || "") !== (user?.fullName || "") ||
@@ -225,101 +291,147 @@ export default function EditProfileScreen() {
       if (!isAuthenticated) {
         requireAuth(() => Promise.resolve());
       }
-    }, [isAuthenticated, requireAuth])
+    }, [isAuthenticated, requireAuth]),
   );
 
   const handleSave = async () => {
     if (!user) return;
-    if (!confirmPassword.trim()) {
-      Alert.alert("Thiếu thông tin", "Vui lòng nhập mật khẩu để xác nhận cập nhật.");
+    if (!hasProfileChanges) return;
+
+    const bioTrim = bio.trim();
+    if (bioTrim.length > 0 && bioTrim.length < 8) {
+      showErrorToast(
+        "Mô tả quá ngắn",
+        "Phần giới thiệu cần tối thiểu 8 ký tự, hoặc để trống.",
+      );
       return;
     }
 
     const roleNames =
       user.roles
         ?.map((role) => role?.name)
-        .filter((name): name is string => !!name && name.trim().length > 0) || [];
+        .filter((name): name is string => !!name && name.trim().length > 0) ||
+      [];
 
     const payload: UserUpdateRequest = {
-      password: confirmPassword.trim(),
       fullName: fullName.trim() || undefined,
-      bio: bio.trim() || undefined,
+      bio: bioTrim || undefined,
       avatarUrl: avatarUrl || undefined,
       dateOfBirth: dateOfBirth || undefined,
       roles: roleNames.length > 0 ? roleNames : ["USER"],
     };
 
     try {
-      setIsSaving(true);
+      setIsSavingProfile(true);
       await requireAuth(async () => {
-        const res = await updateUserById(user.id, payload);
+        const res = await updateCurrentUser(payload);
         if (res.code === 1000 || res.code === 0) {
           if (res.data) {
             dispatch(updateUserInStore(res.data));
           } else {
             dispatch(updateUserInStore(payload));
           }
-          setConfirmPassword("");
+          showSuccessToast("Đã cập nhật thông tin");
           router.back();
         } else {
-          Alert.alert("Lỗi", res.message || "Không thể cập nhật thông tin");
+          showErrorToast(
+            "Không lưu được",
+            res.message || "Không thể cập nhật thông tin",
+          );
         }
       });
     } catch (e: any) {
-      Alert.alert("Lỗi", e?.message || "Không thể cập nhật thông tin");
+      const msg = e?.message || "Không thể cập nhật thông tin";
+      showErrorToast(
+        "Không lưu được",
+        /method not allowed/i.test(String(msg))
+          ? "Máy chủ không chấp nhận thao tác cập nhật (405). Kiểm tra lại API hoặc liên hệ hỗ trợ."
+          : msg,
+      );
     } finally {
-      setIsSaving(false);
+      setIsSavingProfile(false);
     }
   };
 
   const handleChangePassword = async () => {
     if (!user) return;
-    if (!currentPassword.trim() || !newPassword.trim() || !confirmNewPassword.trim()) {
-      Alert.alert("Thiếu thông tin", "Vui lòng nhập đầy đủ thông tin đổi mật khẩu.");
+    if (
+      !currentPassword.trim() ||
+      !newPassword.trim() ||
+      !confirmNewPassword.trim()
+    ) {
+      showErrorToast(
+        "Thiếu thông tin",
+        "Vui lòng nhập đầy đủ thông tin đổi mật khẩu.",
+      );
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      Alert.alert("Không khớp", "Mật khẩu mới và xác nhận mật khẩu chưa khớp.");
+      showErrorToast(
+        "Không khớp",
+        "Mật khẩu mới và xác nhận mật khẩu chưa khớp.",
+      );
       return;
     }
-    if (newPassword.length < 8) {
-      Alert.alert("Mật khẩu yếu", "Mật khẩu mới cần tối thiểu 8 ký tự.");
+    if (newPassword.trim().length < 6) {
+      showErrorToast("Mật khẩu yếu", "Mật khẩu mới cần tối thiểu 6 ký tự.");
       return;
     }
-
-    const roleNames =
-      user.roles
-        ?.map((role) => role?.name)
-        .filter((name): name is string => !!name && name.trim().length > 0) || [];
 
     try {
-      setIsSaving(true);
+      setIsChangingPassword(true);
       await requireAuth(async () => {
-        const res = await updateUserById(user.id, {
-          password: newPassword.trim(),
-          roles: roleNames.length > 0 ? roleNames : ["USER"],
+        const res = await changePassword({
+          oldPassword: currentPassword.trim(),
+          newPassword: newPassword.trim(),
+          confirmPassword: confirmNewPassword.trim(),
         });
-        if (res.code === 1000 || res.code === 0) {
+        if (res.code === 1000) {
           setCurrentPassword("");
           setNewPassword("");
           setConfirmNewPassword("");
-          Alert.alert("Thành công", "Đã cập nhật mật khẩu.");
+          showSuccessToast("Đã đổi mật khẩu");
         } else {
-          Alert.alert("Lỗi", res.message || "Không thể cập nhật mật khẩu");
+          showErrorToast(
+            "Đổi mật khẩu thất bại",
+            res.message || "Không thể đổi mật khẩu.",
+          );
         }
       });
     } catch (e: any) {
-      Alert.alert("Lỗi", e?.message || "Không thể cập nhật mật khẩu");
+      const code = e?.response?.data?.code as number | undefined;
+      const apiMsg = e?.response?.data?.message as string | undefined;
+      if (code === 2001) {
+        showErrorToast(
+          "Không đổi được mật khẩu",
+          "Mật khẩu hiện tại không đúng hoặc phiên đăng nhập không hợp lệ.",
+        );
+      } else if (code === 1002) {
+        showErrorToast(
+          "Dữ liệu không hợp lệ",
+          apiMsg ||
+            "Kiểm tra độ dài mật khẩu và mật khẩu xác nhận phải khớp mật khẩu mới.",
+        );
+      } else {
+        showErrorToast(
+          "Đổi mật khẩu thất bại",
+          apiMsg || e?.message || "Vui lòng thử lại sau.",
+        );
+      }
     } finally {
-      setIsSaving(false);
+      setIsChangingPassword(false);
     }
   };
 
   const handlePickAvatar = async () => {
     await requireAuth(async () => {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Quyền bị từ chối", "Cần quyền truy cập thư viện ảnh để đổi avatar.");
+        showErrorToast(
+          "Cần quyền truy cập",
+          "Cần quyền truy cập thư viện ảnh để đổi avatar.",
+        );
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -347,7 +459,10 @@ export default function EditProfileScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F7F8FA]">
+    <SafeAreaView
+      className="flex-1 bg-[#F7F8FA]"
+      edges={["top", "left", "right", "bottom"]}
+    >
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -365,35 +480,48 @@ export default function EditProfileScreen() {
               <Text style={{ fontSize: 16 }}>Hủy</Text>
             </TouchableOpacity>
           }
-          centerElement={<Text className="text-lg font-semibold text-black">Cập nhật thông tin</Text>}
+          centerElement={
+            <Text className="text-lg font-semibold text-black">
+              Cập nhật thông tin
+            </Text>
+          }
           rightElement={
             <TouchableOpacity
               onPress={handleSave}
               activeOpacity={0.7}
-              disabled={isSaving || !hasProfileChanges}
+              disabled={
+                isSavingProfile || isChangingPassword || !hasProfileChanges
+              }
               style={{
                 paddingHorizontal: 8,
                 paddingVertical: 4,
-                opacity: isSaving || !hasProfileChanges ? 0.5 : 1,
+                opacity:
+                  isSavingProfile || isChangingPassword || !hasProfileChanges
+                    ? 0.5
+                    : 1,
               }}
             >
-              <Text className="text-primary font-semibold">{isSaving ? "Đang lưu..." : "Lưu"}</Text>
+              <Text className="text-primary font-semibold">
+                {isSavingProfile ? "Đang lưu..." : "Lưu"}
+              </Text>
             </TouchableOpacity>
           }
         />
 
-        <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        >
           <View className="bg-white rounded-2xl px-4 py-5 mb-4">
             <View style={{ alignItems: "center", marginBottom: 8 }}>
               <TouchableOpacity activeOpacity={0.85} onPress={handlePickAvatar}>
                 <View>
                   <Image
                     source={{
-                      uri:
-                        avatarUrl ||
-                        `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                          user?.fullName || user?.username || "User"
-                        )}&background=34B27D&color=fff`,
+                      uri: resolveUserAvatarUri(
+                        avatarUrl,
+                        user?.fullName || user?.username,
+                      ),
                     }}
                     style={{ width: 96, height: 96, borderRadius: 48 }}
                     contentFit="cover"
@@ -417,7 +545,9 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
               </TouchableOpacity>
-              <Text className="text-sm text-gray-500 mt-3">Nhấn vào avatar để thay đổi</Text>
+              <Text className="text-sm text-gray-500 mt-3">
+                Nhấn vào avatar để thay đổi
+              </Text>
             </View>
           </View>
 
@@ -428,17 +558,19 @@ export default function EditProfileScreen() {
             setBio={setBio}
             dateOfBirth={dateOfBirth}
             onOpenDatePicker={openDatePicker}
-            confirmPassword={confirmPassword}
-            setConfirmPassword={setConfirmPassword}
           />
           <TouchableOpacity
-            className={`rounded-xl py-3 items-center mb-4 ${isSaving || !hasProfileChanges ? "bg-gray-300" : "bg-primary"}`}
+            className={`rounded-xl py-3 items-center mb-4 ${isSavingProfile || isChangingPassword || !hasProfileChanges ? "bg-gray-300" : "bg-primary"}`}
             activeOpacity={0.8}
             onPress={handleSave}
-            disabled={isSaving || !hasProfileChanges}
+            disabled={
+              isSavingProfile || isChangingPassword || !hasProfileChanges
+            }
           >
             <Text className="text-white text-base font-semibold">
-              {isSaving ? "Đang lưu thay đổi..." : "Lưu thông tin cơ bản"}
+              {isSavingProfile
+                ? "Đang lưu thay đổi..."
+                : "Lưu thông tin cơ bản"}
             </Text>
           </TouchableOpacity>
 
@@ -451,13 +583,13 @@ export default function EditProfileScreen() {
             setConfirmNewPassword={setConfirmNewPassword}
           />
           <TouchableOpacity
-            className={`rounded-xl py-3 items-center ${isSaving ? "bg-gray-300" : "bg-black"}`}
+            className={`rounded-xl py-3 items-center ${isChangingPassword || isSavingProfile ? "bg-gray-300" : "bg-black"}`}
             activeOpacity={0.8}
             onPress={handleChangePassword}
-            disabled={isSaving}
+            disabled={isChangingPassword || isSavingProfile}
           >
             <Text className="text-white text-base font-semibold">
-              {isSaving ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
+              {isChangingPassword ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
             </Text>
           </TouchableOpacity>
 
@@ -476,7 +608,6 @@ export default function EditProfileScreen() {
             onDateChange={setPickerDate}
           />
         </ScrollView>
-
       </KeyboardAvoidingView>
 
       <LoginRequiredModal
@@ -486,5 +617,3 @@ export default function EditProfileScreen() {
     </SafeAreaView>
   );
 }
-
-

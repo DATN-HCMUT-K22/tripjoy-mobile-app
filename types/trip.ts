@@ -11,6 +11,9 @@ export interface Location {
   };
   specialty: string;
   isSelected?: boolean;
+  /** WGS84 — dùng khi gửi API / bản đồ */
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface TripSetup {

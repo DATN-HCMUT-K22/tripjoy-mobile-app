@@ -1,5 +1,6 @@
 import { messageService } from "@/services/messages";
 import { useAppSelector } from "@/store/hooks";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import React, { useEffect, useState } from "react";
@@ -146,11 +147,7 @@ export const MessageLikesModal: React.FC<MessageLikesModalProps> = ({
             >
               {users.map((u) => {
                 const displayName = u.fullName || u.username;
-                const avatarUri =
-                  u.avatarUrl ||
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    displayName || "User"
-                  )}&background=34B27D&color=fff`;
+                const avatarUri = resolveUserAvatarUri(u.avatarUrl, displayName);
                 return (
                   <View key={u.id} style={styles.itemRow}>
                     <Image

@@ -71,7 +71,6 @@ export function useLikePost() {
       // Không hiện toast cho like/unlike (UX tốt hơn)
     },
     onError: (error: Error) => {
-      console.error("Like post error:", error);
       showErrorToast("Thao tác thất bại", error);
     },
   });
@@ -96,7 +95,6 @@ export function useCommentPost() {
       showSuccessToast("Bình luận thành công!");
     },
     onError: (error: Error) => {
-      console.error("Comment post error:", error);
       showErrorToast("Bình luận thất bại", error);
     },
   });
@@ -121,7 +119,6 @@ export function useSharePost() {
       showSuccessToast("Chia sẻ thành công!");
     },
     onError: (error: Error) => {
-      console.error("Share post error:", error);
       showErrorToast("Chia sẻ thất bại", error);
     },
   });
@@ -146,7 +143,6 @@ export function useBookmarkPost() {
       // Không hiện toast cho bookmark (UX tốt hơn)
     },
     onError: (error: Error) => {
-      console.error("Bookmark post error:", error);
       showErrorToast("Thao tác thất bại", error);
     },
   });
@@ -171,7 +167,6 @@ export function useCreatePost() {
       showSuccessToast("Đăng bài thành công!");
     },
     onError: (error: Error) => {
-      console.error("Create post error:", error);
       showErrorToast("Đăng bài thất bại", error);
     },
   });

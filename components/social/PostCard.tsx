@@ -1,5 +1,6 @@
 import { Post } from "@/types/social";
 import { formatNumber } from "@/utils/format";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import React from "react";
@@ -69,17 +70,9 @@ export const PostCard: React.FC<PostCardProps> = ({
                 "[PostCard] Error loading image:",
                 error,
                 "URI:",
-                post.image,
-                "Error details:",
-                JSON.stringify(error, null, 2)
+                post.image
               );
               setImageError(true);
-            }}
-            onLoad={() => {
-              console.log("[PostCard] Image loaded successfully:", post.image);
-            }}
-            onLoadStart={() => {
-              console.log("[PostCard] Image load started:", post.image);
             }}
           />
         ) : (
@@ -125,7 +118,9 @@ export const PostCard: React.FC<PostCardProps> = ({
           <View className="flex-row items-center gap-2 flex-1">
             {!avatarError ? (
               <Image
-                source={{ uri: post.user.avatar }}
+                source={{
+                  uri: resolveUserAvatarUri(post.user.avatar, post.user.name),
+                }}
                 style={{ width: 40, height: 40, borderRadius: 20 }}
                 contentFit="cover"
                 cachePolicy="memory-disk"
@@ -133,19 +128,13 @@ export const PostCard: React.FC<PostCardProps> = ({
                 placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
                 transition={200}
                 onError={(error) => {
-                  console.log(
+                  console.error(
                     "[PostCard] Error loading avatar:",
                     error,
                     "URI:",
                     post.user.avatar
                   );
                   setAvatarError(true);
-                }}
-                onLoad={() => {
-                  console.log(
-                    "[PostCard] Avatar loaded successfully:",
-                    post.user.avatar
-                  );
                 }}
               />
             ) : (

@@ -50,7 +50,10 @@ export function useIncomingNotification() {
             );
             console.log("[useIncomingNotification] ✅ Generic notification shown");
           } catch (error) {
-            console.error("[useIncomingNotification] ❌ Failed to show generic notification:", error);
+            console.log(
+              "[useIncomingNotification] Failed to show generic notification:",
+              error
+            );
           }
 
           console.log("========== END [NOTIFICATION DEVICE: " + (userId?.substring(0, 8) || "UNKNOWN") + "] ==========\n");
@@ -65,7 +68,10 @@ export function useIncomingNotification() {
           socketService.offNotification(handleNotification);
         };
       } catch (error) {
-        console.error("[useIncomingNotification] ❌ Failed to setup notification listener:", error);
+        console.log(
+          "[useIncomingNotification] Failed to setup notification listener:",
+          error
+        );
       }
     };
 

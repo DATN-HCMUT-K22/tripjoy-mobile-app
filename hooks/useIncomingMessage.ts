@@ -130,7 +130,10 @@ export function useIncomingMessage() {
             groupId = fetchedGroupId;
           }
         } catch (error) {
-          console.error("[useIncomingMessage] Failed to fetch conversation for groupId:", error);
+          console.log(
+            "[useIncomingMessage] Failed to fetch conversation for groupId:",
+            error
+          );
           // Set to null to avoid retrying
           setConversationGroupId(conversationId, null);
           groupId = null;
@@ -165,7 +168,10 @@ export function useIncomingMessage() {
           console.log("[useIncomingMessage] ✅ Notification service called successfully");
           console.log("========== END [DEVICE: " + (currentUserId?.substring(0, 8) || "UNKNOWN") + "] ==========\n");
         } catch (error) {
-          console.error("[useIncomingMessage] ❌ Failed to show notification:", error);
+          console.log(
+            "[useIncomingMessage] Failed to show notification:",
+            error
+          );
           console.log("========== END [DEVICE: " + (currentUserId?.substring(0, 8) || "UNKNOWN") + "] ==========\n");
         }
       }
@@ -235,7 +241,10 @@ export function useIncomingMessage() {
           }
         };
       } catch (error) {
-        console.error("[useIncomingMessage] ❌ Failed to setup socket listener:", error);
+        console.log(
+          "[useIncomingMessage] Failed to setup socket listener:",
+          error
+        );
       }
     };
 

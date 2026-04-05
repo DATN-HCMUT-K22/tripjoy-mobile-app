@@ -1,0 +1,24 @@
+---
+description: Safe area cho full-screen pages — header không dính status bar / notch
+alwaysApply: true
+---
+
+# Safe area & header (màn full-screen mới)
+
+## Vùng an toàn thiết bị
+
+- **Không** dùng `SafeAreaView` từ `react-native` cho màn có header/tiêu đề tự vẽ — trên nhiều máy (Android, notch) phần trên **dính** status bar.
+- Dùng **`SafeAreaView` từ `react-native-safe-area-context`** và chỉ định `edges` rõ ràng, ví dụ:
+  - Toàn màn: `edges={["top", "left", "right", "bottom"]}`
+  - Chỉ tránh tai thỏ + home indicator có thể tách `edges` tùy layout (tham khảo `app/create/index.tsx`, `app/create/summary.tsx`).
+
+Root app đã bọc `SafeAreaProvider` trong `app/_layout.tsx` — các màn con chỉ cần import đúng `SafeAreaView`.
+
+## Header có nút back + tiêu đề giữa
+
+- **Không** đặt nút back `absolute` chồng lên hàng tiêu đề (dễ cắt chữ / chồng layout).
+- Dùng **bố cục 3 cột**: cột trái cố định (nút back `w-12`), giữa `flex-1` + `min-w-0` + tiêu đề `text-center` + `numberOfLines={1}`, cột phải `w-12` (trống) để tiêu đề **cân giữa màn hình**.
+
+## Tham chiếu
+
+- Màn đã chuẩn: `app/create/add-location.tsx`, `app/create/budget.tsx` (header 3 cột), `app/create/index.tsx` (`edges`).

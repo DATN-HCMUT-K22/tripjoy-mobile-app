@@ -1,60 +1,81 @@
+import { getGoogleMapsApiKey } from "@/config/env";
+import type { LocationForMap } from "@/utils/mapLocations";
+import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { Ionicons } from "@expo/vector-icons";
-import MapboxGL from "@rnmapbox/maps";
 import { Image } from "expo-image";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Platform, View } from "react-native";
-
-import { buildMapboxStaticMapUrl, LocationForMap } from "@/utils/mapbox";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 type Props = {
   locations: LocationForMap[];
   height?: number;
+  /** Marker đang chọn (theo index trong `locations`) — màu xanh lá. */
+  selectedIndex?: number | null;
+  /** Tùy chỉnh màu từng marker; nếu có thì bỏ qua `selectedIndex`. */
+  getMarkerColor?: (index: number) => string;
 };
 
-const InteractiveMap: React.FC<Props> = ({ locations, height = 256 }) => {
-  const [hasToken, setHasToken] = useState(false);
+const DEFAULT_PIN = "#EF4444";
+const SELECTED_PIN = "#059669";
 
-  useEffect(() => {
-    // Lấy token từ util, tránh rerender
-    // @rnmapbox/maps yêu cầu setAccessToken trước khi render map
-    import("@/config/env").then(
-      ({ EXPO_PUBLIC_MAP_API_KEY, MAP_API_KEY, EXPO_PUBLIC_MAPBOX_TOKEN }) => {
-        const tk =
-          EXPO_PUBLIC_MAP_API_KEY ||
-          MAP_API_KEY ||
-          EXPO_PUBLIC_MAPBOX_TOKEN ||
-          "";
-        if (tk) {
-          MapboxGL.setAccessToken(tk);
-          MapboxGL.setTelemetryEnabled(false);
-          setHasToken(true);
-        }
-      }
-    );
-  }, []);
+const InteractiveMap: React.FC<Props> = ({
+  locations,
+  height = 256,
+  selectedIndex = null,
+  getMarkerColor,
+}) => {
+  const mapRef = useRef<MapView>(null);
+  const googleKey = getGoogleMapsApiKey();
+  const useNativeGoogleMap = googleKey.length > 0 && Platform.OS !== "web";
 
   const center = useMemo(() => {
-    if (!locations.length) return undefined;
-    const avgLat =
+    if (!locations.length) return null;
+    const lat =
       locations.reduce((sum, l) => sum + l.latitude, 0) / locations.length;
-    const avgLng =
+    const lng =
       locations.reduce((sum, l) => sum + l.longitude, 0) / locations.length;
-    return [avgLng, avgLat] as [number, number];
+    return { latitude: lat, longitude: lng };
   }, [locations]);
+
+  const initialRegion = useMemo(() => {
+    if (!center) return undefined;
+    return {
+      ...center,
+      latitudeDelta: 0.12,
+      longitudeDelta: 0.12,
+    };
+  }, [center]);
+
+  useEffect(() => {
+    if (!useNativeGoogleMap || !locations.length || !mapRef.current) return;
+    const t = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(
+        locations.map((l) => ({
+          latitude: l.latitude,
+          longitude: l.longitude,
+        })),
+        {
+          edgePadding: { top: 48, right: 48, bottom: 48, left: 48 },
+          animated: true,
+        }
+      );
+    }, 400);
+    return () => clearTimeout(t);
+  }, [locations, useNativeGoogleMap]);
 
   const fallbackUri = useMemo(
     () =>
-      buildMapboxStaticMapUrl(locations, {
+      buildStaticMapImageUrl(locations, {
         width: 800,
         height,
       }),
     [locations, height]
   );
 
-  // Fallback: không có token hoặc web thì dùng static map (web dùng .web.tsx)
-  if (!center || Platform.OS === "web" || !hasToken) {
+  if (!center || !useNativeGoogleMap) {
     return (
-      <View style={{ height }} className="w-full bg-gray-200">
+      <View style={{ height }} className="w-full bg-gray-200 overflow-hidden rounded-2xl">
         <Image
           source={{ uri: fallbackUri }}
           style={{ width: "100%", height: "100%" }}
@@ -69,30 +90,40 @@ const InteractiveMap: React.FC<Props> = ({ locations, height = 256 }) => {
       style={{ height }}
       className="w-full bg-gray-200 overflow-hidden rounded-2xl"
     >
-      <MapboxGL.MapView style={{ flex: 1 }} styleURL={MapboxGL.StyleURL.Street}>
-        <MapboxGL.Camera
-          centerCoordinate={center}
-          zoomLevel={12}
-          animationMode="flyTo"
-          animationDuration={500}
-        />
-        {locations.map((loc, idx) => (
-          <MapboxGL.PointAnnotation
-            key={`pin-${idx}`}
-            id={`pin-${idx}`}
-            coordinate={[loc.longitude, loc.latitude]}
-          >
-            <View
-              style={{
-                alignItems: "center",
-                justifyContent: "center",
+      <MapView
+        ref={mapRef}
+        style={{ flex: 1 }}
+        provider={PROVIDER_GOOGLE}
+        mapType="standard"
+        initialRegion={initialRegion}
+        rotateEnabled={false}
+        pitchEnabled={false}
+        showsUserLocation={false}
+        showsMyLocationButton={false}
+      >
+        {locations.map((loc, idx) => {
+          const color = getMarkerColor
+            ? getMarkerColor(idx)
+            : selectedIndex != null && idx === selectedIndex
+              ? SELECTED_PIN
+              : DEFAULT_PIN;
+          return (
+            <Marker
+              key={`g-pin-${idx}`}
+              coordinate={{
+                latitude: loc.latitude,
+                longitude: loc.longitude,
               }}
+              tracksViewChanges={false}
+              anchor={{ x: 0.5, y: 1 }}
             >
-              <Ionicons name="location-sharp" size={28} color="#EF4444" />
-            </View>
-          </MapboxGL.PointAnnotation>
-        ))}
-      </MapboxGL.MapView>
+              <View className="items-center">
+                <Ionicons name="location-sharp" size={32} color={color} />
+              </View>
+            </Marker>
+          );
+        })}
+      </MapView>
     </View>
   );
 };

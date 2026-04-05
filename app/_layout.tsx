@@ -35,20 +35,9 @@ import Toast from "react-native-toast-message";
 import { Provider } from "react-redux";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-// Tắt error overlay và error stack trong development mode
+// Tắt LogBox (thanh lỗi/cảnh báo dưới cùng, badge số đếm) trên mọi màn — chỉ dev
 if (typeof __DEV__ !== "undefined" && __DEV__) {
-  // Tắt tất cả LogBox warnings và errors
   LogBox.ignoreAllLogs(true);
-
-  // Ignore specific error patterns
-  LogBox.ignoreLogs([
-    /code.*message/,
-    /{"code":/,
-    /SSLHandshakeException/,
-    /Failed to load resource/,
-    /Chain validation failed/,
-    /Error loading image/,
-  ]);
 
   // Set global error handler để log lỗi nhưng KHÔNG hiện error overlay
   if (typeof ErrorUtils !== "undefined") {
@@ -508,16 +497,29 @@ export default function RootLayout() {
                             size={24}
                             color="#ffffff"
                           />
-                          <Text
-                            style={{
-                              color: "#ffffff",
-                              fontSize: 14,
-                              fontWeight: "600",
-                              flexShrink: 1,
-                            }}
-                          >
-                            {props.text1}
-                          </Text>
+                          <View style={{ flexShrink: 1 }}>
+                            <Text
+                              style={{
+                                color: "#ffffff",
+                                fontSize: 14,
+                                fontWeight: "600",
+                              }}
+                            >
+                              {props.text1}
+                            </Text>
+                            {props.text2 ? (
+                              <Text
+                                style={{
+                                  color: "#ffffff",
+                                  fontSize: 12,
+                                  marginTop: 2,
+                                  opacity: 0.9,
+                                }}
+                              >
+                                {props.text2}
+                              </Text>
+                            ) : null}
+                          </View>
                         </View>
                       ),
                       error: (props) => (

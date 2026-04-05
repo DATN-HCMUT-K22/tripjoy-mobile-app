@@ -7,6 +7,7 @@ import { useConversations } from "@/hooks/useConversations";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { updateUser } from "@/store/slices/authSlice";
 import { Ionicons } from "@expo/vector-icons";
@@ -364,11 +365,10 @@ export default function ProfileScreen() {
           >
             <Image
               source={{
-                uri:
-                  user?.avatarUrl ||
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    user?.fullName || user?.username || "User"
-                  )}&background=34B27D&color=fff`,
+                uri: resolveUserAvatarUri(
+                  user?.avatarUrl,
+                  user?.fullName || user?.username
+                ),
               }}
               style={{ width: 60, height: 60, borderRadius: 30 }}
               contentFit="cover"

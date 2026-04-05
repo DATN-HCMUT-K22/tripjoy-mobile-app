@@ -96,8 +96,8 @@ class NotificationService {
             });
           }
         } catch (channelError) {
-          console.error(
-            "[NotificationService] ❌ Failed to configure Android notification channel:",
+          console.log(
+            "[NotificationService] Failed to configure Android notification channel:",
             channelError
           );
         }
@@ -128,10 +128,7 @@ class NotificationService {
           );
         }
       } catch (e) {
-        console.error(
-          "[NotificationService] OneSignal initialization error:",
-          e
-        );
+        console.log("[NotificationService] OneSignal initialization error:", e);
         console.warn(
           "[NotificationService] Continuing with expo-notifications only. To use OneSignal, rebuild native app: npx expo prebuild --clean && npx expo run:android"
         );
@@ -149,7 +146,7 @@ class NotificationService {
       this.isInitialized = true;
       console.log("[NotificationService] Initialized successfully");
     } catch (error) {
-      console.error("[NotificationService] Failed to initialize:", error);
+      console.log("[NotificationService] Failed to initialize:", error);
       throw error;
     }
   }
@@ -188,7 +185,7 @@ class NotificationService {
       console.log("[NotificationService] Permission granted:", granted);
       return granted;
     } catch (error) {
-      console.error("[NotificationService] Failed to request permission:", error);
+      console.log("[NotificationService] Failed to request permission:", error);
       return false;
     }
   }
@@ -306,7 +303,7 @@ class NotificationService {
       }
       console.log("[NotificationService] ✅ Navigation triggered");
     } catch (error) {
-      console.error("[NotificationService] Failed to navigate to chat:", error);
+      console.log("[NotificationService] Failed to navigate to chat:", error);
     }
   }
 
@@ -345,7 +342,9 @@ class NotificationService {
         const { status: newStatus } = await Notifications.requestPermissionsAsync();
         console.log("[NotificationService] Requested permission again, new status:", newStatus);
         if (newStatus !== "granted") {
-          console.error("[NotificationService] ❌ Permission denied, cannot show notification");
+          console.log(
+            "[NotificationService] Permission denied, cannot show notification"
+          );
           return;
         }
       }
@@ -378,7 +377,10 @@ class NotificationService {
             console.log("[NotificationService] ✅ Default channel created");
           }
         } catch (channelError) {
-          console.error("[NotificationService] Failed to check/create Android channel:", channelError);
+          console.log(
+            "[NotificationService] Failed to check/create Android channel:",
+            channelError
+          );
         }
       }
 
@@ -454,8 +456,8 @@ class NotificationService {
         console.warn("[NotificationService] Could not verify notification:", verifyError);
       }
     } catch (error) {
-      console.error("[NotificationService] ❌ Failed to show notification:", error);
-      console.error("[NotificationService] Error details:", {
+      console.log("[NotificationService] Failed to show notification:", error);
+      console.log("[NotificationService] Error details:", {
         message: (error as Error).message,
         stack: (error as Error).stack,
       });
@@ -473,7 +475,7 @@ class NotificationService {
       const deviceState = await (OneSignal as any).getDeviceState();
       return deviceState?.userId || null;
     } catch (error) {
-      console.error("[NotificationService] Failed to get user ID:", error);
+      console.log("[NotificationService] Failed to get user ID:", error);
       return null;
     }
   }
@@ -488,7 +490,7 @@ class NotificationService {
         console.log("[NotificationService] External user ID set:", userId);
       }
     } catch (error) {
-      console.error("[NotificationService] Failed to set external user ID:", error);
+      console.log("[NotificationService] Failed to set external user ID:", error);
     }
   }
 
@@ -502,7 +504,7 @@ class NotificationService {
         console.log("[NotificationService] External user ID removed");
       }
     } catch (error) {
-      console.error("[NotificationService] Failed to remove external user ID:", error);
+      console.log("[NotificationService] Failed to remove external user ID:", error);
     }
   }
 
@@ -531,7 +533,7 @@ class NotificationService {
       status.permissionStatus = permStatus;
       status.expoNotificationsAvailable = true;
     } catch (error) {
-      console.error("[NotificationService] Failed to check expo-notifications:", error);
+      console.log("[NotificationService] Failed to check expo-notifications:", error);
     }
 
     try {
@@ -549,7 +551,7 @@ class NotificationService {
    */
   async sendTestNotification(): Promise<void> {
     if (!this.isInitialized) {
-      console.error("[NotificationService] ❌ Not initialized, cannot send test notification");
+      console.log("[NotificationService] Not initialized, cannot send test notification");
       throw new Error("Notification service not initialized");
     }
 
@@ -588,7 +590,7 @@ class NotificationService {
 
       console.log("[NotificationService] ✅ Test notification sent successfully!");
     } catch (error) {
-      console.error("[NotificationService] ❌ Failed to send test notification:", error);
+      console.log("[NotificationService] Failed to send test notification:", error);
       throw error;
     }
   }
@@ -624,7 +626,9 @@ class NotificationService {
         const { status: newStatus } = await Notifications.requestPermissionsAsync();
         console.log("[NotificationService] Requested permission again (generic), new status:", newStatus);
         if (newStatus !== "granted") {
-          console.error("[NotificationService] ❌ Permission denied (generic), cannot show notification");
+          console.log(
+            "[NotificationService] Permission denied (generic), cannot show notification"
+          );
           return;
         }
       }
@@ -651,7 +655,10 @@ class NotificationService {
 
       console.log("[NotificationService] ✅ Generic notification scheduled successfully, ID:", notificationId);
     } catch (error) {
-      console.error("[NotificationService] ❌ Failed to show generic notification:", error);
+      console.log(
+        "[NotificationService] Failed to show generic notification:",
+        error
+      );
     }
   }
 }

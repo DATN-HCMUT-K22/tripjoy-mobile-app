@@ -4,6 +4,8 @@ import { useAppSelector } from "@/store/hooks";
 import { ChatMessageResponse, TypingUser } from "@/types/message";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const isApiSuccess = (code?: number) => code === 0 || code === 1000;
+
 interface UseMessagesOptions {
   conversationId: string;
   autoLoad?: boolean; // Tự động load messages khi mount
@@ -97,7 +99,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
           response = await messageService.getMessages(conversationId, {
             page,
             size: pageSize,
-            sort: "createdAt,desc", // Mới nhất trước
+            sort: "created_at,desc", // Mới nhất trước (theo field BE)
             limit: pageSize, // Thêm limit cho cursor-based nếu API hỗ trợ
           });
         }
@@ -108,8 +110,8 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         console.log(`Response message: ${response.message}`);
         console.log(`Response data:`, response.data);
         
-        // Check code 1000 là thành công
-        if (response.code === 1000) {
+        // Hỗ trợ cả code thành công cũ/new
+        if (isApiSuccess(response.code)) {
           // Hỗ trợ cả 2 format: content (format cũ) hoặc messages (format mới)
           // API trả về từ newest đến oldest, cần reverse để hiển thị oldest ở trên, newest ở dưới
           const newMessages = (response.data?.messages || response.data?.content || []).reverse();
@@ -173,7 +175,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         } else {
           // Chỉ throw error nếu code !== 1000 (thực sự là lỗi)
           console.error(`❌ [USE MESSAGES] Response code is not success: ${response.code}`);
-          console.error(`Expected code: 1000, Got: ${response.code}`);
+          console.error(`Expected code: 0|1000, Got: ${response.code}`);
           throw new Error(response.message || "Failed to load messages");
         }
       } catch (err: any) {
@@ -314,7 +316,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
           payload
         );
 
-        if (response.code === 1000 && response.data) {
+        if (isApiSuccess(response.code) && response.data) {
           const msg = {
             ...response.data,
             conversation_id: response.data.conversation_id || conversationId,
