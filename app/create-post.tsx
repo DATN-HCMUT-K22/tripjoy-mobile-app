@@ -4,13 +4,14 @@ import { createPost } from "@/services/social";
 import { uploadImage } from "@/services/media";
 import { mockItineraries } from "@/data/mockItineraries";
 import type { Itinerary } from "@/types/group";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
@@ -23,7 +24,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Toast from "react-native-toast-message";
 import {
   clearPendingItinerary,
   getAndClearPendingItinerary,
@@ -87,7 +87,7 @@ export default function CreatePostScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
+        showErrorToast(
           "Cần quyền truy cập",
           "Ứng dụng cần quyền truy cập thư viện ảnh để chọn ảnh."
         );
@@ -107,8 +107,7 @@ export default function CreatePostScreen() {
         setSelectedImages((prev) => [...prev, ...newUris]);
       }
     } catch (error) {
-      console.error("Error picking image:", error);
-      Alert.alert("Lỗi", "Không thể chọn ảnh. Vui lòng thử lại.");
+      showErrorToast("Không chọn được ảnh", "Không thể chọn ảnh. Vui lòng thử lại.");
     }
   };
 
@@ -130,7 +129,7 @@ export default function CreatePostScreen() {
 
   const handleSubmit = async () => {
     if (!content.trim() && selectedImages.length === 0) {
-      Alert.alert("Thông báo", "Vui lòng nhập nội dung hoặc chọn ảnh");
+      showErrorToast("Thiếu nội dung", "Vui lòng nhập nội dung hoặc chọn ảnh");
       return;
     }
 
@@ -155,9 +154,8 @@ export default function CreatePostScreen() {
             imageUrls = uploadResults.map((result) => result.secure_url);
             console.log("[CreatePost] All images uploaded successfully:", imageUrls);
           } catch (uploadError: any) {
-            console.error("[CreatePost] Failed to upload images:", uploadError);
-            Alert.alert(
-              "Lỗi",
+            showErrorToast(
+              "Tải ảnh thất bại",
               uploadError?.message || "Không thể tải ảnh lên. Vui lòng thử lại."
             );
             setIsSubmitting(false);
@@ -171,17 +169,12 @@ export default function CreatePostScreen() {
           images: imageUrls.length > 0 ? imageUrls : undefined,
         });
 
-        Toast.show({
-          type: "success",
-          text1: "Thành công",
-          text2: "Bài viết đã được đăng",
-        });
+        showSuccessToast("Đã đăng bài viết");
 
         router.back();
       } catch (error: any) {
-        console.error("Error creating post:", error);
-        Alert.alert(
-          "Lỗi",
+        showErrorToast(
+          "Đăng bài thất bại",
           error?.response?.data?.message || "Không thể đăng bài viết. Vui lòng thử lại."
         );
       } finally {
@@ -228,11 +221,10 @@ export default function CreatePostScreen() {
           <View style={styles.userSection}>
             <Image
               source={{
-                uri:
-                  currentUser?.avatarUrl ||
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    currentUser?.fullName || currentUser?.username || "User"
-                  )}&background=34B27D&color=fff`,
+                uri: resolveUserAvatarUri(
+                  currentUser?.avatarUrl,
+                  currentUser?.fullName || currentUser?.username
+                ),
               }}
               style={styles.avatar}
               contentFit="cover"

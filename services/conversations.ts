@@ -6,6 +6,8 @@ import {
 import { ApiResponse } from "@/types/user";
 import { httpClient } from "./http/client";
 
+const isApiSuccess = (code?: number) => code === 0 || code === 1000;
+
 /** Một số BE chỉ trả { code: 1000 } khi POST /conversations — lấy lại từ danh sách */
 async function findDirectConversationWithUser(
   targetUserId: string
@@ -15,7 +17,7 @@ async function findDirectConversationWithUser(
       await new Promise((r) => setTimeout(r, 400));
     }
     const listRes = await httpClient.get<ApiResponse<ConversationResponse[]>>("/conversations");
-    if (listRes.code !== 1000 || !listRes.data?.length) continue;
+    if (!isApiSuccess(listRes.code) || !listRes.data?.length) continue;
     const found = listRes.data.find(
       (c) =>
         c.type === "DIRECT" &&
@@ -94,7 +96,7 @@ export const conversationService = {
         CreateDirectConversationRequest
       >("/conversations", payload);
 
-      if (response.code !== 1000) {
+      if (!isApiSuccess(response.code)) {
         throw new Error((response as ApiResponse<ConversationResponse>).message || "Tạo hội thoại thất bại");
       }
 
@@ -118,7 +120,7 @@ export const conversationService = {
 
       console.log(`✅ [CONVERSATION SERVICE] Conversation created`);
       console.log(`Conversation ID: ${conv.id}`);
-      return { code: 1000, data: conv };
+      return { code: response.code ?? 0, data: conv, message: response.message };
     } catch (error: any) {
       console.error(`❌ [CONVERSATION SERVICE] Failed to create conversation`);
       console.error(`Error:`, error.message);

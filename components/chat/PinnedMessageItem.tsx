@@ -1,3 +1,4 @@
+import { resolveUserAvatarUri } from '@/utils/userAvatar';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -83,12 +84,6 @@ function truncateText(text: string, maxLength: number): string {
   return `${trimmed.slice(0, maxLength)}…`;
 }
 
-function getInitial(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  return trimmed[0].toUpperCase();
-}
-
 function getPreviewContent(
   messageType: PinnedMessageType,
   messageContent: string
@@ -139,8 +134,6 @@ export const PinnedMessageItem = React.memo(function PinnedMessageItem({
     [messageType, messageContent]
   );
 
-  const initial = useMemo(() => getInitial(displayName), [displayName]);
-
   const messageTypeConfig = MESSAGE_TYPE_CONFIG[messageType];
   const messageIconName = messageTypeConfig?.iconName;
 
@@ -173,21 +166,19 @@ export const PinnedMessageItem = React.memo(function PinnedMessageItem({
     >
       <Ionicons name="pin" size={CONSTANTS.ICON_SIZE} color={colors.ICON} />
 
-      {avatarUrl ? (
-        <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-      ) : (
+      {isBot ? (
         <View
           style={[styles.avatar, { backgroundColor: colors.AVATAR_BG }]}
           accessibilityLabel={`Avatar của ${displayName}`}
         >
-          {isBot ? (
-            <Ionicons name="sparkles" size={CONSTANTS.ICON_SIZE} color={colors.AVATAR_TEXT} />
-          ) : (
-            <Text style={[styles.avatarText, { color: colors.AVATAR_TEXT }]}>
-              {initial}
-            </Text>
-          )}
+          <Ionicons name="sparkles" size={CONSTANTS.ICON_SIZE} color={colors.AVATAR_TEXT} />
         </View>
+      ) : (
+        <Image
+          source={{ uri: resolveUserAvatarUri(avatarUrl, senderName) }}
+          style={styles.avatar}
+          accessibilityLabel={`Avatar của ${displayName}`}
+        />
       )}
 
       <View style={styles.textWrapper}>

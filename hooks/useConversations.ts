@@ -1,6 +1,8 @@
 import { conversationService } from "@/services/conversations";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+const isApiSuccess = (code?: number) => code === 0 || code === 1000;
+
 /**
  * Hook để quản lý conversations
  * Sử dụng React Query để cache và auto-refresh
@@ -18,7 +20,7 @@ export function useConversations() {
     queryKey: ["conversations"],
     queryFn: async () => {
       const response = await conversationService.getConversations();
-      if (response.code === 1000 && response.data) {
+      if (isApiSuccess(response.code) && response.data) {
         return response.data;
       }
       throw new Error(response.message || "Failed to load conversations");
@@ -33,7 +35,7 @@ export function useConversations() {
       const response = await conversationService.createDirectConversation({
         targetUserId,
       });
-      if (response.code === 1000 && response.data) {
+      if (isApiSuccess(response.code) && response.data) {
         return response.data;
       }
       throw new Error(response.message || "Failed to create conversation");
@@ -57,7 +59,7 @@ export function useConversations() {
         conversationId,
         payload
       );
-      if (response.code === 1000 && response.data) {
+      if (isApiSuccess(response.code) && response.data) {
         return response.data;
       }
       throw new Error(response.message || "Failed to update conversation");

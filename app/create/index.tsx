@@ -1,89 +1,181 @@
+import InteractiveMap from "@/components/InteractiveMap";
 import { BudgetItem } from "@/components/trip/BudgetItem";
+import { BudgetManualRange } from "@/components/trip/BudgetManualRange";
 import { LocationItem } from "@/components/trip/LocationItem";
 import { SectionHeader } from "@/components/trip/SectionHeader";
 import { SimpleCalendar } from "@/components/trip/SimpleCalendar";
 import { Button } from "@/components/ui/Button";
 import { VietnamFlag } from "@/components/ui/VietnamFlag";
+import { EXPO_PUBLIC_MOCK_DATA } from "@/config/env";
 import { useTripSetup } from "@/contexts/TripSetupContext";
-import { budgetOptions } from "@/data/budgetOptions";
-import { mockLocations } from "@/data/mockLocations";
+import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
+import { sampleProvinceLocations } from "@/data/sampleProvinceLocations";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
+import { useProvinceLocations } from "@/hooks/useProvinceLocations";
 import { Location } from "@/types/trip";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
-  SafeAreaView,
+  ActivityIndicator,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { formatCurrencyVND } from "@/utils/format";
+import { tripLocationsToMapPins } from "@/utils/mapLocations";
+import { showErrorToast } from "@/utils/toast";
+
+/** Chiều cao tối đa vùng danh sách điểm đi / điểm đến (scroll nội bộ). */
+const LOCATION_LIST_MAX_HEIGHT_CAP = 320;
+const LOCATION_LIST_MAX_HEIGHT_RATIO = 0.36;
+
+/** Thẻ loại hình (màn thiết lập): gọn + 2 hàng trong một ScrollView ngang. */
+const TRIP_TYPE_CARD_WIDTH = 86;
+const TRIP_TYPE_CARD_MIN_HEIGHT = 82;
+const TRIP_TYPE_CARD_GAP = 8;
 
 export default function CreateTripScreen() {
   const router = useRouter();
+  const { height: windowHeight } = useWindowDimensions();
+  const locationListMaxHeight = useMemo(
+    () =>
+      Math.min(
+        LOCATION_LIST_MAX_HEIGHT_CAP,
+        Math.round(windowHeight * LOCATION_LIST_MAX_HEIGHT_RATIO)
+      ),
+    [windowHeight]
+  );
+
   const {
     tripData,
     setDepartureLocation,
     setDestinationLocation,
     setDateRange,
     setBudget,
+    setCustomBudgetRange,
     setTripTypes,
+    adjustPeopleQuantity,
     setStartDate: setContextStartDate,
     setEndDate: setContextEndDate,
     resetTripData,
   } = useTripSetup();
-  const [locations] = useState(mockLocations);
+
+  const {
+    data: apiLocations,
+    isLoading: isLoadingProvinces,
+    isError: isProvincesError,
+    error: provincesError,
+    refetch: refetchProvinces,
+  } = useProvinceLocations();
+
+  /** Luôn có 5 tỉnh/thành mẫu (tên + lat/lon) ở đầu; thêm bản ghi từ API (không trùng id). */
+  const locations: Location[] = useMemo(() => {
+    const samples = sampleProvinceLocations;
+    if (EXPO_PUBLIC_MOCK_DATA) return samples;
+
+    const apiList = apiLocations ?? [];
+    const apiIds = new Set(apiList.map((l) => l.id));
+    const samplesNotInApi = samples.filter((s) => !apiIds.has(s.id));
+    if (apiList.length > 0) return [...samplesNotInApi, ...apiList];
+    return samples;
+  }, [apiLocations]);
+
+  const useCompactLocationRow = !EXPO_PUBLIC_MOCK_DATA;
+
+  /** Hai hàng loại hình: mỗi hàng cuộn ngang độc lập. */
+  const tripTypeRows = useMemo(() => {
+    const mid = Math.ceil(tripTypeOptions.length / 2);
+    return [tripTypeOptions.slice(0, mid), tripTypeOptions.slice(mid)];
+  }, []);
+
   const [departureLocation, setDepartureLocationState] =
-    useState<Location | null>(tripData.departureLocation || null);
+    useState<Location | null>(null);
   const [destinationLocation, setDestinationLocationState] =
-    useState<Location | null>(
-      tripData.destinationLocation || tripData.location || null
-    );
+    useState<Location | null>(null);
   const [departureSearchText, setDepartureSearchText] = useState("");
   const [destinationSearchText, setDestinationSearchText] = useState("");
   const [isDepartureExpanded, setIsDepartureExpanded] = useState(true);
   const [isDestinationExpanded, setIsDestinationExpanded] = useState(true);
+  const [isPeopleExpanded, setIsPeopleExpanded] = useState(true);
   const [isTimeExpanded, setIsTimeExpanded] = useState(true);
   const [isBudgetExpanded, setIsBudgetExpanded] = useState(true);
   const [isTypeExpanded, setIsTypeExpanded] = useState(true);
-  const [selectedTripTypes, setSelectedTripTypes] = useState<string[]>(
-    tripData.tripTypes || []
-  );
-  const [selectedBudgetId, setSelectedBudgetId] = useState<string>(
-    tripData.budget || ""
-  );
-  const [startDate, setStartDate] = useState<string | null>(tripData.startDate);
-  const [endDate, setEndDate] = useState<string | null>(tripData.endDate);
+  const [selectedTripTypes, setSelectedTripTypes] = useState<string[]>([]);
+  const [startDate, setStartDate] = useState<string | null>(null);
+  const [endDate, setEndDate] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  const provincesErrorToastShownRef = useRef(false);
+
+  const budgetOk = useMemo(() => {
+    const b = tripData.budget;
+    if (!b) return false;
+    if (b === BUDGET_CUSTOM_ID) {
+      return (
+        tripData.budgetMinVnd != null &&
+        tripData.budgetMaxVnd != null &&
+        tripData.budgetMaxVnd > tripData.budgetMinVnd
+      );
+    }
+    return true;
+  }, [tripData.budget, tripData.budgetMinVnd, tripData.budgetMaxVnd]);
 
   const hasAllCriteria =
     !!departureLocation &&
     !!destinationLocation &&
     selectedTripTypes.length > 0 &&
-    !!selectedBudgetId &&
+    budgetOk &&
     !!startDate &&
-    !!endDate;
+    !!endDate &&
+    tripData.peopleQuantity >= 1;
 
-  // Reset data when user enters screen (fresh start)
+  // Reset khi vào màn — đồng bộ context + state local
   useFocusEffect(
     useCallback(() => {
-      // Reset when screen gains focus (user enters)
       resetTripData();
+      setDepartureLocationState(null);
+      setDestinationLocationState(null);
+      setDepartureSearchText("");
+      setDestinationSearchText("");
+      setSelectedTripTypes([]);
+      setStartDate(null);
+      setEndDate(null);
+      setIsDepartureExpanded(true);
+      setIsDestinationExpanded(true);
+      setIsPeopleExpanded(true);
+      setIsTimeExpanded(true);
+      setIsBudgetExpanded(true);
+      setIsTypeExpanded(true);
     }, [resetTripData])
   );
+
+  React.useEffect(() => {
+    if (isProvincesError && !provincesErrorToastShownRef.current) {
+      provincesErrorToastShownRef.current = true;
+      showErrorToast(
+        "Không tải được danh sách địa điểm",
+        provincesError instanceof Error
+          ? provincesError.message
+          : "Hãy kiểm tra kết nối và thử lại."
+      );
+    }
+    if (!isProvincesError) provincesErrorToastShownRef.current = false;
+  }, [isProvincesError, provincesError]);
 
   const handleDepartureLocationSelect = (location: Location) => {
     setDepartureLocationState(location);
     setDepartureLocation(location);
-    // Không đụng vào state isSelected chung, để mỗi input dùng selected riêng
   };
 
   const handleDestinationLocationSelect = (location: Location) => {
     setDestinationLocationState(location);
     setDestinationLocation(location);
-    // Không đụng vào state isSelected chung, để mỗi input dùng selected riêng
   };
 
   const toggleTripType = (type: string) => {
@@ -92,6 +184,10 @@ export default function CreateTripScreen() {
       : [...selectedTripTypes, type];
     setSelectedTripTypes(newTypes);
     setTripTypes(newTypes);
+  };
+
+  const bumpPeople = (delta: number) => {
+    adjustPeopleQuantity(delta);
   };
 
   const formatDate = (dateString: string) => {
@@ -115,46 +211,42 @@ export default function CreateTripScreen() {
   };
 
   const handleBudgetSelect = (id: string) => {
-    setSelectedBudgetId(id);
-    setBudget(id);
+    if (tripData.budget === id) {
+      setBudget(null);
+    } else {
+      setBudget(id);
+    }
   };
 
+  const handleManualBudgetCommit = useCallback(
+    (minVnd: number | null, maxVnd: number | null) => {
+      setCustomBudgetRange(minVnd, maxVnd);
+    },
+    [setCustomBudgetRange]
+  );
+
   const handleComplete = () => {
-    // Save all data to context before navigating
-    if (departureLocation) {
-      setDepartureLocation(departureLocation);
-    }
-    if (destinationLocation) {
-      setDestinationLocation(destinationLocation);
-    }
-    if (selectedTripTypes.length > 0) {
-      setTripTypes(selectedTripTypes);
-    }
-    if (selectedBudgetId) {
-      setBudget(selectedBudgetId);
-    }
-    // Ensure date range is saved
+    if (departureLocation) setDepartureLocation(departureLocation);
+    if (destinationLocation) setDestinationLocation(destinationLocation);
+    if (selectedTripTypes.length > 0) setTripTypes(selectedTripTypes);
     if (startDate && endDate) {
       setContextStartDate(startDate);
       setContextEndDate(endDate);
       const formattedStart = formatDate(startDate);
       const formattedEnd = formatDate(endDate);
-      const dateRange = `Từ ${formattedStart} - ${formattedEnd}`;
-      setDateRange(dateRange);
+      setDateRange(`Từ ${formattedStart} - ${formattedEnd}`);
     }
-    // Navigate to summary
     router.push("/create/summary");
   };
 
   const selectedBudgetOption = budgetOptions.find(
-    (opt) => opt.id === selectedBudgetId
+    (opt) => opt.id === tripData.budget
   );
 
   const handleTypeToggle = () => {
     setIsTypeExpanded((prev) => {
       const willExpand = !prev;
       if (willExpand) {
-        // Khi mở dropdown Loại hình thì auto scroll xuống phần cuối
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 80);
@@ -163,7 +255,6 @@ export default function CreateTripScreen() {
     });
   };
 
-  // Filter locations for departure
   const filteredDepartureLocations = useMemo(() => {
     if (!departureSearchText.trim()) return locations;
     const searchLower = departureSearchText.toLowerCase();
@@ -175,7 +266,6 @@ export default function CreateTripScreen() {
     );
   }, [locations, departureSearchText]);
 
-  // Filter locations for destination
   const filteredDestinationLocations = useMemo(() => {
     if (!destinationSearchText.trim()) return locations;
     const searchLower = destinationSearchText.toLowerCase();
@@ -187,10 +277,87 @@ export default function CreateTripScreen() {
     );
   }, [locations, destinationSearchText]);
 
+  const departureMapPins = useMemo(
+    () => tripLocationsToMapPins(filteredDepartureLocations),
+    [filteredDepartureLocations]
+  );
+
+  const destinationMapPins = useMemo(
+    () => tripLocationsToMapPins(filteredDestinationLocations),
+    [filteredDestinationLocations]
+  );
+
+  const departureSelectedMapIndex = useMemo(() => {
+    if (
+      departureLocation?.latitude == null ||
+      departureLocation?.longitude == null
+    ) {
+      return null;
+    }
+    const idx = departureMapPins.findIndex(
+      (p) =>
+        p.latitude === departureLocation.latitude &&
+        p.longitude === departureLocation.longitude
+    );
+    return idx >= 0 ? idx : null;
+  }, [departureMapPins, departureLocation]);
+
+  const destinationSelectedMapIndex = useMemo(() => {
+    if (
+      destinationLocation?.latitude == null ||
+      destinationLocation?.longitude == null
+    ) {
+      return null;
+    }
+    const idx = destinationMapPins.findIndex(
+      (p) =>
+        p.latitude === destinationLocation.latitude &&
+        p.longitude === destinationLocation.longitude
+    );
+    return idx >= 0 ? idx : null;
+  }, [destinationMapPins, destinationLocation]);
+
+  const renderLocationList = (
+    filtered: Location[],
+    selected: Location | null,
+    onSelect: (loc: Location) => void
+  ) => {
+    return (
+      <>
+        {!EXPO_PUBLIC_MOCK_DATA && isLoadingProvinces && (
+          <View className="flex-row items-center gap-2 py-2 mb-2 px-1">
+            <ActivityIndicator size="small" color="#34B27D" />
+            <Text className="text-xs text-gray-500 flex-1">
+              Đang tải thêm tỉnh/thành từ máy chủ… (có thể chọn sẵn các điểm mẫu bên dưới)
+            </Text>
+          </View>
+        )}
+        <ScrollView
+          style={{ maxHeight: locationListMaxHeight }}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator
+        >
+          {filtered.map((location) => (
+            <LocationItem
+              key={location.id}
+              location={{
+                ...location,
+                isSelected: selected?.id === location.id,
+              }}
+              onSelect={onSelect}
+              showFlag={false}
+              compact={useCompactLocationRow}
+            />
+          ))}
+        </ScrollView>
+      </>
+    );
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      {/* Page Header */}
-      <View className="flex-row items-center px-4 py-3">
+    <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
+      <View className="flex-row items-center px-4 py-3 border-b border-gray-100">
         <TouchableOpacity
           onPress={() => {
             resetTripData();
@@ -198,6 +365,7 @@ export default function CreateTripScreen() {
           }}
           className="absolute left-4 z-10"
           activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <Ionicons name="arrow-back-outline" size={24} color="#000" />
         </TouchableOpacity>
@@ -206,29 +374,38 @@ export default function CreateTripScreen() {
         </Text>
       </View>
 
+      {isProvincesError && (
+        <View className="px-4 py-2 bg-red-50 border-b border-red-100 flex-row items-center justify-between">
+          <Text className="text-sm text-red-800 flex-1 pr-2">
+            Không tải được tỉnh/thành từ máy chủ.
+          </Text>
+          <TouchableOpacity onPress={() => refetchProvinces()} activeOpacity={0.7}>
+            <Text className="text-sm font-semibold text-red-700">Thử lại</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <ScrollView
         ref={scrollViewRef}
         className="flex-1"
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View>
-          {/* Departure Location Section (Điểm đi) */}
+          {/* Điểm đi */}
           <View className="px-4 py-5">
-            {/* Header with Search Input on same line */}
             <View className="flex-row items-center gap-3">
-              <Ionicons name="location-outline" size={20} color="#000" />
+              <Ionicons name="navigate-outline" size={20} color="#059669" />
               <Text className="text-base font-bold text-black">Điểm đi</Text>
-              <View className="flex-1 flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+              <View className="flex-1 flex-row items-center bg-gray-100 rounded-xl px-3 py-2.5">
                 <Ionicons name="search-outline" size={20} color="#666" />
                 <TextInput
                   className="flex-1 ml-2 text-base text-gray-800"
-                  placeholder="Tìm địa điểm..."
+                  placeholder="Tìm tỉnh, thành phố..."
                   placeholderTextColor="#999"
                   value={departureSearchText}
                   onChangeText={setDepartureSearchText}
-                  onSubmitEditing={() => {
-                    setIsDepartureExpanded(true);
-                  }}
+                  onSubmitEditing={() => setIsDepartureExpanded(true)}
                   returnKeyType="search"
                 />
               </View>
@@ -248,21 +425,17 @@ export default function CreateTripScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Selected Location - When collapsed */}
             {!isDepartureExpanded && departureLocation && (
               <View className="mt-2">
                 <LocationItem
-                  location={{
-                    ...departureLocation,
-                    isSelected: true,
-                  }}
+                  location={{ ...departureLocation, isSelected: true }}
                   onSelect={() => setIsDepartureExpanded(true)}
-                  showFlag={true}
+                  showFlag
+                  compact={useCompactLocationRow}
                 />
               </View>
             )}
 
-            {/* Results - When expanded */}
             {isDepartureExpanded && (
               <>
                 <View className="flex-row items-center justify-between mt-2 mb-3">
@@ -270,48 +443,42 @@ export default function CreateTripScreen() {
                     <Text className="font-bold">
                       {filteredDepartureLocations.length}
                     </Text>{" "}
-                    Kết quả
+                    địa điểm
                   </Text>
                   <VietnamFlag size={20} />
                 </View>
-
-                {filteredDepartureLocations.map((location) => (
-                  <LocationItem
-                    key={location.id}
-                    location={{
-                      ...location,
-                      isSelected: departureLocation?.id === location.id,
-                    }}
-                    onSelect={(loc) => {
-                      handleDepartureLocationSelect(loc);
-                    }}
-                    showFlag={false}
+                <View className="mb-3">
+                  <InteractiveMap
+                    locations={departureMapPins}
+                    height={200}
+                    selectedIndex={departureSelectedMapIndex}
                   />
-                ))}
+                </View>
+                {renderLocationList(
+                  filteredDepartureLocations,
+                  departureLocation,
+                  handleDepartureLocationSelect
+                )}
               </>
             )}
           </View>
 
-          {/* Divider */}
           <View className="h-px bg-gray-200 w-full" />
 
-          {/* Destination Location Section (Điểm đến) */}
+          {/* Điểm đến */}
           <View className="px-4 py-5">
-            {/* Header with Search Input on same line */}
             <View className="flex-row items-center gap-3">
-              <Ionicons name="location-outline" size={20} color="#000" />
+              <Ionicons name="location-outline" size={20} color="#DC2626" />
               <Text className="text-base font-bold text-black">Điểm đến</Text>
-              <View className="flex-1 flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+              <View className="flex-1 flex-row items-center bg-gray-100 rounded-xl px-3 py-2.5">
                 <Ionicons name="search-outline" size={20} color="#666" />
                 <TextInput
                   className="flex-1 ml-2 text-base text-gray-800"
-                  placeholder="Tìm địa điểm..."
+                  placeholder="Tìm tỉnh, thành phố..."
                   placeholderTextColor="#999"
                   value={destinationSearchText}
                   onChangeText={setDestinationSearchText}
-                  onSubmitEditing={() => {
-                    setIsDestinationExpanded(true);
-                  }}
+                  onSubmitEditing={() => setIsDestinationExpanded(true)}
                   returnKeyType="search"
                 />
               </View>
@@ -331,21 +498,17 @@ export default function CreateTripScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Selected Location - When collapsed */}
             {!isDestinationExpanded && destinationLocation && (
               <View className="mt-2">
                 <LocationItem
-                  location={{
-                    ...destinationLocation,
-                    isSelected: true,
-                  }}
+                  location={{ ...destinationLocation, isSelected: true }}
                   onSelect={() => setIsDestinationExpanded(true)}
-                  showFlag={true}
+                  showFlag
+                  compact={useCompactLocationRow}
                 />
               </View>
             )}
 
-            {/* Results - When expanded */}
             {isDestinationExpanded && (
               <>
                 <View className="flex-row items-center justify-between mt-2 mb-3">
@@ -353,32 +516,107 @@ export default function CreateTripScreen() {
                     <Text className="font-bold">
                       {filteredDestinationLocations.length}
                     </Text>{" "}
-                    Kết quả
+                    địa điểm
                   </Text>
                   <VietnamFlag size={20} />
                 </View>
-
-                {filteredDestinationLocations.map((location) => (
-                  <LocationItem
-                    key={location.id}
-                    location={{
-                      ...location,
-                      isSelected: destinationLocation?.id === location.id,
-                    }}
-                    onSelect={(loc) => {
-                      handleDestinationLocationSelect(loc);
-                    }}
-                    showFlag={false}
+                <View className="mb-3">
+                  <InteractiveMap
+                    locations={destinationMapPins}
+                    height={200}
+                    selectedIndex={destinationSelectedMapIndex}
                   />
-                ))}
+                </View>
+                {renderLocationList(
+                  filteredDestinationLocations,
+                  destinationLocation,
+                  handleDestinationLocationSelect
+                )}
               </>
             )}
           </View>
 
-          {/* Divider */}
           <View className="h-px bg-gray-200 w-full" />
 
-          {/* Time Section */}
+          {/* Số người */}
+          <View className="px-4 py-5">
+            <SectionHeader
+              icon="people-outline"
+              title="Số người tham gia"
+              onToggle={() => setIsPeopleExpanded(!isPeopleExpanded)}
+              isExpanded={isPeopleExpanded}
+            />
+            {!isPeopleExpanded && (
+              <Text className="text-base text-gray-800 mt-2">
+                {tripData.peopleQuantity} người
+              </Text>
+            )}
+            {isPeopleExpanded && (
+              <View className="mt-4 items-center">
+                <Text className="text-sm text-gray-500 mb-2 text-center px-2">
+                  Ước lượng số thành viên trong chuyến (tối đa 50)
+                </Text>
+                <View className="flex-row items-center justify-center gap-6">
+                  <TouchableOpacity
+                    className="w-14 h-14 rounded-2xl bg-gray-100 items-center justify-center border border-gray-200"
+                    onPress={() => bumpPeople(-1)}
+                    disabled={tripData.peopleQuantity <= 1}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="remove"
+                      size={28}
+                      color={
+                        tripData.peopleQuantity <= 1 ? "#D1D5DB" : "#111827"
+                      }
+                    />
+                  </TouchableOpacity>
+                  <LinearGradient
+                    colors={["#D1FAE5", "#A7F3D0"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{
+                      paddingHorizontal: 36,
+                      paddingVertical: 20,
+                      borderRadius: 20,
+                      minWidth: 120,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 36,
+                        fontWeight: "800",
+                        color: "#047857",
+                      }}
+                    >
+                      {tripData.peopleQuantity}
+                    </Text>
+                    <Text className="text-xs font-semibold text-emerald-800 mt-1">
+                      người
+                    </Text>
+                  </LinearGradient>
+                  <TouchableOpacity
+                    className="w-14 h-14 rounded-2xl bg-gray-100 items-center justify-center border border-gray-200"
+                    onPress={() => bumpPeople(1)}
+                    disabled={tripData.peopleQuantity >= 50}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="add"
+                      size={28}
+                      color={
+                        tripData.peopleQuantity >= 50 ? "#D1D5DB" : "#111827"
+                      }
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+
+          <View className="h-px bg-gray-200 w-full" />
+
           <View className="px-4 py-5">
             <SectionHeader
               icon="calendar-outline"
@@ -386,8 +624,6 @@ export default function CreateTripScreen() {
               onToggle={() => setIsTimeExpanded(!isTimeExpanded)}
               isExpanded={isTimeExpanded}
             />
-
-            {/* Selected Date Range - When collapsed */}
             {!isTimeExpanded && tripData.dateRange && (
               <View className="mt-2">
                 <Text className="text-base text-gray-800">
@@ -395,8 +631,6 @@ export default function CreateTripScreen() {
                 </Text>
               </View>
             )}
-
-            {/* Calendar - When expanded */}
             {isTimeExpanded && (
               <View className="mt-2">
                 <SimpleCalendar
@@ -415,10 +649,8 @@ export default function CreateTripScreen() {
             )}
           </View>
 
-          {/* Divider */}
           <View className="h-px bg-gray-200 w-full" />
 
-          {/* Budget Section */}
           <View className="px-4 py-5">
             <SectionHeader
               icon="cash-outline"
@@ -426,126 +658,348 @@ export default function CreateTripScreen() {
               onToggle={() => setIsBudgetExpanded(!isBudgetExpanded)}
               isExpanded={isBudgetExpanded}
             />
-
-            {/* Selected Budget - When collapsed */}
+            {!isBudgetExpanded &&
+              tripData.budget === BUDGET_CUSTOM_ID &&
+              tripData.budgetMinVnd != null &&
+              tripData.budgetMaxVnd != null && (
+                <LinearGradient
+                  colors={["#F0FDFA", "#CCFBF1"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{
+                    marginTop: 10,
+                    borderRadius: 16,
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    borderWidth: 2,
+                    borderColor: "#0D9488",
+                  }}
+                >
+                  <View className="flex-row items-center justify-between gap-3">
+                    <View className="flex-row items-center gap-3 flex-1">
+                      <View
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 14,
+                          backgroundColor: "rgba(255,255,255,0.95)",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderWidth: 1,
+                          borderColor: "rgba(0,0,0,0.06)",
+                        }}
+                      >
+                        <Ionicons
+                          name="options-outline"
+                          size={24}
+                          color="#0D9488"
+                        />
+                      </View>
+                      <View className="flex-1 min-w-0">
+                        <Text
+                          className="text-base font-bold"
+                          style={{ color: "#0F766E" }}
+                          numberOfLines={1}
+                        >
+                          Khoảng tùy chỉnh
+                        </Text>
+                        <Text
+                          className="text-xs text-gray-700 mt-0.5"
+                          numberOfLines={2}
+                        >
+                          {formatCurrencyVND(tripData.budgetMinVnd)} —{" "}
+                          {formatCurrencyVND(tripData.budgetMaxVnd)} / người
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={26}
+                      color="#0D9488"
+                    />
+                  </View>
+                </LinearGradient>
+              )}
             {!isBudgetExpanded && selectedBudgetOption && (
-              <View className="mt-2">
-                <View className="flex-row items-center gap-2 mb-1">
-                  <Text className="text-base text-gray-800">
-                    {selectedBudgetOption.title}
-                  </Text>
+              <LinearGradient
+                colors={selectedBudgetOption.gradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{
+                  marginTop: 10,
+                  borderRadius: 16,
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  borderWidth: 2,
+                  borderColor: selectedBudgetOption.iconColor,
+                }}
+              >
+                <View className="flex-row items-center justify-between gap-3">
+                  <View className="flex-row items-center gap-3 flex-1">
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 14,
+                        backgroundColor: "rgba(255,255,255,0.95)",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: 1,
+                        borderColor: "rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <Ionicons
+                        name={selectedBudgetOption.icon}
+                        size={24}
+                        color={selectedBudgetOption.iconColor}
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Text
+                        className="text-base font-bold"
+                        style={{ color: selectedBudgetOption.iconColor }}
+                        numberOfLines={1}
+                      >
+                        {selectedBudgetOption.title}
+                      </Text>
+                      <Text
+                        className="text-xs text-gray-700 mt-0.5"
+                        numberOfLines={2}
+                      >
+                        {selectedBudgetOption.priceRange}
+                      </Text>
+                    </View>
+                  </View>
                   <Ionicons
-                    name={selectedBudgetOption.icon}
-                    size={20}
+                    name="checkmark-circle"
+                    size={26}
                     color={selectedBudgetOption.iconColor}
                   />
                 </View>
-                <Text className="text-sm text-gray-600">
-                  {selectedBudgetOption.priceRange}
-                </Text>
-              </View>
+              </LinearGradient>
             )}
-
-            {/* Budget Options - When expanded */}
             {isBudgetExpanded && (
-              <View className="mt-4">
-                {budgetOptions.map((option) => (
-                  <BudgetItem
-                    key={option.id}
-                    id={option.id}
-                    title={option.title}
-                    subtitle={option.subtitle}
-                    priceRange={option.priceRange}
-                    icon={option.icon}
-                    iconColor={option.iconColor}
-                    isSelected={selectedBudgetId === option.id}
-                    onSelect={(id) => {
-                      handleBudgetSelect(id);
-                    }}
-                  />
-                ))}
+              <View>
+                <Text className="text-xs text-gray-500 mt-1 mb-3">
+                  Chọn mức gợi ý hoặc nhập khoảng chi phí (VNĐ / người)
+                </Text>
+                <View
+                  className="flex-row flex-wrap"
+                  style={{ gap: 10, marginTop: 2 }}
+                >
+                  {budgetOptions.map((option) => (
+                    <BudgetItem
+                      key={option.id}
+                      id={option.id}
+                      title={option.title}
+                      subtitle={option.subtitle}
+                      priceRange={option.priceRange}
+                      icon={option.icon}
+                      iconColor={option.iconColor}
+                      gradient={option.gradient}
+                      isSelected={tripData.budget === option.id}
+                      onSelect={(id) => handleBudgetSelect(id)}
+                    />
+                  ))}
+                </View>
+                <BudgetManualRange
+                  minVnd={tripData.budgetMinVnd}
+                  maxVnd={tripData.budgetMaxVnd}
+                  onCommit={handleManualBudgetCommit}
+                  disabled={
+                    tripData.budget != null &&
+                    tripData.budget !== BUDGET_CUSTOM_ID
+                  }
+                />
               </View>
             )}
           </View>
 
-          {/* Divider */}
           <View className="h-px bg-gray-200 w-full" />
 
-          {/* Trip Type Section */}
-          <View className="px-4 py-5">
+          <View className="px-4 py-5 pb-8">
             <SectionHeader
-              icon="location-outline"
-              title="Loại hình"
+              icon="color-palette-outline"
+              title="Loại hình du lịch"
               onToggle={handleTypeToggle}
               isExpanded={isTypeExpanded}
             />
+            <Text className="text-xs text-gray-500 mt-1 mb-2">
+              Chọn một hoặc nhiều — càng đa dạng, gợi ý càng khớp sở thích
+            </Text>
 
             {!isTypeExpanded && selectedTripTypes.length > 0 && (
-              <View className="flex-row flex-wrap gap-3 mt-2">
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                className="mt-2"
+                contentContainerStyle={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingRight: 4,
+                  gap: 8,
+                }}
+              >
                 {selectedTripTypes.map((typeId) => {
-                  const option = tripTypeOptions.find(
-                    (opt) => opt.id === typeId
-                  );
+                  const option = tripTypeOptions.find((o) => o.id === typeId);
                   if (!option) return null;
                   return (
-                    <View
+                    <LinearGradient
                       key={typeId}
+                      colors={option.gradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
                       style={{
-                        paddingHorizontal: 16,
+                        paddingHorizontal: 14,
                         paddingVertical: 8,
-                        borderRadius: 20,
-                        backgroundColor: "#D1FAE5",
-                        borderWidth: 1,
-                        borderColor: "#34B27D",
+                        borderRadius: 999,
+                        borderWidth: 1.5,
+                        borderColor: option.accent,
                       }}
                     >
-                      <Text className="text-sm font-medium text-primary">
-                        {option.icon} {option.name}
-                      </Text>
-                    </View>
+                      <View className="flex-row items-center gap-1">
+                        <Ionicons
+                          name={option.ionIcon}
+                          size={16}
+                          color={option.accent}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: option.accent,
+                          }}
+                        >
+                          {option.icon} {option.name}
+                        </Text>
+                      </View>
+                    </LinearGradient>
                   );
                 })}
-              </View>
+              </ScrollView>
             )}
 
             {isTypeExpanded && (
-              <View className="flex-row flex-wrap gap-3 mt-2">
-                {tripTypeOptions.map((option) => (
-                  <TouchableOpacity
-                    key={option.id}
-                    onPress={() => toggleTripType(option.id)}
-                    activeOpacity={0.7}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                className="mt-3"
+                contentContainerStyle={{
+                  flexDirection: "column",
+                  gap: TRIP_TYPE_CARD_GAP,
+                  paddingRight: 8,
+                  paddingVertical: 4,
+                }}
+              >
+                {tripTypeRows.map((row, rowIndex) => (
+                  <View
+                    key={rowIndex}
                     style={{
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      borderRadius: 20,
-                      backgroundColor: selectedTripTypes.includes(option.id)
-                        ? "#D1FAE5"
-                        : "transparent",
-                      borderWidth: 1,
-                      borderColor: selectedTripTypes.includes(option.id)
-                        ? "#34B27D"
-                        : "#E5E7EB",
+                      flexDirection: "row",
+                      alignItems: "stretch",
+                      gap: TRIP_TYPE_CARD_GAP,
                     }}
                   >
-                    <Text
-                      className={`text-sm font-medium ${
-                        selectedTripTypes.includes(option.id)
-                          ? "text-primary"
-                          : "text-gray-600"
-                      }`}
-                    >
-                      {option.icon} {option.name}
-                    </Text>
-                  </TouchableOpacity>
+                    {row.map((option) => {
+                      const selected = selectedTripTypes.includes(option.id);
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          onPress={() => toggleTripType(option.id)}
+                          activeOpacity={0.85}
+                          style={{
+                            width: TRIP_TYPE_CARD_WIDTH,
+                            borderRadius: 12,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <LinearGradient
+                            colors={
+                              selected
+                                ? option.gradient
+                                : (["#F9FAFB", "#F3F4F6"] as [string, string])
+                            }
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{
+                              paddingVertical: 6,
+                              paddingHorizontal: 6,
+                              borderRadius: 12,
+                              borderWidth: selected ? 1.5 : 1,
+                              borderColor: selected ? option.accent : "#E5E7EB",
+                              minHeight: TRIP_TYPE_CARD_MIN_HEIGHT,
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <View className="flex-row items-center gap-0.5">
+                              <View
+                                style={{
+                                  width: 26,
+                                  height: 26,
+                                  borderRadius: 8,
+                                  backgroundColor: selected
+                                    ? "rgba(255,255,255,0.85)"
+                                    : "#fff",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Ionicons
+                                  name={option.ionIcon}
+                                  size={15}
+                                  color={option.accent}
+                                />
+                              </View>
+                              <Text style={{ fontSize: 14 }}>{option.icon}</Text>
+                            </View>
+                            <Text
+                              className="font-bold"
+                              style={{
+                                fontSize: 10,
+                                lineHeight: 13,
+                                color: selected ? option.accent : "#374151",
+                              }}
+                              numberOfLines={2}
+                            >
+                              {option.name}
+                            </Text>
+                            {selected ? (
+                              <View className="flex-row items-center gap-0.5 mt-0.5">
+                                <Ionicons
+                                  name="checkmark-circle"
+                                  size={11}
+                                  color={option.accent}
+                                />
+                                <Text
+                                  className="font-semibold"
+                                  style={{
+                                    fontSize: 9,
+                                    color: option.accent,
+                                  }}
+                                  numberOfLines={1}
+                                >
+                                  Đã chọn
+                                </Text>
+                              </View>
+                            ) : (
+                              <View style={{ height: 14 }} />
+                            )}
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 ))}
-              </View>
+              </ScrollView>
             )}
           </View>
         </View>
       </ScrollView>
 
-      {/* Bottom Button */}
       <View className="px-4 py-4 border-t border-gray-200 bg-white">
         {!hasAllCriteria && (
           <Text className="text-sm text-gray-600 mb-2 text-center">
@@ -559,6 +1013,7 @@ export default function CreateTripScreen() {
           disabled={!hasAllCriteria}
         />
       </View>
+
     </SafeAreaView>
   );
 }

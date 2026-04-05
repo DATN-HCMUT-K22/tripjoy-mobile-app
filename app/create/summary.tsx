@@ -1,18 +1,21 @@
+import InteractiveMap from "@/components/InteractiveMap";
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
-import { budgetOptions } from "@/data/budgetOptions";
+import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
+import { formatCurrencyVND } from "@/utils/format";
+import type { LocationForMap } from "@/utils/mapLocations";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import {
-  SafeAreaView,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function TripSummaryScreen() {
   const router = useRouter();
@@ -46,8 +49,44 @@ export default function TripSummaryScreen() {
     });
   };
 
+  const summaryMapPins = useMemo((): LocationForMap[] => {
+    const pins: LocationForMap[] = [];
+    const dep = tripData.departureLocation;
+    const dest = tripData.location;
+    if (
+      dep?.latitude != null &&
+      dep?.longitude != null &&
+      !Number.isNaN(dep.latitude) &&
+      !Number.isNaN(dep.longitude)
+    ) {
+      pins.push({ latitude: dep.latitude, longitude: dep.longitude });
+    }
+    if (
+      dest?.latitude != null &&
+      dest?.longitude != null &&
+      !Number.isNaN(dest.latitude) &&
+      !Number.isNaN(dest.longitude)
+    ) {
+      pins.push({ latitude: dest.latitude, longitude: dest.longitude });
+    }
+    return pins;
+  }, [tripData.departureLocation, tripData.location]);
+
+  const summaryMarkerColor = useCallback(
+    (index: number) => {
+      if (summaryMapPins.length === 1) {
+        const onlyDeparture =
+          tripData.departureLocation?.latitude != null &&
+          tripData.departureLocation?.longitude != null;
+        return onlyDeparture ? "#059669" : "#EF4444";
+      }
+      return index === 0 ? "#059669" : "#EF4444";
+    },
+    [summaryMapPins.length, tripData.departureLocation]
+  );
+
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
       {/* Page Header */}
       <View className="flex-row items-center px-4 py-3">
         <TouchableOpacity
@@ -79,8 +118,16 @@ export default function TripSummaryScreen() {
 
           {/* Main Card */}
           <View className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
-            {/* Trip Image */}
-            {tripData.location?.image ? (
+            {/* Bản đồ Google: điểm đi (xanh) + điểm đến (đỏ); không có tọa độ thì ảnh địa điểm / placeholder */}
+            {summaryMapPins.length > 0 ? (
+              <View className="px-4 pt-4">
+                <InteractiveMap
+                  locations={summaryMapPins}
+                  height={256}
+                  getMarkerColor={summaryMarkerColor}
+                />
+              </View>
+            ) : tripData.location?.image ? (
               <View className="px-4 pt-4">
                 <Image
                   source={{ uri: tripData.location.image }}
@@ -146,6 +193,20 @@ export default function TripSummaryScreen() {
                 </>
               )}
 
+              {/* Số người */}
+              <View className="flex-row items-start gap-3 mb-3">
+                <Text className="text-lg">👥</Text>
+                <View className="flex-1">
+                  <Text className="text-base font-semibold text-black mb-1">
+                    Số người tham gia
+                  </Text>
+                  <Text className="text-base text-gray-800">
+                    {tripData.peopleQuantity} người
+                  </Text>
+                </View>
+              </View>
+              <View className="h-px bg-gray-200 w-full mb-3" />
+
               {/* Trip Types */}
               {selectedTripTypes.length > 0 && (
                 <>
@@ -173,7 +234,32 @@ export default function TripSummaryScreen() {
               )}
 
               {/* Budget */}
-              {selectedBudgetOption && (
+              {tripData.budget === BUDGET_CUSTOM_ID &&
+                tripData.budgetMinVnd != null &&
+                tripData.budgetMaxVnd != null && (
+                  <>
+                    <View className="flex-row items-start gap-3 mb-3">
+                      <Text className="text-lg">💰</Text>
+                      <View className="flex-1">
+                        <Text className="text-base font-semibold text-black mb-1">
+                          Ngân sách
+                        </Text>
+                        <Text className="text-base text-gray-800 mb-1">
+                          Khoảng tùy chỉnh
+                        </Text>
+                        <View className="flex-row items-center gap-1">
+                          <Text className="text-base">✏️</Text>
+                          <Text className="text-sm text-gray-600">
+                            {formatCurrencyVND(tripData.budgetMinVnd)} —{" "}
+                            {formatCurrencyVND(tripData.budgetMaxVnd)} / người
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View className="h-px bg-gray-200 w-full mb-3" />
+                  </>
+                )}
+              {selectedBudgetOption && tripData.budget !== BUDGET_CUSTOM_ID && (
                 <>
                   <View className="flex-row items-start gap-3 mb-3">
                     <Text className="text-lg">💰</Text>

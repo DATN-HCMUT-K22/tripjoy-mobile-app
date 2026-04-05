@@ -1,59 +1,43 @@
 import { ApiResponse } from "./user";
 
-export interface LocationSuggestionLocation {
-  id: string;
-  name: string;
-  full_address?: string | null;
-  place_formatted?: string | null;
-  lat: number;
-  lng: number;
-  categories?: string[] | null;
-  provider?: string | null;
-  provider_id?: string | null;
+/** LocationResponse — nested trong SuggestLocationResponse (groups.md) */
+export interface SuggestionLocationResponse {
+  id?: string;
+  name?: string;
+  lat?: number;
+  lng?: number;
+  hotline?: string;
+  category?: string;
+  isOpen?: boolean;
+  content?: string;
+  /** Một số bản BE trả thêm — giữ để UI tương thích */
+  full_address?: string;
+  place_formatted?: string;
 }
 
 export interface LocationSuggestionUser {
-  id: string;
+  id?: string;
   username?: string;
   fullName?: string;
-  avatarUrl?: string | null;
+  avatarUrl?: string;
 }
 
+/** SuggestLocationResponse — GET/POST location-suggestions */
 export interface SuggestLocationResponse {
-  id: string;
-  location: LocationSuggestionLocation;
-  suggested_by: LocationSuggestionUser;
-  group_id: string;
-  notes?: string | null;
-  created_at: string;
-  created_by?: string | null;
+  id?: string;
+  location?: SuggestionLocationResponse;
+  notes?: string;
+  created_at?: string;
+  created_by?: string;
   updated_at?: string;
-  updated_by?: string | null;
+  updated_by?: string;
+  suggested_by?: LocationSuggestionUser;
+  group_id?: string;
 }
 
+/** SuggestLocationRequest — POST .../location-suggestions */
 export interface SuggestLocationRequest {
-  location_id?: string;
-  location_data?: {
-    provider: string;
-    provider_id?: string;
-    name: string;
-    latitude: number;
-    longitude: number;
-    full_address?: string;
-    place_formatted?: string;
-    address_components?: {
-      country?: string;
-      region?: string;
-      locality?: string;
-    };
-    poi_categories?: string[];
-    maki?: string;
-    routable_latitude?: number;
-    routable_longitude?: number;
-    operational_status?: string | null;
-    wheelchair_accessible?: boolean | null;
-    raw_map_response?: string;
-  };
+  location_id: string;
   notes?: string;
 }
 

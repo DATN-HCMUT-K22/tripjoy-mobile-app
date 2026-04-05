@@ -9,6 +9,7 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
 import { useChatStore } from "@/stores/chat.store";
 import { ChatMessageResponse } from "@/types/message";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
@@ -17,7 +18,6 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -27,6 +27,8 @@ import {
   useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+const isApiSuccess = (code?: number) => code === 0 || code === 1000;
 
 // Helper function để check xem có cần hiển thị date separator không
 // Nếu khoảng cách giữa 2 messages > 15 phút thì hiển thị separator
@@ -111,12 +113,12 @@ export default function ChatScreen() {
         console.log(`📊 [CHAT] Conversation type:`, response.data.type);
         console.log(`📊 [CHAT] Conversation name:`, response.data.name);
       }
-      if (response.code === 0 && response.data) {
+      if (isApiSuccess(response.code) && response.data) {
         console.log("✅ [CHAT] Conversation loaded successfully");
         return response.data;
       }
       console.error("❌ [CHAT] Failed to load conversation");
-      console.error(`Response code: ${response.code}, Expected: 0`);
+      console.error(`Response code: ${response.code}, Expected: 0|1000`);
       return null;
     },
     enabled: !!conversationId,
@@ -259,10 +261,6 @@ export default function ChatScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Cần quyền truy cập",
-          "Ứng dụng cần quyền truy cập thư viện ảnh để gửi ảnh."
-        );
         return;
       }
 
@@ -278,7 +276,6 @@ export default function ChatScreen() {
       }
     } catch (error) {
       console.error("Error picking image:", error);
-      Alert.alert("Lỗi", "Không thể chọn ảnh. Vui lòng thử lại.");
     }
   };
 
@@ -317,28 +314,21 @@ export default function ChatScreen() {
           
           setUploadingImage(false);
           if (!result) {
-            Alert.alert("Lỗi", "Không thể gửi ảnh. Vui lòng thử lại.");
             setSelectedImage(imageToSend);
           }
         } catch (uploadError: any) {
           console.error("[ChatScreen] Failed to upload image:", uploadError);
           setUploadingImage(false);
-          Alert.alert(
-            "Lỗi",
-            uploadError?.message || "Không thể tải ảnh lên. Vui lòng thử lại."
-          );
           setSelectedImage(imageToSend);
         }
       } else {
         const result = await sendMessage(content);
         if (!result) {
-          Alert.alert("Lỗi", "Không thể gửi tin nhắn. Vui lòng thử lại.");
           setInput(content);
         }
       }
     } catch {
       setUploadingImage(false);
-      Alert.alert("Lỗi", "Đã xảy ra lỗi. Vui lòng thử lại.");
       if (imageToSend) {
         setSelectedImage(imageToSend);
       } else {
@@ -380,28 +370,13 @@ export default function ChatScreen() {
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
           {/* Avatar */}
-          {getAvatar() ? (
-            <Image
-              source={{ uri: getAvatar()! }}
-              style={{ width: 40, height: 40, borderRadius: 20 }}
-              contentFit="cover"
-            />
-          ) : (
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "#34B27D",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text className="text-white text-lg font-bold">
-                {getDisplayName().charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          )}
+          <Image
+            source={{
+              uri: resolveUserAvatarUri(getAvatar(), getDisplayName()),
+            }}
+            style={{ width: 40, height: 40, borderRadius: 20 }}
+            contentFit="cover"
+          />
           {/* Name */}
           <View className="flex-1 ml-3">
             <Text className="text-base font-bold text-black">
@@ -465,7 +440,7 @@ export default function ChatScreen() {
                 <ActivityIndicator size="large" color="#34B27D" />
                 <Text className="text-gray-500 mt-2">Đang tải tin nhắn...</Text>
               </View>
-            ) : !error ? (
+            ) : (
               <View className="py-8 items-center">
                 <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
                 <Text className="text-gray-500 mt-4 text-center">
@@ -474,17 +449,6 @@ export default function ChatScreen() {
                 <Text className="text-gray-400 text-sm mt-2 text-center">
                   Hãy bắt đầu cuộc trò chuyện
                 </Text>
-              </View>
-            ) : (
-              <View className="py-4 items-center">
-                <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
-                <Text className="text-red-500 text-sm mt-2">{error}</Text>
-                <TouchableOpacity
-                  onPress={() => refresh()}
-                  className="mt-4 bg-primary px-4 py-2 rounded-full"
-                >
-                  <Text className="text-white text-sm font-semibold">Thử lại</Text>
-                </TouchableOpacity>
               </View>
             )
           }

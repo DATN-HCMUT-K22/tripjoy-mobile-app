@@ -6,6 +6,7 @@ import { useAppSelector } from "@/store/hooks";
 import { useChatStore } from "@/stores/chat.store";
 import { ConversationResponse } from "@/types/message";
 import { MessageSearchResponse, UserSimpleResponse } from "@/types/search";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
@@ -14,7 +15,6 @@ import debounce from "lodash.debounce";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   Text,
@@ -143,9 +143,9 @@ const SearchMessageResultRow: React.FC<SearchMessageResultRowProps> = ({
     queryKey: ["group", conversation?.group_id],
     queryFn: async () => {
       if (!conversation?.group_id) return null;
-      const { getGroupById } = await import("@/services/groups");
+      const { getGroupById, isGroupApiSuccess } = await import("@/services/groups");
       const response = await getGroupById(conversation.group_id);
-      if (response.code === 1000 && response.data) return response.data;
+      if (isGroupApiSuccess(response.code) && response.data) return response.data;
       return null;
     },
     enabled: isGroup,
@@ -177,32 +177,13 @@ const SearchMessageResultRow: React.FC<SearchMessageResultRowProps> = ({
       className="flex-row py-3 border-b border-gray-100"
     >
       <View>
-        {avatarUri ? (
-          <Image
-            source={{ uri: avatarUri }}
-            style={{ width: 44, height: 44, borderRadius: 22 }}
-            contentFit="cover"
-          />
-        ) : (
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: "#34B27D",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {isGroup ? (
-              <Ionicons name="people" size={22} color="#fff" />
-            ) : (
-              <Text className="text-white font-bold text-base">
-                {(headerTitle || "T").charAt(0).toUpperCase()}
-              </Text>
-            )}
-          </View>
-        )}
+        <Image
+          source={{
+            uri: resolveUserAvatarUri(avatarUri, headerTitle || undefined),
+          }}
+          style={{ width: 44, height: 44, borderRadius: 22 }}
+          contentFit="cover"
+        />
       </View>
       <View className="flex-1 ml-3 min-w-0">
         <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
@@ -243,9 +224,9 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     queryKey: ["group", conversation.group_id],
     queryFn: async () => {
       if (!conversation.group_id) return null;
-      const { getGroupById } = await import("@/services/groups");
+      const { getGroupById, isGroupApiSuccess } = await import("@/services/groups");
       const response = await getGroupById(conversation.group_id);
-      if (response.code === 1000 && response.data) {
+      if (isGroupApiSuccess(response.code) && response.data) {
         return response.data;
       }
       return null;
@@ -317,28 +298,13 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     >
       {/* Avatar */}
       <View className="relative">
-        {avatar ? (
-          <Image
-            source={{ uri: avatar }}
-            style={{ width: 56, height: 56, borderRadius: 28 }}
-            contentFit="cover"
-          />
-        ) : (
-          <View
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 28,
-              backgroundColor: "#34B27D",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text className="text-white text-xl font-bold">
-              {displayName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
+        <Image
+          source={{
+            uri: resolveUserAvatarUri(avatar, displayName),
+          }}
+          style={{ width: 56, height: 56, borderRadius: 28 }}
+          contentFit="cover"
+        />
         {/* Pin indicator */}
         {isPinned && (
           <View
@@ -671,8 +637,7 @@ export default function MessagesScreen() {
     try {
       const conversation = await createConversation(user.id);
       router.push(`/chat/${conversation.id}` as any);
-    } catch (err: any) {
-      Alert.alert("Lỗi", err?.message || "Không thể mở cuộc trò chuyện.");
+    } catch {
     }
   };
 
@@ -686,8 +651,7 @@ export default function MessagesScreen() {
         conversationId: conversation.id,
         payload: { is_pinned: !isPinned },
       });
-    } catch (err: any) {
-      Alert.alert("Lỗi", err.message || "Không thể cập nhật conversation");
+    } catch {
     }
   };
 
@@ -848,28 +812,16 @@ export default function MessagesScreen() {
                         marginRight: idx < recentUsers.length - 1 ? 14 : 0,
                       }}
                     >
-                      {item.avatarUrl ? (
-                        <Image
-                          source={{ uri: item.avatarUrl }}
-                          style={{ width: 56, height: 56, borderRadius: 28 }}
-                          contentFit="cover"
-                        />
-                      ) : (
-                        <View
-                          style={{
-                            width: 56,
-                            height: 56,
-                            borderRadius: 28,
-                            backgroundColor: "#34B27D",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <Text className="text-white text-lg font-bold">
-                            {(item.fullName || item.username || "U").charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
+                      <Image
+                        source={{
+                          uri: resolveUserAvatarUri(
+                            item.avatarUrl,
+                            item.fullName || item.username
+                          ),
+                        }}
+                        style={{ width: 56, height: 56, borderRadius: 28 }}
+                        contentFit="cover"
+                      />
                       <Text
                         className="text-[11px] text-gray-800 mt-1.5 text-center w-full"
                         numberOfLines={1}
@@ -902,8 +854,8 @@ export default function MessagesScreen() {
               </View>
             ) : searchError ? (
               <View className="items-center py-8">
-                <Ionicons name="alert-circle-outline" size={36} color="#ef4444" />
-                <Text className="text-red-500 mt-2 text-center">{searchError}</Text>
+                <Ionicons name="search-outline" size={40} color="#9CA3AF" />
+                <Text className="text-gray-500 mt-2 text-center">Không có kết quả phù hợp</Text>
               </View>
             ) : (
               <>
@@ -948,19 +900,16 @@ export default function MessagesScreen() {
                         activeOpacity={0.7}
                         className="flex-row items-center py-2"
                       >
-                        {user.avatarUrl ? (
-                          <Image
-                            source={{ uri: user.avatarUrl }}
-                            style={{ width: 36, height: 36, borderRadius: 18, marginRight: 12 }}
-                            contentFit="cover"
-                          />
-                        ) : (
-                          <View className="w-9 h-9 rounded-full bg-primary items-center justify-center mr-3">
-                            <Text className="text-white font-bold">
-                              {(user.fullName || user.username || "U").charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
-                        )}
+                        <Image
+                          source={{
+                            uri: resolveUserAvatarUri(
+                              user.avatarUrl,
+                              user.fullName || user.username
+                            ),
+                          }}
+                          style={{ width: 36, height: 36, borderRadius: 18, marginRight: 12 }}
+                          contentFit="cover"
+                        />
                         <View className="flex-1">
                           {renderHighlightedText(user.fullName || user.username, trimmedKeyword, "text-base text-black")}
                           <Text className="text-xs text-gray-500">@{user.username}</Text>
@@ -1013,17 +962,6 @@ export default function MessagesScreen() {
           </View>
         ) : shouldShowSearchUI && searchInputFocused ? null : isLoading && conversations.length === 0 ? (
           <ConversationListSkeleton count={8} showPin={true} />
-        ) : error ? (
-          <View className="flex-1 items-center justify-center py-20 px-4">
-            <Ionicons name="alert-circle-outline" size={64} color="#ef4444" />
-            <Text className="text-red-500 mt-4 text-center">{error}</Text>
-            <TouchableOpacity
-              onPress={() => refetch()}
-              className="mt-4 bg-primary px-4 py-2 rounded-full"
-            >
-              <Text className="text-white font-semibold">Thử lại</Text>
-            </TouchableOpacity>
-          </View>
         ) : conversations.length === 0 ? (
           <View className="flex-1 items-center justify-center py-20">
             <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />

@@ -37,21 +37,31 @@ export function parseErrorMessage(error: any): string {
 }
 
 /**
- * Hiển thị toast thành công
+ * Hiển thị toast thành công (tạo / cập nhật thành công, v.v.)
  */
-export function showSuccessToast(message: string) {
+export function showSuccessToast(text1: string, text2?: string) {
   Toast.show({
     type: "success",
-    text1: message,
+    text1,
+    text2,
     position: "top",
   });
 }
 
+function resolveErrorDetail(error?: any): string {
+  if (error == null) return "Vui lòng thử lại!";
+  if (typeof error === "string" && error.trim()) return error.trim();
+  if (typeof error?.message === "string" && error.message.trim()) {
+    return error.message.trim();
+  }
+  return parseErrorMessage(error);
+}
+
 /**
- * Hiển thị toast lỗi
+ * Hiển thị toast lỗi — `error` có thể là object lỗi API, `{ message: string }`, hoặc chuỗi mô tả.
  */
 export function showErrorToast(title: string, error?: any) {
-  const message = error ? parseErrorMessage(error) : "Vui lòng thử lại!";
+  const message = resolveErrorDetail(error);
   Toast.show({
     type: "error",
     text1: title,

@@ -7,13 +7,13 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function AddLocationScreen() {
   const router = useRouter();
@@ -94,19 +94,29 @@ export default function AddLocationScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      {/* Header */}
-      <View className="flex-row items-center px-4 py-3 border-b border-gray-200">
+    <SafeAreaView
+      className="flex-1 bg-white"
+      edges={["top", "left", "right", "bottom"]}
+    >
+      {/* Header: safe-area + bố cục 3 cột — không dùng absolute đè tiêu đề */}
+      <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
         <TouchableOpacity
           onPress={() => router.back()}
-          className="absolute left-4 z-10"
+          className="h-10 w-12 items-center justify-center"
           activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons name="arrow-back-outline" size={24} color="#000" />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-black flex-1 text-center">
-          Thêm địa điểm
-        </Text>
+        <View className="min-w-0 flex-1 items-center justify-center px-1">
+          <Text
+            className="text-center text-xl font-bold text-black"
+            numberOfLines={1}
+          >
+            Thêm địa điểm
+          </Text>
+        </View>
+        <View className="h-10 w-12" />
       </View>
 
       {/* Search Bar */}

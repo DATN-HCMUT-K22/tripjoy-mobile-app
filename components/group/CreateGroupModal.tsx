@@ -3,12 +3,14 @@ import { useCreateGroup } from "@/hooks/useGroups";
 import { useUsers } from "@/hooks/useUsers";
 import { useAppSelector } from "@/store/hooks";
 import { uploadImage } from "@/services/media";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
+import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import {
-  Alert,
   Animated,
   Dimensions,
   Easing,
@@ -27,6 +29,12 @@ interface CreateGroupModalProps {
   onClose: () => void;
 }
 
+interface CreateGroupFormValues {
+  groupName: string;
+  groupDescription: string;
+  searchText: string;
+}
+
 export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   visible,
   onClose,
@@ -37,16 +45,24 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const expandedY = 0;
   const collapsedY = expandedY;
 
-  const [groupName, setGroupName] = useState("");
-  const [groupDescription, setGroupDescription] = useState("");
-  const [searchText, setSearchText] = useState("");
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const slideAnim = useRef(new Animated.Value(windowHeight)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const sheetPositionRef = useRef(expandedY);
+  const { control, handleSubmit, watch, reset } = useForm<CreateGroupFormValues>({
+    defaultValues: {
+      groupName: "",
+      groupDescription: "",
+      searchText: "",
+    },
+  });
+  const groupName = watch("groupName");
+  const groupDescription = watch("groupDescription");
+  const searchText = watch("searchText");
 
   // Fetch users từ API - chỉ khi modal visible và đã authenticated
   const {
@@ -74,9 +90,11 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   useEffect(() => {
     if (visible) {
       // Reset form when modal opens
-      setGroupName("");
-      setGroupDescription("");
-      setSearchText("");
+      reset({
+        groupName: "",
+        groupDescription: "",
+        searchText: "",
+      });
       setSelectedContacts([]);
       setIsDescriptionFocused(false);
       setSelectedImage(null);
@@ -105,7 +123,15 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       fadeAnim.setValue(0);
       sheetPositionRef.current = expandedY;
     }
-  }, [visible, expandedY, windowHeight, fadeAnim, slideAnim]);
+  }, [visible, expandedY, windowHeight, fadeAnim, slideAnim, reset]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchText((searchText || "").trim().toLowerCase());
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchText]);
 
   const handleClose = () => {
     Animated.parallel([
@@ -126,43 +152,29 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     });
   };
 
-  // Helper function để tạo avatar mẫu từ tên
-  const getAvatarUrl = (user: any) => {
-    if (user.avatarUrl) {
-      console.log("[getAvatarUrl] Using user avatarUrl:", user.avatarUrl);
-      return user.avatarUrl;
-    }
-    const name = user.fullName || user.username || user.email || "User";
-    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      name
-    )}&background=34B27D&color=fff&size=128`;
-    console.log(
-      "[getAvatarUrl] Generated avatar URL:",
-      avatarUrl,
-      "for name:",
-      name
-    );
-    return avatarUrl;
-  };
-
   // Filter users theo search text và loại bỏ user hiện tại
-  const filteredUsers = users.filter((user) => {
-    // Loại bỏ user hiện tại
-    if (currentUser && user.id === currentUser.id) {
-      return false;
-    }
-    
-    // Filter theo search text
-    const searchLower = searchText.toLowerCase();
-    const fullName = (user.fullName || "").toLowerCase();
-    const email = (user.email || "").toLowerCase();
-    const username = (user.username || "").toLowerCase();
-    return (
-      fullName.includes(searchLower) ||
-      email.includes(searchLower) ||
-      username.includes(searchLower)
-    );
-  });
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((user) => {
+        if (currentUser && user.id === currentUser.id) {
+          return false;
+        }
+
+        if (!debouncedSearchText) {
+          return true;
+        }
+
+        const fullName = (user.fullName || "").toLowerCase();
+        const email = (user.email || "").toLowerCase();
+        const username = (user.username || "").toLowerCase();
+        return (
+          fullName.includes(debouncedSearchText) ||
+          email.includes(debouncedSearchText) ||
+          username.includes(debouncedSearchText)
+        );
+      }),
+    [users, currentUser, debouncedSearchText]
+  );
 
   const toggleContact = (contactId: string) => {
     setSelectedContacts((prev) =>
@@ -176,8 +188,9 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     setSelectedContacts((prev) => prev.filter((id) => id !== contactId));
   };
 
-  const selectedUsersData = users.filter((user) =>
-    selectedContacts.includes(user.id)
+  const selectedUsersData = useMemo(
+    () => users.filter((user) => selectedContacts.includes(user.id)),
+    [users, selectedContacts]
   );
 
   // Bỏ pan gesture, chỉ auto slide lên full height
@@ -186,7 +199,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     // Request permission
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
+      showErrorToast(
         "Cần quyền truy cập",
         "Ứng dụng cần quyền truy cập thư viện ảnh để chọn ảnh đại diện nhóm."
       );
@@ -206,8 +219,9 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     }
   };
 
-  const handleCreate = async () => {
-    if (!groupName.trim() || selectedContacts.length === 0) {
+  const handleCreate = async (values: CreateGroupFormValues) => {
+    const trimmedName = values.groupName.trim();
+    if (!trimmedName || selectedContacts.length === 0) {
       return;
     }
 
@@ -228,12 +242,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           console.log("[CreateGroupModal] Image uploaded successfully:", avatarUrl);
         } catch (uploadError: any) {
           console.error("[CreateGroupModal] Failed to upload image:", uploadError);
-          Alert.alert(
-            "Lỗi",
-            uploadError?.message || "Không thể tải ảnh lên. Vui lòng thử lại."
-          );
-          setIsUploadingImage(false);
-          return;
+          avatarUrl = undefined;
         } finally {
           setIsUploadingImage(false);
         }
@@ -241,9 +250,9 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
       // Tạo nhóm với avatar URL đã upload
       await createGroupMutation.mutateAsync({
-        name: groupName.trim(),
+        name: trimmedName,
         avatar: avatarUrl,
-        description: groupDescription.trim() || undefined,
+        description: values.groupDescription.trim() || undefined,
         theme_color: "#34B27D", // Màu mặc định, có thể thêm picker sau
         member_ids: selectedContacts,
       });
@@ -366,45 +375,63 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
                 {/* Name Input */}
                 <View className="flex-1">
-                  <TextInput
-                    className="text-lg font-medium text-black pb-2 border-b border-gray-300"
-                    placeholder="Đặt tên nhóm..."
-                    placeholderTextColor="#9CA3AF"
-                    value={groupName}
-                    onChangeText={setGroupName}
-                    underlineColorAndroid="transparent"
+                  <Controller
+                    control={control}
+                    name="groupName"
+                    render={({ field: { onChange, value } }) => (
+                      <TextInput
+                        className="text-lg font-medium text-black pb-2 border-b border-gray-300"
+                        placeholder="Đặt tên nhóm..."
+                        placeholderTextColor="#9CA3AF"
+                        value={value}
+                        onChangeText={onChange}
+                        underlineColorAndroid="transparent"
+                      />
+                    )}
                   />
                 </View>
               </View>
 
               {/* Description Input */}
               <View className="mb-6">
-                <TextInput
-                  className={`text-base text-gray-800 pb-2 ${
-                    !isDescriptionFocused
-                      ? "border-b border-gray-300"
-                      : "border-0"
-                  }`}
-                  placeholder="Mô tả nhóm (tùy chọn)..."
-                  placeholderTextColor="#9CA3AF"
-                  value={groupDescription}
-                  onChangeText={setGroupDescription}
-                  onFocus={() => setIsDescriptionFocused(true)}
-                  onBlur={() => setIsDescriptionFocused(false)}
-                  multiline
-                  underlineColorAndroid="transparent"
+                <Controller
+                  control={control}
+                  name="groupDescription"
+                  render={({ field: { onChange, value } }) => (
+                    <TextInput
+                      className={`text-base text-gray-800 pb-2 ${
+                        !isDescriptionFocused
+                          ? "border-b border-gray-300"
+                          : "border-0"
+                      }`}
+                      placeholder="Mô tả nhóm (tùy chọn)..."
+                      placeholderTextColor="#9CA3AF"
+                      value={value}
+                      onChangeText={onChange}
+                      onFocus={() => setIsDescriptionFocused(true)}
+                      onBlur={() => setIsDescriptionFocused(false)}
+                      multiline
+                      underlineColorAndroid="transparent"
+                    />
+                  )}
                 />
               </View>
 
               {/* Search Bar */}
               <View className="flex-row items-center bg-gray-100 rounded-lg px-4 py-3 mb-4">
                 <Ionicons name="search-outline" size={20} color="#9CA3AF" />
-                <TextInput
-                  className="flex-1 ml-2 text-base text-gray-800"
-                  placeholder="Tìm tên hoặc email"
-                  placeholderTextColor="#9CA3AF"
-                  value={searchText}
-                  onChangeText={setSearchText}
+                <Controller
+                  control={control}
+                  name="searchText"
+                  render={({ field: { onChange, value } }) => (
+                    <TextInput
+                      className="flex-1 ml-2 text-base text-gray-800"
+                      placeholder="Tìm tên hoặc email"
+                      placeholderTextColor="#9CA3AF"
+                      value={value}
+                      onChangeText={onChange}
+                    />
+                  )}
                 />
               </View>
 
@@ -422,15 +449,12 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   </View>
                 ) : (
                   filteredUsers.map((user) => {
-                    const avatarUrl = getAvatarUrl(user);
                     const displayName =
                       user.fullName || user.username || user.email || "User";
-                    console.log("[CreateGroupModal] Rendering user:", {
-                      id: user.id,
-                      name: displayName,
-                      avatarUrl,
-                      hasAvatarUrl: !!user.avatarUrl,
-                    });
+                    const avatarUrl = resolveUserAvatarUri(
+                      user.avatarUrl,
+                      displayName
+                    );
                     return (
                       <ContactItem
                         key={user.id}
@@ -463,44 +487,30 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   >
                     <View className="flex-row items-center gap-2">
                       {selectedUsersData.map((user) => {
-                        const avatarUrl = getAvatarUrl(user);
                         const displayName =
                           user.fullName ||
                           user.username ||
                           user.email ||
                           "User";
+                        const chipAvatarUri = resolveUserAvatarUri(
+                          user.avatarUrl,
+                          displayName
+                        );
                         return (
                           <View key={user.id} className="relative">
-                            {user.avatarUrl ? (
-                              <ExpoImage
-                                source={{ uri: avatarUrl }}
-                                style={{
-                                  width: 40,
-                                  height: 40,
-                                  borderRadius: 20,
-                                }}
-                                contentFit="cover"
-                                placeholder={{
-                                  blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH",
-                                }}
-                                transition={200}
-                              />
-                            ) : (
-                              <View
-                                style={{
-                                  width: 40,
-                                  height: 40,
-                                  borderRadius: 20,
-                                  backgroundColor: "#34B27D",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
-                              >
-                                <Text className="text-white text-sm font-bold">
-                                  {displayName.charAt(0).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
+                            <ExpoImage
+                              source={{ uri: chipAvatarUri }}
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                              }}
+                              contentFit="cover"
+                              placeholder={{
+                                blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH",
+                              }}
+                              transition={200}
+                            />
                             <TouchableOpacity
                               onPress={() => removeContact(user.id)}
                               activeOpacity={0.7}
@@ -535,7 +545,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
                 {/* Create Button */}
                 <TouchableOpacity
-                  onPress={handleCreate}
+                  onPress={handleSubmit(handleCreate)}
                   activeOpacity={0.8}
                   disabled={
                     !groupName.trim() ||

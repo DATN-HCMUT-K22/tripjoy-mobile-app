@@ -474,6 +474,17 @@ export const httpClient = {
       ...options,
     });
   },
+  patch: <T, B = unknown>(path: string, body?: B, options?: RequestOptions) => {
+    const isFormData =
+      body instanceof FormData ||
+      (body && typeof body === "object" && body !== null && "_parts" in body);
+
+    return request<T>(path, {
+      method: "PATCH",
+      body: body ? (isFormData ? (body as any) : JSON.stringify(body)) : undefined,
+      ...options,
+    });
+  },
   delete: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { method: "DELETE", ...options }),
 };

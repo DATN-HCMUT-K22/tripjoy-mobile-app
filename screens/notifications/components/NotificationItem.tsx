@@ -1,6 +1,7 @@
 import React, { memo } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { NotificationResponse } from "@/services/notifications";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { timeAgo } from "@/utils/format";
 
 export interface NotificationItemProps {
@@ -21,15 +22,15 @@ export const NotificationItem = memo(function NotificationItem({
       onPress={() => onPress(item)}
       style={[styles.container, isUnread && styles.containerUnread]}
     >
-      {actor?.avatarUrl ? (
-        <Image source={{ uri: actor.avatarUrl }} style={styles.avatar} />
-      ) : (
-        <View style={styles.avatarFallback}>
-          <Text style={styles.avatarFallbackText}>
-            {(actor?.fullName || actor?.username || "U").charAt(0).toUpperCase()}
-          </Text>
-        </View>
-      )}
+      <Image
+        source={{
+          uri: resolveUserAvatarUri(
+            actor?.avatarUrl,
+            actor?.fullName || actor?.username
+          ),
+        }}
+        style={styles.avatar}
+      />
 
       <View style={styles.content}>
         <View style={styles.titleRow}>
@@ -120,6 +121,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
+
 
 
 

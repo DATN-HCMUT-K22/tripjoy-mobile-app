@@ -1,4 +1,5 @@
 import { Contact } from "@/types/contact";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import React from "react";
@@ -17,9 +18,7 @@ export const ContactItem: React.FC<ContactItemProps> = ({
 }) => {
   const [imageError, setImageError] = React.useState(false);
   
-  const avatarUri = contact.avatar && contact.avatar.trim() 
-    ? contact.avatar 
-    : `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.name || "User")}&background=34B27D&color=fff&size=128`;
+  const avatarUri = resolveUserAvatarUri(contact.avatar, contact.name);
   
   const displayName = contact.name || "User";
   const initial = displayName.charAt(0).toUpperCase();
@@ -58,12 +57,8 @@ export const ContactItem: React.FC<ContactItemProps> = ({
           contentFit="cover"
           placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
           transition={200}
-          onError={(error) => {
-            console.log("[ContactItem] Error loading avatar:", error, "URI:", avatarUri, "for contact:", contact.name);
+          onError={() => {
             setImageError(true);
-          }}
-          onLoad={() => {
-            console.log("[ContactItem] Avatar loaded successfully for:", contact.name, "URI:", avatarUri);
           }}
         />
       ) : (

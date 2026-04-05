@@ -1,8 +1,7 @@
 import { ItineraryCard, ItineraryListItem } from "@/components/group";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
 import { mockItineraries } from "@/data/mockItineraries";
-import { groupService } from "@/services/groups";
-import { Group } from "@/types/group";
+import { groupService, isGroupApiSuccess } from "@/services/groups";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -34,9 +33,8 @@ export default function GroupDetailScreen() {
     queryFn: async () => {
       if (!id) throw new Error("Missing group id");
       const response = await groupService.getGroupById(id);
-      // API có thể trả code 0 hoặc 1000 tùy endpoint
-      if (response.code === 0 || response.code === 1000) {
-        return response.data as Group;
+      if (isGroupApiSuccess(response.code) && response.data) {
+        return response.data;
       }
       throw new Error(response.message || "Failed to fetch group detail");
     },

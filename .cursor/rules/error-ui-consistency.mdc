@@ -1,0 +1,22 @@
+---
+description: Feedback UI — toast for create/update; modal for destructive confirm only
+alwaysApply: true
+---
+
+# Error & success feedback
+
+## Tạo mới / cập nhật (API mutation, lưu form, upload…)
+
+- **Thành công:** dùng `showSuccessToast` từ `@/utils/toast` (có thể thêm `text2` tùy chọn).
+- **Thất bại / validation chặn luồng:** dùng `showErrorToast(title, errorOrMessage)` — tham số 2 có thể là chuỗi, `{ message: string }`, hoặc object lỗi (parse tự động).
+- **Không** dùng `Alert.alert` hay `AppDialogModal` cho kết quả thành công/thất bại của tạo/cập nhật.
+- Trong `onError` của mutation: ưu tiên **chỉ** `showErrorToast`, **không** `console.error` thay cho phản hồi cho user (tránh chỉ log mà không báo).
+
+## Modal tùy chỉnh (`AppDialogModal`)
+
+- Dùng khi cần **xác nhận hành động nguy hiểm** (xóa, rời nhóm, …) với 1–2 nút rõ ràng.
+- Không dùng làm hộp thoại “Đã lưu” / “Lỗi API” cho luồng tạo/cập nhật — những cái đó dùng toast.
+
+## Toast layout
+
+- Cấu hình hiển thị nằm ở `app/_layout.tsx` (`Toast` + `config` cho `success` / `error`).

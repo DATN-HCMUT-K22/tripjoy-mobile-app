@@ -14,13 +14,6 @@ export function useUsers(enabled: boolean = false) {
   // Chỉ fetch khi đã authenticated (có token trong Redux) VÀ enabled=true
   const shouldFetch = enabled && isAuthenticated && !!accessToken;
 
-  console.log("[useUsers] Debug:", {
-    enabled,
-    isAuthenticated,
-    hasAccessToken: !!accessToken,
-    shouldFetch,
-  });
-
   return useQuery({
     queryKey: ["users"],
     queryFn: async () => {

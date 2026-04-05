@@ -63,17 +63,25 @@ export async function uploadImage(
     formDataKeys: formData._parts?.map((p: any) => p[0]) || [],
   });
 
-  // Build URL với query params
-  let url = "/media/upload/image";
-  if (folder) {
-    url += `?folder=${encodeURIComponent(folder)}`;
-  }
+  const uploadWithUrl = (url: string) =>
+    httpClient.post<ApiResponse<MediaUploadResponse>>(url, formData);
 
-  // Không set Content-Type header - React Native sẽ tự động set với boundary
-  const response = await httpClient.post<ApiResponse<MediaUploadResponse>>(
-    url,
-    formData
-  );
+  // Build URL với query params
+  let response: ApiResponse<MediaUploadResponse>;
+  if (folder) {
+    const urlWithFolder = `/media/upload/image?folder=${encodeURIComponent(folder)}`;
+    try {
+      response = await uploadWithUrl(urlWithFolder);
+    } catch (error) {
+      console.warn(
+        "[uploadImage] Upload with folder failed, fallback to default folder:",
+        folder
+      );
+      response = await uploadWithUrl("/media/upload/image");
+    }
+  } else {
+    response = await uploadWithUrl("/media/upload/image");
+  }
 
   if (response.code !== 1000) {
     throw new Error(response.message || "Failed to upload image");

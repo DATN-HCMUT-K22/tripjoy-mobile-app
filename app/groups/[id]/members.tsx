@@ -1,3 +1,4 @@
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 import { useGroup, useGroupMembers, useAddGroupMember, useUpdateGroupMemberRole, useRemoveGroupMember, useTransferGroupLeadership, useLeaveGroupFromMembers } from "@/hooks/useGroups";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { searchService } from "@/services/search";
@@ -7,7 +8,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,6 +18,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GroupMember } from "@/types/group";
 import { UserSimpleResponse } from "@/types/search";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
+import { showErrorToast } from "@/utils/toast";
 
 type Role = "LEADER" | "CO_LEADER" | "MEMBER";
 
@@ -50,6 +52,7 @@ export default function GroupMembersScreen() {
   const [selectedUser, setSelectedUser] = useState<UserSimpleResponse | null>(null);
   const [activeMemberActionId, setActiveMemberActionId] = useState<string | null>(null);
   const [confirmRemoveMemberId, setConfirmRemoveMemberId] = useState<string | null>(null);
+  const [leaveGroupDialogVisible, setLeaveGroupDialogVisible] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
 
   const myMembership = useMemo(() => {
@@ -72,12 +75,6 @@ export default function GroupMembersScreen() {
   const canManageMembers = myRole === "LEADER" || myRole === "CO_LEADER";
   const isLeader = myRole === "LEADER";
   const hasOtherMember = members.some((m) => m.user.id !== currentUser?.id);
-
-  const getRoleLabel = (role: Role) => {
-    if (role === "LEADER") return "Trưởng nhóm";
-    if (role === "CO_LEADER") return "Phó nhóm";
-    return "Thành viên";
-  };
 
   useEffect(() => {
     const keyword = memberSearch.trim();
@@ -112,70 +109,43 @@ export default function GroupMembersScreen() {
     return () => clearTimeout(timer);
   }, [memberSearch, canManageMembers, members]);
 
-  const handleTransferLeader = (memberId: string) => {
-    transferLeaderMutation.mutate({ newLeaderId: memberId });
+  /** Backend transfer-leadership dùng UUID user (user.id), không dùng id bản ghi membership */
+  const handleTransferLeader = (newLeaderUserId: string) => {
+    transferLeaderMutation.mutate({ newLeaderId: newLeaderUserId });
   };
 
   const handleUpdateRole = (memberId: string, role: Role) => {
+    if (!groupId || !canManageMembers) return;
+    const target = members.find((x) => x.id === memberId);
+    if (!target) return;
+    const assignsCoLeader = role === "CO_LEADER";
+    const removesCoLeader = target.role === "CO_LEADER" && role === "MEMBER";
+    if ((assignsCoLeader || removesCoLeader) && !isLeader) {
+      showErrorToast(
+        "Không có quyền",
+        "Chỉ trưởng nhóm mới quản lý vai trò phó nhóm."
+      );
+      return;
+    }
     updateRoleMutation.mutate({ memberId, payload: { role } });
   };
 
-  const handleMemberActions = (memberId: string, currentRole: Role, name: string) => {
-    if (!canManageMembers) return;
-    const actions: { text: string; onPress?: () => void; style?: "destructive" | "cancel" | "default" }[] = [];
-
-    // Leader có thể chuyển quyền cho MEMBER/CO_LEADER
-    if (isLeader && currentRole !== "LEADER") {
-      actions.push({
-        text: "Chuyển quyền Trưởng nhóm",
-        onPress: () => handleTransferLeader(memberId),
-      });
-    }
-
-    if (currentRole === "MEMBER") {
-      actions.push({
-        text: "Đổi thành Phó nhóm",
-        onPress: () => handleUpdateRole(memberId, "CO_LEADER"),
-      });
-    }
-    if (currentRole === "CO_LEADER") {
-      actions.push({
-        text: "Hạ về Thành viên",
-        onPress: () => handleUpdateRole(memberId, "MEMBER"),
-      });
-    }
-
-    actions.push({
-      text: "Xóa khỏi nhóm",
-      style: "destructive",
-      onPress: () => handleRemoveMember(memberId),
-    });
-    actions.push({ text: "Hủy", style: "cancel" });
-
-    Alert.alert(name, `Vai trò hiện tại: ${getRoleLabel(currentRole)}`, actions);
-  };
-
-  const handleRemoveMember = (memberId: string) => {
+  /** Xóa thành viên (đã xác nhận ở UI inline — không mở Alert thêm) */
+  const performRemoveMember = (memberId: string) => {
     if (!groupId || !canManageMembers) return;
-    if (myMembership && myMembership.id === memberId) {
-      return;
-    }
-    Alert.alert(
-      "Xóa thành viên",
-      "Bạn có chắc muốn xóa thành viên này khỏi nhóm?",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: () => removeMemberMutation.mutate(memberId),
-        },
-      ]
-    );
+    if (myMembership && myMembership.id === memberId) return;
+    removeMemberMutation.mutate(memberId);
   };
 
   const handleAddMember = (role: Role = "MEMBER") => {
     if (!groupId || !canManageMembers) return;
+    if (role === "CO_LEADER" && !isLeader) {
+      showErrorToast(
+        "Không có quyền",
+        "Chỉ trưởng nhóm mới có thể thêm phó nhóm."
+      );
+      return;
+    }
     if (!selectedUser?.id) return;
     addMemberMutation.mutate(
       {
@@ -195,32 +165,23 @@ export default function GroupMembersScreen() {
   const handleLeaveGroup = () => {
     if (!groupId || !myMembership) return;
     if (myRole === "LEADER" && hasOtherMember) {
-      Alert.alert(
+      showErrorToast(
         "Không thể rời nhóm ngay",
         "Bạn đang là Trưởng nhóm. Hãy chuyển quyền trưởng nhóm cho thành viên khác trước khi rời nhóm."
       );
       return;
     }
-    Alert.alert(
-      "Rời nhóm",
-      "Bạn có chắc chắn muốn rời khỏi nhóm này?",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Rời nhóm",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await leaveGroupMutation.mutateAsync();
-              // Sau khi rời nhóm, quay về màn danh sách nhóm
-              router.replace("/groups");
-            } catch {
-              // Error đã được handle trong hook
-            }
-          },
-        },
-      ]
-    );
+    setLeaveGroupDialogVisible(true);
+  };
+
+  const confirmLeaveGroup = async () => {
+    setLeaveGroupDialogVisible(false);
+    try {
+      await leaveGroupMutation.mutateAsync();
+      router.replace("/groups");
+    } catch {
+      // Lỗi đã toast trong hook
+    }
   };
 
   const renderRoleBadge = (role: Role, isMe: boolean) => {
@@ -344,19 +305,13 @@ export default function GroupMembersScreen() {
                     }}
                     activeOpacity={0.7}
                   >
-                    {u.avatarUrl ? (
-                      <Image
-                        source={{ uri: u.avatarUrl }}
-                        style={styles.searchResultAvatar}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View style={styles.searchResultAvatarPh}>
-                        <Text style={styles.searchResultAvatarLetter}>
-                          {(u.fullName || u.username || "?").charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
+                    <Image
+                      source={{
+                        uri: resolveUserAvatarUri(u.avatarUrl, u.fullName || u.username),
+                      }}
+                      style={styles.searchResultAvatar}
+                      contentFit="cover"
+                    />
                     <View style={styles.searchResultTextCol}>
                       <Text style={styles.searchResultName} numberOfLines={1}>
                         {u.fullName || u.username}
@@ -374,21 +329,16 @@ export default function GroupMembersScreen() {
             {selectedUser && (
               <View style={styles.selectedUserCard}>
                 <View style={styles.selectedUserRow}>
-                  {selectedUser.avatarUrl ? (
-                    <Image
-                      source={{ uri: selectedUser.avatarUrl }}
-                      style={styles.selectedUserAvatar}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <View style={styles.selectedUserAvatarPh}>
-                      <Text style={styles.selectedUserAvatarLetter}>
-                        {(selectedUser.fullName || selectedUser.username || "?")
-                          .charAt(0)
-                          .toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
+                  <Image
+                    source={{
+                      uri: resolveUserAvatarUri(
+                        selectedUser.avatarUrl,
+                        selectedUser.fullName || selectedUser.username
+                      ),
+                    }}
+                    style={styles.selectedUserAvatar}
+                    contentFit="cover"
+                  />
                   <View style={styles.selectedUserInfo}>
                     <Text style={styles.selectedUserName} numberOfLines={1}>
                       {selectedUser.fullName || selectedUser.username}
@@ -433,18 +383,21 @@ export default function GroupMembersScreen() {
                   )}
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.addSecondaryBtn,
-                    (!selectedUser?.id || addMemberMutation.isPending) && styles.addSecondaryBtnDisabled,
-                  ]}
-                  onPress={() => handleAddMember("CO_LEADER")}
-                  activeOpacity={0.8}
-                  disabled={!selectedUser?.id || addMemberMutation.isPending}
-                >
-                  <Ionicons name="shield-outline" size={18} color="#2563EB" />
-                  <Text style={styles.addSecondaryBtnText}>Thêm làm Phó nhóm</Text>
-                </TouchableOpacity>
+                {isLeader ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.addSecondaryBtn,
+                      (!selectedUser?.id || addMemberMutation.isPending) &&
+                        styles.addSecondaryBtnDisabled,
+                    ]}
+                    onPress={() => handleAddMember("CO_LEADER")}
+                    activeOpacity={0.8}
+                    disabled={!selectedUser?.id || addMemberMutation.isPending}
+                  >
+                    <Ionicons name="shield-outline" size={18} color="#2563EB" />
+                    <Text style={styles.addSecondaryBtnText}>Thêm làm Phó nhóm</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
           </View>
@@ -478,30 +431,22 @@ export default function GroupMembersScreen() {
         ) : (
           sortedMembers.map((m) => {
             const isMe = !!currentUser && m.user.id === currentUser.id;
-            const canManageThis =
-              canManageMembers &&
-              !isMe &&
-              // Không cho thao tác với leader khác nếu mình không phải leader
-              !(m.role === "LEADER" && !isLeader);
+            /** Chỉ trưởng nhóm thấy … và dropdown (chuyển quyền / phó nhóm / xóa) */
+            const showMemberOverflowMenu =
+              isLeader && !isMe && m.role !== "LEADER";
 
             const name = m.user.fullName || m.user.username || "Thành viên";
 
             return (
               <React.Fragment key={m.id}>
               <View style={styles.memberItem}>
-                {m.user.avatarUrl ? (
-                  <Image
-                    source={{ uri: m.user.avatarUrl }}
-                    style={styles.memberAvatar}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <View style={styles.memberAvatarPlaceholder}>
-                    <Text style={styles.memberAvatarInitial}>
-                      {name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
+                <Image
+                  source={{
+                    uri: resolveUserAvatarUri(m.user.avatarUrl, name),
+                  }}
+                  style={styles.memberAvatar}
+                  contentFit="cover"
+                />
                 <View style={styles.memberInfo}>
                   <Text style={styles.memberName} numberOfLines={1}>
                     {name}
@@ -511,7 +456,7 @@ export default function GroupMembersScreen() {
                   </Text>
                   {renderRoleBadge(m.role, isMe)}
                 </View>
-                {canManageThis && (
+                {showMemberOverflowMenu && (
                   <View style={styles.memberActions}>
                     <TouchableOpacity
                       style={styles.memberActionButton}
@@ -525,7 +470,7 @@ export default function GroupMembersScreen() {
                   </View>
                 )}
               </View>
-              {activeMemberActionId === m.id && canManageThis && (
+              {activeMemberActionId === m.id && showMemberOverflowMenu && (
                 <View style={styles.memberActionPanel}>
                   {isLeader && m.role !== "LEADER" && (
                     <TouchableOpacity
@@ -533,7 +478,7 @@ export default function GroupMembersScreen() {
                       activeOpacity={0.7}
                       onPress={() => {
                         setActiveMemberActionId(null);
-                        handleTransferLeader(m.id);
+                        handleTransferLeader(m.user.id);
                       }}
                     >
                       <Ionicons name="shield-checkmark-outline" size={16} color="#EA580C" />
@@ -542,7 +487,7 @@ export default function GroupMembersScreen() {
                       </Text>
                     </TouchableOpacity>
                   )}
-                  {m.role === "MEMBER" && (
+                  {m.role === "MEMBER" && isLeader && (
                     <TouchableOpacity
                       style={styles.memberActionPanelBtn}
                       activeOpacity={0.7}
@@ -555,7 +500,7 @@ export default function GroupMembersScreen() {
                       <Text style={styles.memberActionPanelText}>Đổi thành phó nhóm</Text>
                     </TouchableOpacity>
                   )}
-                  {m.role === "CO_LEADER" && (
+                  {m.role === "CO_LEADER" && isLeader && (
                     <TouchableOpacity
                       style={styles.memberActionPanelBtn}
                       activeOpacity={0.7}
@@ -594,7 +539,7 @@ export default function GroupMembersScreen() {
                           onPress={() => {
                             setConfirmRemoveMemberId(null);
                             setActiveMemberActionId(null);
-                            handleRemoveMember(m.id);
+                            performRemoveMember(m.id);
                           }}
                           activeOpacity={0.7}
                         >
@@ -631,6 +576,21 @@ export default function GroupMembersScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <AppDialogModal
+        visible={leaveGroupDialogVisible}
+        onRequestClose={() => setLeaveGroupDialogVisible(false)}
+        title="Rời nhóm"
+        message="Bạn có chắc chắn muốn rời khỏi nhóm này?"
+        variant="warning"
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setLeaveGroupDialogVisible(false)}
+        primaryLabel="Rời nhóm"
+        primaryDestructive
+        onPrimaryPress={() => {
+          void confirmLeaveGroup();
+        }}
+      />
     </SafeAreaView>
   );
 }

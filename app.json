@@ -35,8 +35,7 @@
           }
         }
       ],
-      "expo-notifications",
-      "@rnmapbox/maps"
+      "expo-notifications"
     ],
     "ios": {
       "supportsTablet": true,

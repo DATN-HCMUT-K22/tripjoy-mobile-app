@@ -21,6 +21,13 @@ export interface UserCreationRequest {
  * Body cập nhật user (theo UserUpdateRequest trong tài liệu API)
  * Tất cả field đều optional – gửi field nào thì cập nhật field đó.
  */
+/** PUT /users/me/password — theo tài liệu Change Password API */
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 export interface UserUpdateRequest {
   password?: string;
   fullName?: string;
@@ -36,8 +43,7 @@ export interface UserUpdateRequest {
  * Lấy danh sách tất cả users (admin view)
  * GET /users
  */
-export const getUsers = () =>
-  httpClient.get<GetUsersResponse>("/users");
+export const getUsers = () => httpClient.get<GetUsersResponse>("/users");
 
 /**
  * Lấy thông tin user hiện tại (current user)
@@ -55,11 +61,21 @@ export const createUser = (payload: UserCreationRequest) =>
   httpClient.post<ApiResponse<User>, UserCreationRequest>("/users", payload);
 
 /**
- * Cập nhật thông tin user theo ID
- * PUT /users/{userId}
+ * Cập nhật thông tin user đang đăng nhập (partial update)
+ * PATCH /users/me
  */
-export const updateUserById = (userId: string, payload: UserUpdateRequest) =>
-  httpClient.put<ApiResponse<User>, UserUpdateRequest>(`/users/${userId}`, payload);
+export const updateCurrentUser = (payload: UserUpdateRequest) =>
+  httpClient.patch<ApiResponse<User>, UserUpdateRequest>("/users/me", payload);
+
+/**
+ * Đổi mật khẩu (đã đăng nhập)
+ * PUT /users/me/password
+ */
+export const changePassword = (payload: ChangePasswordRequest) =>
+  httpClient.put<ApiResponse<null>, ChangePasswordRequest>(
+    "/users/me/password",
+    payload
+  );
 
 /**
  * Xóa user theo ID (soft delete tuỳ backend)

@@ -24,7 +24,7 @@ export type LocationsPage = {
   empty?: boolean;
 };
 
-function normalizeLocationsPayload(data: unknown): LocationDto[] {
+export function normalizeLocationsPayload(data: unknown): LocationDto[] {
   if (!data) return [];
   if (Array.isArray(data)) return data as LocationDto[];
   const page = data as LocationsPage;
