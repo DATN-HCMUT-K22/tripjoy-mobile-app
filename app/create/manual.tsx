@@ -8,11 +8,27 @@ import { mockAttractions } from "@/data/mockAttractions";
 import { mockItineraryItems } from "@/data/mockItineraryItems";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
 import { ItineraryItem } from "@/types/itinerary";
+import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
+import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Linking, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Linking,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useQuery } from "@tanstack/react-query";
+import { useManualUserLocation } from "@/hooks/useManualUserLocation";
+import {
+  buildManualDestinationRows,
+  computeTravelTimesForManual,
+} from "@/utils/manualTravelTimes";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -43,17 +59,30 @@ function ManualItineraryHeader({ onBack }: { onBack: () => void }) {
 }
 
 // Component hiển thị một itinerary item card
+const TRANSPORT_DISPLAY_ORDER = [
+  "car",
+  "motorcycle",
+  "bus",
+  "walking",
+  "bicycle",
+  "airplane",
+] as const;
+
 function ItineraryItemCard({
   item,
   index,
   totalItems,
   onEditTime,
+  travelFromUser,
 }: {
   item: ItineraryItem;
   index: number;
   totalItems: number;
   onEditTime: (item: ItineraryItem) => void;
+  travelFromUser?: ItineraryItem["transportation"];
 }) {
+  const { externalPlacesById } = useItinerary();
+
   const getTimelineIcon = () => {
     switch (item.timelineIcon) {
       case "restaurant":
@@ -88,7 +117,6 @@ function ItineraryItemCard({
     }
   };
 
-  // Tạo Google Maps URL từ attraction data
   const getGoogleMapsUrl = () => {
     const attraction = mockAttractions.find(
       (attr) => attr.id === item.locationId
@@ -96,10 +124,19 @@ function ItineraryItemCard({
     if (attraction?.latitude && attraction?.longitude) {
       return `https://www.google.com/maps?q=${attraction.latitude},${attraction.longitude}`;
     }
+    const ext = externalPlacesById[item.locationId];
+    if (ext?.latitude != null && ext?.longitude != null) {
+      return `https://www.google.com/maps?q=${ext.latitude},${ext.longitude}`;
+    }
     return item.googleMapsUrl || "";
   };
 
   const googleMapsUrl = getGoogleMapsUrl();
+
+  const displayTransport = {
+    ...item.transportation,
+    ...(travelFromUser ?? {}),
+  };
 
   return (
     <View className="mb-4 flex-row">
@@ -114,12 +151,20 @@ function ItineraryItemCard({
 
       {/* Card content */}
       <View className="flex-1 rounded-xl overflow-hidden bg-white border border-gray-200">
-        {/* Image */}
-        <Image
-          source={{ uri: item.image }}
-          style={{ width: "100%", height: 180 }}
-          contentFit="cover"
-        />
+        {item.image ? (
+          <Image
+            source={expoImageSourceForGoogleRaster(item.image)}
+            style={{ width: "100%", height: 180 }}
+            contentFit="cover"
+          />
+        ) : (
+          <View
+            className="w-full bg-gray-100 items-center justify-center"
+            style={{ height: 180 }}
+          >
+            <Ionicons name="image-outline" size={40} color="#ccc" />
+          </View>
+        )}
 
         {/* Content */}
         <View className="px-4 pt-3 pb-2">
@@ -163,7 +208,7 @@ function ItineraryItemCard({
                 onPress={() => {
                   if (googleMapsUrl) {
                     Linking.openURL(googleMapsUrl).catch((err) =>
-                      console.warn("Không mở được Google Maps:", err)
+                      showErrorToast("Không mở được Google Maps", err)
                     );
                   }
                 }}
@@ -177,15 +222,19 @@ function ItineraryItemCard({
           </View>
 
           {/* Transportation options */}
-          <View className="flex-row items-center gap-3 mt-2 pt-3 pb-0 border-t border-gray-100">
-            {Object.entries(item.transportation).map(([type, time]) => (
+          <View className="flex-row items-center gap-3 mt-2 pt-3 pb-0 border-t border-gray-100 flex-wrap">
+            {TRANSPORT_DISPLAY_ORDER.filter(
+              (type) => displayTransport[type] != null && displayTransport[type] !== ""
+            ).map((type) => (
               <View key={type} className="items-center">
                 <Ionicons
                   name={getTransportIcon(type) as any}
                   size={16}
                   color="#666"
                 />
-                <Text className="text-xs text-gray-600 mt-1">{time}</Text>
+                <Text className="text-xs text-gray-600 mt-1">
+                  {displayTransport[type]}
+                </Text>
               </View>
             ))}
           </View>
@@ -202,6 +251,7 @@ export default function ManualItineraryScreen() {
   const {
     selectedLocationsByDay,
     itineraryItemsByDay,
+    externalPlacesById,
     addItineraryItemsToDay,
     addLocationsToDay,
     resetItinerary,
@@ -251,6 +301,40 @@ export default function ManualItineraryScreen() {
     return selectedDay ? itineraryItemsByDay[selectedDay.key] || [] : [];
   }, [selectedDay, itineraryItemsByDay]);
 
+  const {
+    coords: userCoords,
+    permissionDenied,
+    loading: locationLoading,
+    requestAndFetch,
+  } = useManualUserLocation();
+
+  useFocusEffect(
+    useCallback(() => {
+      void requestAndFetch();
+    }, [requestAndFetch])
+  );
+
+  const destinationRows = useMemo(
+    () => buildManualDestinationRows(itineraryItemsForDay, externalPlacesById),
+    [itineraryItemsForDay, externalPlacesById]
+  );
+
+  const { data: travelByLocationId, isFetching: travelFetching } = useQuery({
+    queryKey: [
+      "manualTravel",
+      selectedDay?.key,
+      userCoords?.latitude?.toFixed(4),
+      userCoords?.longitude?.toFixed(4),
+      destinationRows.map((r) => r.locationId).join(","),
+    ],
+    queryFn: async () => {
+      if (!userCoords || destinationRows.length === 0) return {};
+      return computeTravelTimesForManual(userCoords, destinationRows);
+    },
+    enabled: Boolean(userCoords && destinationRows.length > 0),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const openTimePicker = (item: ItineraryItem) => {
     setEditingItem(item);
     setTimePickerVisible(true);
@@ -266,20 +350,24 @@ export default function ManualItineraryScreen() {
     setEditingItem(null);
   };
 
-  // Lấy locations để hiển thị trên map
   const locationsForSelectedDay = useMemo(() => {
     if (!selectedDay || selectedLocationIdsForDay.length === 0) {
       return [];
     }
-    // Map từ attractionId sang LocationForMap từ mockAttractions
-    return mockAttractions
-      .filter((attr) => selectedLocationIdsForDay.includes(attr.id))
-      .filter((attr) => attr.latitude && attr.longitude)
-      .map((attr) => ({
-        latitude: attr.latitude!,
-        longitude: attr.longitude!,
-      }));
-  }, [selectedDay, selectedLocationIdsForDay]);
+    const pins: { latitude: number; longitude: number }[] = [];
+    for (const id of selectedLocationIdsForDay) {
+      const attr = mockAttractions.find((a) => a.id === id);
+      if (attr?.latitude != null && attr?.longitude != null) {
+        pins.push({ latitude: attr.latitude, longitude: attr.longitude });
+        continue;
+      }
+      const ext = externalPlacesById[id];
+      if (ext?.latitude != null && ext?.longitude != null) {
+        pins.push({ latitude: ext.latitude, longitude: ext.longitude });
+      }
+    }
+    return pins;
+  }, [selectedDay, selectedLocationIdsForDay, externalPlacesById]);
 
   // Khi quay lại từ add-location, tạo itinerary items từ selected locations
   useFocusEffect(
@@ -340,55 +428,13 @@ export default function ManualItineraryScreen() {
         );
 
         const newItems: ItineraryItem[] = missingLocationIds.map(
-          (attractionId, index) => {
-            const attraction = mockAttractions.find(
-              (attr) => attr.id === attractionId
-            );
-            const baseTime = 8 + index * 2; // 8:00, 10:00, 12:00, ...
-
-            // Map category từ attraction sang itinerary category
-            let category: "restaurant" | "attraction" | "hotel" | "activity" =
-              "attraction";
-            if (attraction?.category === "restaurant") category = "restaurant";
-            else if (attraction?.category === "hotel") category = "hotel";
-            else if (attraction?.category === "activity") category = "activity";
-            else category = "attraction";
-
-            // ID deterministic để tránh giật: theo ngày + locationId
-            const uniqueId = `it-${selectedDay.key}-${attractionId}`;
-
-            return {
-              id: uniqueId,
-              locationId: attractionId,
-              name: attraction?.name || "Địa điểm",
-              image: attraction?.image || "",
-              timeRange: {
-                start: `${baseTime.toString().padStart(2, "0")}:00`,
-                end: `${(baseTime + 2).toString().padStart(2, "0")}:00`,
-              },
-              price: attraction?.priceRange
-                ? attraction.priceRange.min === attraction.priceRange.max
-                  ? `${(attraction.priceRange.min / 1000).toFixed(0)}.000 VND`
-                  : `${(attraction.priceRange.min / 1000).toFixed(0)}.000 - ${(
-                      attraction.priceRange.max / 1000
-                    ).toFixed(0)}.000 VND`
-                : "0 VND",
-              category,
-              transportation: {
-                car: "15 phút",
-                motorcycle: "12 phút",
-                bus: "25 phút",
-                walking: "40 phút",
-                bicycle: "30 phút",
-              },
-              timelineIcon:
-                category === "restaurant"
-                  ? "restaurant"
-                  : category === "activity"
-                  ? "telescope"
-                  : "location",
-            };
-          }
+          (attractionId, index) =>
+            buildItineraryItemForLocationId(
+              selectedDay.key,
+              attractionId,
+              index,
+              externalPlacesById
+            )
         );
 
         const allItems = [...itemsFromMock, ...newItems];
@@ -403,6 +449,7 @@ export default function ManualItineraryScreen() {
       addItineraryItemsToDay,
       addLocationsToDay,
       selectedLocationsByDay,
+      externalPlacesById,
     ])
   );
 
@@ -579,6 +626,37 @@ export default function ManualItineraryScreen() {
           {/* Itinerary Items List hoặc Empty State */}
           {itineraryItemsForDay.length > 0 ? (
             <View className="mb-10 pb-5">
+              {permissionDenied && (
+                <View className="mb-3 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                  <Text className="text-sm text-amber-900">
+                    Bật quyền vị trí để tính thời gian di chuyển từ chỗ bạn đang đứng (ô tô,
+                    xe máy, xe buýt, đi bộ…).
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => void requestAndFetch()}
+                    className="mt-2 self-start"
+                    activeOpacity={0.8}
+                  >
+                    <Text className="text-sm font-semibold text-primary">
+                      Cho phép vị trí
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {!permissionDenied && locationLoading && !userCoords && (
+                <View className="mb-3 flex-row items-center gap-2 px-1">
+                  <ActivityIndicator size="small" color="#34B27D" />
+                  <Text className="text-xs text-gray-500">Đang lấy vị trí…</Text>
+                </View>
+              )}
+              {userCoords && travelFetching && (
+                <View className="mb-2 flex-row items-center gap-2 px-1">
+                  <ActivityIndicator size="small" color="#34B27D" />
+                  <Text className="text-xs text-gray-500">
+                    Đang cập nhật thời gian di chuyển…
+                  </Text>
+                </View>
+              )}
               {itineraryItemsForDay.map((item, index) => (
                 <ItineraryItemCard
                   key={item.id}
@@ -586,6 +664,7 @@ export default function ManualItineraryScreen() {
                   index={index}
                   totalItems={itineraryItemsForDay.length}
                   onEditTime={openTimePicker}
+                  travelFromUser={travelByLocationId?.[item.locationId]}
                 />
               ))}
             </View>

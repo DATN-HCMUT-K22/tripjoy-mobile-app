@@ -2,11 +2,22 @@ import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTempLocation } from "@/contexts/TempLocationContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { mockAttractions } from "@/data/mockAttractions";
+import type { ExternalPlaceSnapshot } from "@/types/places";
+import {
+  isGooglePlacesConfigured,
+  searchNearbyPlacesForTrip,
+  searchTextPlacesNear,
+} from "@/services/googlePlaces";
+import { placeListItemToSnapshot } from "@/utils/placeItinerary";
+import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import { showErrorToast } from "@/utils/toast";
+import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   Text,
   TextInput,
@@ -15,20 +26,26 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+type ListRow = {
+  id: string;
+  name: string;
+  subtitle: string;
+  imageUrl: string;
+};
+
 export default function AddLocationScreen() {
   const router = useRouter();
   const { dayKey, fromScreen, draftLocationIds } = useLocalSearchParams<{
     dayKey: string;
     fromScreen?: string;
-    draftLocationIds?: string; // JSON string của array location IDs
+    draftLocationIds?: string;
   }>();
-  const { addLocationsToDay, selectedLocationsByDay } = useItinerary();
+  const { addLocationsToDay, selectedLocationsByDay, upsertExternalPlaces } =
+    useItinerary();
   const { setPendingLocationIds } = useTempLocation();
   const { tripData } = useTripSetup();
   const [searchText, setSearchText] = useState("");
 
-  // Nếu từ màn adjust-itinerary, sử dụng draft state từ params
-  // Nếu không, sử dụng context
   const isFromEdit = fromScreen === "adjust";
   const initialLocationIds = useMemo(() => {
     if (isFromEdit && draftLocationIds) {
@@ -44,47 +61,115 @@ export default function AddLocationScreen() {
   const [selectedLocationIds, setSelectedLocationIds] =
     useState<string[]>(initialLocationIds);
 
-  // Filter attractions based on selected province and search
-  const filteredAttractions = useMemo(() => {
-    let filtered = mockAttractions;
+  const dest = tripData.destinationLocation ?? tripData.location;
+  const center =
+    dest?.latitude != null &&
+    dest?.longitude != null &&
+    !Number.isNaN(dest.latitude) &&
+    !Number.isNaN(dest.longitude)
+      ? { latitude: dest.latitude, longitude: dest.longitude }
+      : null;
 
-    // Filter theo tỉnh đã chọn
+  const usePlaces = Boolean(center && isGooglePlacesConfigured());
+
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchText), 450);
+    return () => clearTimeout(t);
+  }, [searchText]);
+
+  const {
+    data: placesResults = [],
+    isLoading: placesLoading,
+    isError: placesIsError,
+    error: placesError,
+    refetch: refetchPlaces,
+  } = useQuery({
+    queryKey: [
+      "addLocationPlaces",
+      center?.latitude,
+      center?.longitude,
+      debouncedSearch,
+    ],
+    queryFn: async () => {
+      if (!center) return [];
+      const q = debouncedSearch.trim();
+      if (q.length > 0) {
+        return searchTextPlacesNear(q, center);
+      }
+      return searchNearbyPlacesForTrip(center);
+    },
+    enabled: usePlaces,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (placesIsError && placesError) {
+      showErrorToast("Không tải được địa điểm từ Google", placesError);
+    }
+  }, [placesIsError, placesError]);
+
+  const filteredMockAttractions = useMemo(() => {
+    let filtered = mockAttractions;
     if (tripData.location?.id) {
       filtered = filtered.filter(
         (attr) => attr.provinceId === tripData.location?.id
       );
     }
-
-    // Filter theo search text
     if (searchText) {
+      const s = searchText.toLowerCase();
       filtered = filtered.filter(
         (attr) =>
-          attr.name.toLowerCase().includes(searchText.toLowerCase()) ||
-          attr.subtitle.toLowerCase().includes(searchText.toLowerCase())
+          attr.name.toLowerCase().includes(s) ||
+          attr.subtitle.toLowerCase().includes(s)
       );
     }
-
     return filtered;
   }, [tripData.location?.id, searchText]);
+
+  const listRows: ListRow[] = useMemo(() => {
+    if (usePlaces) {
+      return placesResults.map((p) => ({
+        id: p.id,
+        name: p.name,
+        subtitle: p.subtitle,
+        imageUrl: p.imageUrl,
+      }));
+    }
+    return filteredMockAttractions.map((a) => ({
+      id: a.id,
+      name: a.name,
+      subtitle: a.subtitle,
+      imageUrl: a.image,
+    }));
+  }, [usePlaces, placesResults, filteredMockAttractions]);
 
   const toggleLocation = (locationId: string) => {
     setSelectedLocationIds((prev) => {
       if (prev.includes(locationId)) {
         return prev.filter((id) => id !== locationId);
-      } else {
-        return [...prev, locationId];
       }
+      return [...prev, locationId];
     });
   };
 
   const handleAddLocations = () => {
+    if (usePlaces && placesResults.length > 0) {
+      const snaps: Record<string, ExternalPlaceSnapshot> = {};
+      for (const id of selectedLocationIds) {
+        const row = placesResults.find((p) => p.id === id);
+        if (row) snaps[id] = placeListItemToSnapshot(row);
+      }
+      if (Object.keys(snaps).length > 0) {
+        upsertExternalPlaces(snaps);
+      }
+    }
+
     if (dayKey) {
       if (isFromEdit) {
-        // Nếu từ màn edit, lưu vào temp context để màn edit đọc khi quay lại
         setPendingLocationIds(dayKey, selectedLocationIds);
         router.back();
       } else {
-        // Nếu từ màn chi tiết, cập nhật context ngay
         addLocationsToDay(dayKey, selectedLocationIds);
         router.back();
       }
@@ -93,12 +178,21 @@ export default function AddLocationScreen() {
     }
   };
 
+  const emptyMessage = usePlaces
+    ? placesIsError
+      ? "Không tải được dữ liệu. Vuốt xuống hoặc thử lại sau."
+      : debouncedSearch.trim()
+        ? "Không tìm thấy địa điểm phù hợp."
+        : "Không có địa điểm gợi ý trong khu vực này."
+    : tripData.location
+      ? `Không tìm thấy địa điểm nào trong ${tripData.location.name}`
+      : "Vui lòng chọn điểm đến (có tọa độ) trước";
+
   return (
     <SafeAreaView
       className="flex-1 bg-white"
       edges={["top", "left", "right", "bottom"]}
     >
-      {/* Header: safe-area + bố cục 3 cột — không dùng absolute đè tiêu đề */}
       <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
         <TouchableOpacity
           onPress={() => router.back()}
@@ -119,7 +213,6 @@ export default function AddLocationScreen() {
         <View className="h-10 w-12" />
       </View>
 
-      {/* Search Bar */}
       <View className="px-4 py-3 border-b border-gray-200">
         <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2.5">
           <Ionicons name="search-outline" size={20} color="#666" />
@@ -132,48 +225,86 @@ export default function AddLocationScreen() {
             returnKeyType="search"
           />
         </View>
+        {!usePlaces && (
+          <Text className="text-xs text-gray-500 mt-2">
+            {center
+              ? "Chưa có API key Google hoặc chưa bật Places API (New). Đang dùng danh sách mẫu."
+              : "Điểm đến chưa có tọa độ — đang dùng danh sách mẫu theo tỉnh."}
+          </Text>
+        )}
       </View>
 
-      {/* Location List */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         <View className="px-4 py-2">
-          {filteredAttractions.length === 0 ? (
-            <View className="py-8 items-center">
-              <Ionicons name="location-outline" size={48} color="#ccc" />
-              <Text className="text-gray-500 mt-4 text-center">
-                {tripData.location
-                  ? `Không tìm thấy địa điểm nào trong ${tripData.location.name}`
-                  : "Vui lòng chọn địa điểm trước"}
+          {usePlaces && placesLoading && listRows.length === 0 ? (
+            <View className="py-16 items-center">
+              <ActivityIndicator size="large" color="#34B27D" />
+              <Text className="text-gray-500 mt-3 text-center">
+                Đang tải địa điểm từ Google Places…
               </Text>
             </View>
+          ) : listRows.length === 0 ? (
+            <View className="py-8 items-center px-2">
+              <Ionicons name="location-outline" size={48} color="#ccc" />
+              <Text className="text-gray-500 mt-4 text-center">
+                {emptyMessage}
+              </Text>
+              {usePlaces && placesIsError ? (
+                <TouchableOpacity
+                  className="mt-4 px-5 py-2 rounded-full bg-emerald-50 border border-emerald-200"
+                  onPress={() => refetchPlaces()}
+                  activeOpacity={0.8}
+                >
+                  <Text className="text-sm font-semibold text-emerald-700">
+                    Thử lại
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           ) : (
-            filteredAttractions.map((attraction) => {
-              const isSelected = selectedLocationIds.includes(attraction.id);
+            listRows.map((row) => {
+              const isSelected = selectedLocationIds.includes(row.id);
               return (
                 <TouchableOpacity
-                  key={attraction.id}
+                  key={row.id}
                   activeOpacity={0.7}
-                  onPress={() => toggleLocation(attraction.id)}
+                  onPress={() => toggleLocation(row.id)}
                   className="flex-row items-center py-3 border-b border-gray-100"
                 >
-                  {/* Image */}
-                  <Image
-                    source={{ uri: attraction.image }}
-                    style={{ width: 80, height: 80, borderRadius: 8 }}
-                    contentFit="cover"
-                  />
+                  {row.imageUrl ? (
+                    <Image
+                      source={expoImageSourceForGoogleRaster(row.imageUrl)}
+                      style={{ width: 80, height: 80, borderRadius: 8 }}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View
+                      className="bg-gray-100 items-center justify-center rounded-lg"
+                      style={{ width: 80, height: 80 }}
+                    >
+                      <Ionicons
+                        name="image-outline"
+                        size={28}
+                        color="#ccc"
+                      />
+                    </View>
+                  )}
 
-                  {/* Text Details */}
-                  <View className="flex-1 ml-3">
-                    <Text className="text-base font-bold text-black mb-1">
-                      {attraction.name}
+                  <View className="flex-1 ml-3 min-w-0">
+                    <Text
+                      className="text-base font-bold text-black mb-1"
+                      numberOfLines={2}
+                    >
+                      {row.name}
                     </Text>
-                    <Text className="text-sm text-gray-600">
-                      {attraction.subtitle}
+                    <Text
+                      className="text-sm text-gray-600"
+                      numberOfLines={2}
+                    >
+                      {row.subtitle}
                     </Text>
                   </View>
 
-                  {/* Selection Icon */}
                   <View className="ml-3">
                     {isSelected ? (
                       <View className="w-10 h-10 rounded-full bg-primary items-center justify-center">
@@ -192,7 +323,6 @@ export default function AddLocationScreen() {
         </View>
       </ScrollView>
 
-      {/* Bottom Button */}
       <View className="px-4 py-4 border-t border-gray-200 bg-white">
         <TouchableOpacity
           activeOpacity={0.8}

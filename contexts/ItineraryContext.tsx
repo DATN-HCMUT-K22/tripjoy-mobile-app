@@ -1,4 +1,5 @@
 import { ItineraryItem } from "@/types/itinerary";
+import type { ExternalPlaceSnapshot } from "@/types/places";
 import React, { createContext, ReactNode, useContext, useState } from "react";
 
 interface ItineraryContextType {
@@ -6,6 +7,9 @@ interface ItineraryContextType {
   selectedLocationsByDay: Record<string, string[]>;
   // Lưu itinerary items theo ngày: { dayKey: ItineraryItem[] }
   itineraryItemsByDay: Record<string, ItineraryItem[]>;
+  /** Địa điểm từ Google Places (id = place id), dùng khi không có trong mockAttractions */
+  externalPlacesById: Record<string, ExternalPlaceSnapshot>;
+  upsertExternalPlaces: (snapshots: Record<string, ExternalPlaceSnapshot>) => void;
   // Thêm địa điểm cho một ngày
   addLocationsToDay: (dayKey: string, locationIds: string[]) => void;
   // Thêm itinerary items cho một ngày
@@ -29,6 +33,15 @@ export const ItineraryProvider: React.FC<{ children: ReactNode }> = ({
   const [itineraryItemsByDay, setItineraryItemsByDay] = useState<
     Record<string, ItineraryItem[]>
   >({});
+  const [externalPlacesById, setExternalPlacesById] = useState<
+    Record<string, ExternalPlaceSnapshot>
+  >({});
+
+  const upsertExternalPlaces = (
+    snapshots: Record<string, ExternalPlaceSnapshot>
+  ) => {
+    setExternalPlacesById((prev) => ({ ...prev, ...snapshots }));
+  };
 
   const addLocationsToDay = (dayKey: string, locationIds: string[]) => {
     setSelectedLocationsByDay((prev) => ({
@@ -79,6 +92,7 @@ export const ItineraryProvider: React.FC<{ children: ReactNode }> = ({
   const resetItinerary = () => {
     setSelectedLocationsByDay({});
     setItineraryItemsByDay({});
+    setExternalPlacesById({});
   };
 
   return (
@@ -86,6 +100,8 @@ export const ItineraryProvider: React.FC<{ children: ReactNode }> = ({
       value={{
         selectedLocationsByDay,
         itineraryItemsByDay,
+        externalPlacesById,
+        upsertExternalPlaces,
         addLocationsToDay,
         addItineraryItemsToDay,
         swapItems,

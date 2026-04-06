@@ -1,4 +1,3 @@
-import InteractiveMap from "@/components/InteractiveMap";
 import { BudgetItem } from "@/components/trip/BudgetItem";
 import { BudgetManualRange } from "@/components/trip/BudgetManualRange";
 import { LocationItem } from "@/components/trip/LocationItem";
@@ -28,7 +27,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { formatCurrencyVND } from "@/utils/format";
-import { tripLocationsToMapPins } from "@/utils/mapLocations";
 import { showErrorToast } from "@/utils/toast";
 
 /** Chiều cao tối đa vùng danh sách điểm đi / điểm đến (scroll nội bộ). */
@@ -277,46 +275,6 @@ export default function CreateTripScreen() {
     );
   }, [locations, destinationSearchText]);
 
-  const departureMapPins = useMemo(
-    () => tripLocationsToMapPins(filteredDepartureLocations),
-    [filteredDepartureLocations]
-  );
-
-  const destinationMapPins = useMemo(
-    () => tripLocationsToMapPins(filteredDestinationLocations),
-    [filteredDestinationLocations]
-  );
-
-  const departureSelectedMapIndex = useMemo(() => {
-    if (
-      departureLocation?.latitude == null ||
-      departureLocation?.longitude == null
-    ) {
-      return null;
-    }
-    const idx = departureMapPins.findIndex(
-      (p) =>
-        p.latitude === departureLocation.latitude &&
-        p.longitude === departureLocation.longitude
-    );
-    return idx >= 0 ? idx : null;
-  }, [departureMapPins, departureLocation]);
-
-  const destinationSelectedMapIndex = useMemo(() => {
-    if (
-      destinationLocation?.latitude == null ||
-      destinationLocation?.longitude == null
-    ) {
-      return null;
-    }
-    const idx = destinationMapPins.findIndex(
-      (p) =>
-        p.latitude === destinationLocation.latitude &&
-        p.longitude === destinationLocation.longitude
-    );
-    return idx >= 0 ? idx : null;
-  }, [destinationMapPins, destinationLocation]);
-
   const renderLocationList = (
     filtered: Location[],
     selected: Location | null,
@@ -447,13 +405,6 @@ export default function CreateTripScreen() {
                   </Text>
                   <VietnamFlag size={20} />
                 </View>
-                <View className="mb-3">
-                  <InteractiveMap
-                    locations={departureMapPins}
-                    height={200}
-                    selectedIndex={departureSelectedMapIndex}
-                  />
-                </View>
                 {renderLocationList(
                   filteredDepartureLocations,
                   departureLocation,
@@ -519,13 +470,6 @@ export default function CreateTripScreen() {
                     địa điểm
                   </Text>
                   <VietnamFlag size={20} />
-                </View>
-                <View className="mb-3">
-                  <InteractiveMap
-                    locations={destinationMapPins}
-                    height={200}
-                    selectedIndex={destinationSelectedMapIndex}
-                  />
                 </View>
                 {renderLocationList(
                   filteredDestinationLocations,

@@ -13,12 +13,18 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "TripJoy cần vị trí của bạn để ước lượng thời gian di chuyển tới các điểm trong lịch trình."
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
         {
           "image": "./assets/logo/green.png",
-          "imageWidth": 220,
+          "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
@@ -41,7 +47,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.datntripjoy.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Ứng dụng cần truy cập vị trí để hiển thị bản đồ."
+        "NSLocationWhenInUseUsageDescription": "TripJoy cần vị trí để ước lượng thời gian di chuyển và hiển thị bản đồ."
       }
     },
     "android": {

@@ -4,6 +4,8 @@ import { useTripSetup } from "@/contexts/TripSetupContext";
 import { mockAttractions } from "@/data/mockAttractions";
 import { mockItineraryItems } from "@/data/mockItineraryItems";
 import { ItineraryItem } from "@/types/itinerary";
+import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -14,13 +16,11 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import {
   SafeAreaView,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import {
   Gesture,
   GestureDetector,
@@ -47,6 +47,7 @@ function AdjustableItem({
   onMove: (from: number, to: number) => void;
   totalItems: number;
 }) {
+  const { externalPlacesById } = useItinerary();
   const translateY = useSharedValue(0);
   const isDragging = useSharedValue(false);
 
@@ -98,11 +99,11 @@ function AdjustableItem({
     };
   });
 
-  // Lấy subtitle từ attraction
   const attraction = mockAttractions.find(
     (attr) => attr.id === item.locationId
   );
-  const subtitle = attraction?.subtitle || "";
+  const ext = externalPlacesById[item.locationId];
+  const subtitle = attraction?.subtitle || ext?.subtitle || "";
 
   return (
     <Animated.View style={animatedStyle} className="mb-3">
@@ -123,7 +124,7 @@ function AdjustableItem({
 
             {/* Hình ảnh bo góc - tăng kích thước */}
             <Image
-              source={{ uri: item.image }}
+              source={expoImageSourceForGoogleRaster(item.image)}
               style={{ width: 135, height: 80, borderRadius: 12 }}
               contentFit="cover"
             />
@@ -158,6 +159,7 @@ export default function AdjustItineraryScreen() {
   const {
     selectedLocationsByDay,
     itineraryItemsByDay,
+    externalPlacesById,
     addLocationsToDay,
     addItineraryItemsToDay,
   } = useItinerary();
@@ -248,63 +250,14 @@ export default function AdjustItineraryScreen() {
                 (id) => !existingLocationIds.includes(id)
               );
 
-              // Tạo items mới cho các location chưa có
               const newItems: ItineraryItem[] = missingLocationIds.map(
-                (attractionId, index) => {
-                  const attraction = mockAttractions.find(
-                    (attr) => attr.id === attractionId
-                  );
-                  const baseTime = 8 + index * 2;
-
-                  let category:
-                    | "restaurant"
-                    | "attraction"
-                    | "hotel"
-                    | "activity" = "attraction";
-                  if (attraction?.category === "restaurant")
-                    category = "restaurant";
-                  else if (attraction?.category === "hotel") category = "hotel";
-                  else if (attraction?.category === "activity")
-                    category = "activity";
-                  else category = "attraction";
-
-                  const uniqueId = `it-${dayKey}-${attractionId}`;
-                  return {
-                    id: uniqueId,
-                    locationId: attractionId,
-                    name: attraction?.name || "Địa điểm",
-                    image: attraction?.image || "",
-                    timeRange: {
-                      start: `${baseTime.toString().padStart(2, "0")}:00`,
-                      end: `${(baseTime + 2).toString().padStart(2, "0")}:00`,
-                    },
-                    price: attraction?.priceRange
-                      ? attraction.priceRange.min === attraction.priceRange.max
-                        ? `${(attraction.priceRange.min / 1000).toFixed(
-                            0
-                          )}.000 VND`
-                        : `${(attraction.priceRange.min / 1000).toFixed(
-                            0
-                          )}.000 - ${(attraction.priceRange.max / 1000).toFixed(
-                            0
-                          )}.000 VND`
-                      : "0 VND",
-                    category,
-                    transportation: {
-                      car: "15 phút",
-                      motorcycle: "12 phút",
-                      bus: "25 phút",
-                      walking: "40 phút",
-                      bicycle: "30 phút",
-                    },
-                    timelineIcon:
-                      category === "restaurant"
-                        ? "restaurant"
-                        : category === "activity"
-                        ? "telescope"
-                        : "location",
-                  };
-                }
+                (attractionId, index) =>
+                  buildItineraryItemForLocationId(
+                    dayKey,
+                    attractionId,
+                    index,
+                    externalPlacesById
+                  )
               );
 
               // Kết hợp items từ mock và items mới, sắp xếp theo locationIds
@@ -375,65 +328,14 @@ export default function AdjustItineraryScreen() {
                   (id) => !existingLocationIds.includes(id)
                 );
 
-                // Tạo items mới cho các location chưa có
                 const newItems: ItineraryItem[] = missingLocationIds.map(
-                  (attractionId, index) => {
-                    const attraction = mockAttractions.find(
-                      (attr) => attr.id === attractionId
-                    );
-                    const baseTime = 8 + index * 2;
-
-                    let category:
-                      | "restaurant"
-                      | "attraction"
-                      | "hotel"
-                      | "activity" = "attraction";
-                    if (attraction?.category === "restaurant")
-                      category = "restaurant";
-                    else if (attraction?.category === "hotel")
-                      category = "hotel";
-                    else if (attraction?.category === "activity")
-                      category = "activity";
-                    else category = "attraction";
-
-                    const uniqueId = `it-${day.key}-${attractionId}`;
-                    return {
-                      id: uniqueId,
-                      locationId: attractionId,
-                      name: attraction?.name || "Địa điểm",
-                      image: attraction?.image || "",
-                      timeRange: {
-                        start: `${baseTime.toString().padStart(2, "0")}:00`,
-                        end: `${(baseTime + 2).toString().padStart(2, "0")}:00`,
-                      },
-                      price: attraction?.priceRange
-                        ? attraction.priceRange.min ===
-                          attraction.priceRange.max
-                          ? `${(attraction.priceRange.min / 1000).toFixed(
-                              0
-                            )}.000 VND`
-                          : `${(attraction.priceRange.min / 1000).toFixed(
-                              0
-                            )}.000 - ${(
-                              attraction.priceRange.max / 1000
-                            ).toFixed(0)}.000 VND`
-                        : "0 VND",
-                      category,
-                      transportation: {
-                        car: "15 phút",
-                        motorcycle: "12 phút",
-                        bus: "25 phút",
-                        walking: "40 phút",
-                        bicycle: "30 phút",
-                      },
-                      timelineIcon:
-                        category === "restaurant"
-                          ? "restaurant"
-                          : category === "activity"
-                          ? "telescope"
-                          : "location",
-                    };
-                  }
+                  (attractionId, index) =>
+                    buildItineraryItemForLocationId(
+                      day.key,
+                      attractionId,
+                      index,
+                      externalPlacesById
+                    )
                 );
 
                 // Kết hợp items từ mock và items mới, sắp xếp theo selectedLocationIds
@@ -554,64 +456,14 @@ export default function AdjustItineraryScreen() {
               (id) => !existingLocationIds.includes(id)
             );
 
-            // Tạo items mới cho các location chưa có
             const newItems: ItineraryItem[] = missingLocationIds.map(
-              (attractionId, index) => {
-                const attraction = mockAttractions.find(
-                  (attr) => attr.id === attractionId
-                );
-                const baseTime = 8 + index * 2;
-
-                let category:
-                  | "restaurant"
-                  | "attraction"
-                  | "hotel"
-                  | "activity" = "attraction";
-                if (attraction?.category === "restaurant")
-                  category = "restaurant";
-                else if (attraction?.category === "hotel") category = "hotel";
-                else if (attraction?.category === "activity")
-                  category = "activity";
-                else category = "attraction";
-
-                // ID deterministic theo day + location để tránh giật
-                const uniqueId = `it-${day.key}-${attractionId}`;
-                return {
-                  id: uniqueId,
-                  locationId: attractionId,
-                  name: attraction?.name || "Địa điểm",
-                  image: attraction?.image || "",
-                  timeRange: {
-                    start: `${baseTime.toString().padStart(2, "0")}:00`,
-                    end: `${(baseTime + 2).toString().padStart(2, "0")}:00`,
-                  },
-                  price: attraction?.priceRange
-                    ? attraction.priceRange.min === attraction.priceRange.max
-                      ? `${(attraction.priceRange.min / 1000).toFixed(
-                          0
-                        )}.000 VND`
-                      : `${(attraction.priceRange.min / 1000).toFixed(
-                          0
-                        )}.000 - ${(attraction.priceRange.max / 1000).toFixed(
-                          0
-                        )}.000 VND`
-                    : "0 VND",
-                  category,
-                  transportation: {
-                    car: "15 phút",
-                    motorcycle: "12 phút",
-                    bus: "25 phút",
-                    walking: "40 phút",
-                    bicycle: "30 phút",
-                  },
-                  timelineIcon:
-                    category === "restaurant"
-                      ? "restaurant"
-                      : category === "activity"
-                      ? "telescope"
-                      : "location",
-                };
-              }
+              (attractionId, index) =>
+                buildItineraryItemForLocationId(
+                  day.key,
+                  attractionId,
+                  index,
+                  externalPlacesById
+                )
             );
 
             // Giữ lại thứ tự từ selectedLocationIds
@@ -649,6 +501,7 @@ export default function AdjustItineraryScreen() {
       pendingLocationIds,
       clearPendingLocationIds,
       itineraryItemsByDay,
+      externalPlacesById,
       // Không đưa draftItemsByDay vào dependency để tránh vòng lặp
       // Chỉ sync khi selectedLocationsByDay hoặc itineraryItemsByDay thay đổi
     ])
@@ -743,6 +596,10 @@ export default function AdjustItineraryScreen() {
     router.back();
   };
 
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(16, insets.bottom);
+  const footerBarHeight = 16 + 56 + bottomInset;
+
   const scrollViewRef = useRef<ScrollView>(null);
   const sectionPositions = useRef<Record<string, number>>({});
 
@@ -759,19 +616,26 @@ export default function AdjustItineraryScreen() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView className="flex-1 bg-white">
-        {/* Header */}
-        <View className="flex-row items-center px-4 py-3 border-b border-gray-200">
+      <SafeAreaView className="flex-1 bg-white" edges={["top", "left", "right"]}>
+        {/* Header 3 cột — tránh absolute đè tiêu đề + lùi theo safe area */}
+        <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
           <TouchableOpacity
             onPress={() => router.back()}
-            className="absolute left-4 z-10"
+            className="h-10 w-12 items-center justify-center"
             activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons name="arrow-back-outline" size={24} color="#000" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-black flex-1 text-center">
-            Điều chỉnh lịch trình
-          </Text>
+          <View className="min-w-0 flex-1 items-center justify-center px-1">
+            <Text
+              className="text-center text-xl font-bold text-black"
+              numberOfLines={1}
+            >
+              Điều chỉnh lịch trình
+            </Text>
+          </View>
+          <View className="h-10 w-12" />
         </View>
 
         {/* Content - Scrollable list of days */}
@@ -779,8 +643,9 @@ export default function AdjustItineraryScreen() {
           ref={scrollViewRef}
           className="flex-1"
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: footerBarHeight + 8 }}
         >
-          <View className="px-4 py-4 pb-24">
+          <View className="px-4 py-4">
             {days.map((day) => {
               const dayItems = draftItemsByDay[day.key] || [];
               return (
@@ -887,7 +752,10 @@ export default function AdjustItineraryScreen() {
         </ScrollView>
 
         {/* Save Button */}
-        <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-white border-t border-gray-200">
+        <View
+          className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-4 pt-4"
+          style={{ paddingBottom: bottomInset }}
+        >
           <TouchableOpacity
             activeOpacity={0.8}
             className="bg-primary rounded-full py-4 items-center justify-center"

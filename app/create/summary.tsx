@@ -1,14 +1,12 @@
-import InteractiveMap from "@/components/InteractiveMap";
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
 import { formatCurrencyVND } from "@/utils/format";
-import type { LocationForMap } from "@/utils/mapLocations";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import React, { useCallback, useMemo } from "react";
+import React from "react";
 import {
   ScrollView,
   Text,
@@ -49,42 +47,6 @@ export default function TripSummaryScreen() {
     });
   };
 
-  const summaryMapPins = useMemo((): LocationForMap[] => {
-    const pins: LocationForMap[] = [];
-    const dep = tripData.departureLocation;
-    const dest = tripData.location;
-    if (
-      dep?.latitude != null &&
-      dep?.longitude != null &&
-      !Number.isNaN(dep.latitude) &&
-      !Number.isNaN(dep.longitude)
-    ) {
-      pins.push({ latitude: dep.latitude, longitude: dep.longitude });
-    }
-    if (
-      dest?.latitude != null &&
-      dest?.longitude != null &&
-      !Number.isNaN(dest.latitude) &&
-      !Number.isNaN(dest.longitude)
-    ) {
-      pins.push({ latitude: dest.latitude, longitude: dest.longitude });
-    }
-    return pins;
-  }, [tripData.departureLocation, tripData.location]);
-
-  const summaryMarkerColor = useCallback(
-    (index: number) => {
-      if (summaryMapPins.length === 1) {
-        const onlyDeparture =
-          tripData.departureLocation?.latitude != null &&
-          tripData.departureLocation?.longitude != null;
-        return onlyDeparture ? "#059669" : "#EF4444";
-      }
-      return index === 0 ? "#059669" : "#EF4444";
-    },
-    [summaryMapPins.length, tripData.departureLocation]
-  );
-
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
       {/* Page Header */}
@@ -118,16 +80,8 @@ export default function TripSummaryScreen() {
 
           {/* Main Card */}
           <View className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
-            {/* Bản đồ Google: điểm đi (xanh) + điểm đến (đỏ); không có tọa độ thì ảnh địa điểm / placeholder */}
-            {summaryMapPins.length > 0 ? (
-              <View className="px-4 pt-4">
-                <InteractiveMap
-                  locations={summaryMapPins}
-                  height={256}
-                  getMarkerColor={summaryMarkerColor}
-                />
-              </View>
-            ) : tripData.location?.image ? (
+            {/* Ảnh điểm đến; bản đồ nhiều địa điểm chỉ dùng ở màn thiết lập lịch trình (manual) */}
+            {tripData.location?.image ? (
               <View className="px-4 pt-4">
                 <Image
                   source={{ uri: tripData.location.image }}

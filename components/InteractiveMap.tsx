@@ -1,5 +1,6 @@
-import { getGoogleMapsApiKey } from "@/config/env";
+import { getGoogleMapsApiKey, shouldUseNativeGoogleMapView } from "@/config/env";
 import type { LocationForMap } from "@/utils/mapLocations";
+import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
 import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -27,7 +28,10 @@ const InteractiveMap: React.FC<Props> = ({
 }) => {
   const mapRef = useRef<MapView>(null);
   const googleKey = getGoogleMapsApiKey();
-  const useNativeGoogleMap = googleKey.length > 0 && Platform.OS !== "web";
+  const useNativeGoogleMap =
+    googleKey.length > 0 &&
+    Platform.OS !== "web" &&
+    shouldUseNativeGoogleMapView(Platform.OS);
 
   const center = useMemo(() => {
     if (!locations.length) return null;
@@ -77,7 +81,7 @@ const InteractiveMap: React.FC<Props> = ({
     return (
       <View style={{ height }} className="w-full bg-gray-200 overflow-hidden rounded-2xl">
         <Image
-          source={{ uri: fallbackUri }}
+          source={expoImageSourceForGoogleRaster(fallbackUri)}
           style={{ width: "100%", height: "100%" }}
           contentFit="cover"
         />
