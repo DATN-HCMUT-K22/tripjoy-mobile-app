@@ -124,6 +124,9 @@ export default function GroupInfoScreen() {
   const tabStyle = TAB_CONFIG[itineraryTab];
   const currentUserRole =
     group.members?.find((m) => m.user?.id === currentUser?.id)?.role || "MEMBER";
+  const groupThemeColor = group.theme_color || "#16A34A";
+  const canEditGroupInfo =
+    currentUserRole === "LEADER" || currentUserRole === "CO_LEADER";
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -137,11 +140,22 @@ export default function GroupInfoScreen() {
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Thông tin nhóm</Text>
-        <View style={styles.headerRight} />
+        <TouchableOpacity
+          style={[styles.headerRight, !canEditGroupInfo && styles.headerActionDisabled]}
+          activeOpacity={0.7}
+          disabled={!canEditGroupInfo}
+          onPress={() => router.push(`/groups/${id}/edit` as any)}
+        >
+          <Ionicons
+            name="create-outline"
+            size={20}
+            color={canEditGroupInfo ? "#111827" : "#D1D5DB"}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Banner xanh: avatar squircle, tên nhóm, tạo bởi - N thành viên */}
-      <View style={styles.banner}>
+      <View style={[styles.banner, { backgroundColor: groupThemeColor }]}>
         <Image
           source={{ uri: groupImage }}
           style={styles.bannerAvatar}
@@ -476,6 +490,11 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     width: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerActionDisabled: {
+    opacity: 0.8,
   },
   banner: {
     backgroundColor: "#16A34A",

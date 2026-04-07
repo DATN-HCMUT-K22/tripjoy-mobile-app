@@ -11,10 +11,10 @@ import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
 import { useChatStore } from "@/stores/chat.store";
-import { ChatMessageResponse } from "@/types/message";
+import { ChatMessageResponse, ConversationResponse } from "@/types/message";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -56,6 +56,7 @@ type ListItem =
 export default function GroupChatScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{
     id?: string;
     conversationId?: string;
@@ -557,6 +558,51 @@ export default function GroupChatScreen() {
     [currentUser?.id, highlightMessageId, handleLike, handleLongPress]
   );
 
+  const handleBack = useCallback(() => {
+    if (conversationId) {
+      const latestMessage = messages[messages.length - 1];
+      const fallbackUpdatedAt = new Date().toISOString();
+
+      queryClient.setQueryData<ConversationResponse[]>(
+        ["conversations"],
+        (prev) => {
+          if (!Array.isArray(prev)) return prev;
+          const next = prev.map((conv) => {
+            if (conv.id !== conversationId) return conv;
+            return {
+              ...conv,
+              updated_at: latestMessage?.created_at || fallbackUpdatedAt,
+              last_message: latestMessage || conv.last_message,
+            };
+          });
+
+          next.sort((a, b) => {
+            const aPinned = a.is_pinned ?? false;
+            const bPinned = b.is_pinned ?? false;
+            if (aPinned && !bPinned) return -1;
+            if (!aPinned && bPinned) return 1;
+            const aTime = a.last_message?.created_at || a.updated_at || a.created_at || "";
+            const bTime = b.last_message?.created_at || b.updated_at || b.created_at || "";
+            if (!aTime && !bTime) return 0;
+            if (!aTime) return 1;
+            if (!bTime) return -1;
+            return new Date(bTime).getTime() - new Date(aTime).getTime();
+          });
+
+          return next;
+        }
+      );
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push("/messages");
+    }
+  }, [conversationId, messages, queryClient, router]);
+
   return (
     <SafeAreaView 
       style={[styles.container, { backgroundColor: isDark ? "#000000" : "#FFFFFF" }]} 
@@ -566,13 +612,7 @@ export default function GroupChatScreen() {
       <View style={[styles.header, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderBottomColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
         <View className="flex-row items-center">
           <TouchableOpacity
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.push("/messages");
-              }
-            }}
+            onPress={handleBack}
             className="mr-3"
             activeOpacity={0.7}
           >

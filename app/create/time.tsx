@@ -1,5 +1,6 @@
 import { SimpleCalendar } from "@/components/trip/SimpleCalendar";
 import { Button } from "@/components/ui/Button";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -14,6 +15,7 @@ import {
 
 export default function TimeSelectionScreen() {
   const router = useRouter();
+  const { exitToHome } = useCreateTripExitToHome();
   const { setDateRange } = useTripSetup();
   const [startDate, setStartDate] = useState<string | null>(null);
   const [endDate, setEndDate] = useState<string | null>(null);
@@ -45,17 +47,28 @@ export default function TimeSelectionScreen() {
   return (
     <SafeAreaView className="flex-1 bg-white">
       {/* Header */}
-      <View className="flex-row items-center px-4 py-3 border-b border-gray-200">
+      <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
         <TouchableOpacity
           onPress={() => router.back()}
-          className="absolute left-4 z-10"
+          className="h-10 w-12 items-center justify-center"
           activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons name="arrow-back-outline" size={24} color="#000" />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-black flex-1 text-center">
-          Chọn thời gian
-        </Text>
+        <View className="min-w-0 flex-1 items-center justify-center px-1">
+          <Text className="text-center text-xl font-bold text-black" numberOfLines={1}>
+            Chọn thời gian
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={exitToHome}
+          className="h-10 w-12 items-center justify-center"
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="home-outline" size={22} color="#34B27D" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>

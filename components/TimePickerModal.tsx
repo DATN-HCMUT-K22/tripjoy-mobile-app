@@ -12,19 +12,37 @@ type Props = {
 
 const pad = (n: number) => n.toString().padStart(2, "0");
 
+const parseTimeToMinutes = (value: string, fallback: number) => {
+  const [hRaw = "", mRaw = ""] = value.split(":");
+  const h = Number(hRaw);
+  const m = Number(mRaw);
+
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return fallback;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return fallback;
+
+  return h * 60 + m;
+};
+
+const formatMinutes = (minutes: number) => {
+  const safe = Math.max(0, Math.min(23 * 60 + 59, minutes));
+  const hour = Math.floor(safe / 60);
+  const minute = safe % 60;
+  return `${pad(hour)}:${pad(minute)}`;
+};
+
 const parseTimeToDate = (value: string) => {
-  const [h = "0", m = "0"] = value.split(":");
+  const totalMinutes = parseTimeToMinutes(value, 0);
   const now = new Date();
-  const hour = Number.isFinite(Number(h)) ? Number(h) : 0;
-  const minute = Number.isFinite(Number(m)) ? Number(m) : 0;
-  const roundedMinute = Math.min(55, Math.max(0, Math.round(minute / 5) * 5));
+  const clampedMinutes = Math.min(totalMinutes, 23 * 60 + 59);
+  const hour = Math.floor(clampedMinutes / 60);
+  const minute = clampedMinutes % 60;
 
   return new Date(
     now.getFullYear(),
     now.getMonth(),
     now.getDate(),
     hour,
-    roundedMinute,
+    minute,
     0,
     0
   );
@@ -32,8 +50,7 @@ const parseTimeToDate = (value: string) => {
 
 const roundToFiveMinutes = (date: Date) => {
   const next = new Date(date);
-  const rounded = Math.round(next.getMinutes() / 5) * 5;
-  next.setMinutes(Math.min(55, Math.max(0, rounded)), 0, 0);
+  next.setSeconds(0, 0);
   return next;
 };
 
@@ -55,15 +72,24 @@ const TimePickerModal: React.FC<Props> = ({
     setEndTime(parseTimeToDate(initialEndTime));
   }, [visible, initialStartTime, initialEndTime]);
 
+  const startMinutes = useMemo(
+    () => startTime.getHours() * 60 + startTime.getMinutes(),
+    [startTime]
+  );
+  const endMinutes = useMemo(
+    () => endTime.getHours() * 60 + endTime.getMinutes(),
+    [endTime]
+  );
+
   const hasError = useMemo(() => {
-    return startTime.getTime() >= endTime.getTime();
-  }, [startTime, endTime]);
+    return startMinutes >= endMinutes;
+  }, [startMinutes, endMinutes]);
 
   const handleSave = () => {
     if (hasError) return;
     onSave({
-      start: `${pad(startTime.getHours())}:${pad(startTime.getMinutes())}`,
-      end: `${pad(endTime.getHours())}:${pad(endTime.getMinutes())}`,
+      start: formatMinutes(startMinutes),
+      end: formatMinutes(endMinutes),
     });
     onClose();
   };
@@ -71,16 +97,31 @@ const TimePickerModal: React.FC<Props> = ({
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View className="flex-1 bg-black/50 items-center justify-center px-4">
-        <View className="w-full rounded-2xl bg-white p-4 shadow-xl max-w-lg">
-          <View className="flex-row items-center justify-between mb-3">
+        <View className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+          <View className="mb-3 flex-row items-center justify-between">
             <Text className="text-lg font-semibold text-black">
               Chọn khung giờ
             </Text>
           </View>
 
-          <View className="flex-row gap-3 mb-3">
+          <View className="mb-4 flex-row gap-2">
+            <View className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <Text className="text-xs text-emerald-700">Bắt đầu</Text>
+              <Text className="mt-1 text-base font-bold text-emerald-800">
+                {formatMinutes(startMinutes)}
+              </Text>
+            </View>
+            <View className="flex-1 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
+              <Text className="text-xs text-sky-700">Kết thúc</Text>
+              <Text className="mt-1 text-base font-bold text-sky-800">
+                {formatMinutes(endMinutes)}
+              </Text>
+            </View>
+          </View>
+
+          <View className="mb-3 flex-row gap-3">
             <View className="flex-1">
-              <Text className="text-sm font-semibold text-gray-600 mb-2">
+              <Text className="mb-2 text-sm font-semibold text-gray-600">
                 Bắt đầu
               </Text>
               <View className="bg-gray-100 rounded-xl p-3 items-center justify-center">
@@ -88,7 +129,7 @@ const TimePickerModal: React.FC<Props> = ({
                   modal={false}
                   mode="time"
                   locale="vi"
-                  minuteInterval={5}
+                  minuteInterval={1}
                   date={startTime}
                   onDateChange={(value) =>
                     setStartTime(roundToFiveMinutes(value))
@@ -98,26 +139,24 @@ const TimePickerModal: React.FC<Props> = ({
             </View>
 
             <View className="flex-1">
-              <Text className="text-sm font-semibold text-gray-600 mb-2">
+              <Text className="mb-2 text-sm font-semibold text-gray-600">
                 Kết thúc
               </Text>
-              <View className="bg-gray-100 rounded-xl p-3 items-center justify-center">
+              <View className="rounded-xl bg-gray-100 p-3 items-center justify-center">
                 <DatePicker
                   modal={false}
                   mode="time"
                   locale="vi"
-                  minuteInterval={5}
+                  minuteInterval={1}
                   date={endTime}
-                  onDateChange={(value) =>
-                    setEndTime(roundToFiveMinutes(value))
-                  }
+                  onDateChange={(value) => setEndTime(roundToFiveMinutes(value))}
                 />
               </View>
             </View>
           </View>
 
           {hasError && (
-            <Text className="text-sm text-red-500 mb-3">
+            <Text className="mb-3 text-sm text-red-500">
               Giờ bắt đầu phải nhỏ hơn giờ kết thúc.
             </Text>
           )}

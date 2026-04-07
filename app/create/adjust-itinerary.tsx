@@ -6,6 +6,7 @@ import { mockItineraryItems } from "@/data/mockItineraryItems";
 import { ItineraryItem } from "@/types/itinerary";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
 import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -155,6 +156,7 @@ function AdjustableItem({
 
 export default function AdjustItineraryScreen() {
   const router = useRouter();
+  const { exitToHome } = useCreateTripExitToHome();
   const { tripData } = useTripSetup();
   const {
     selectedLocationsByDay,
@@ -635,7 +637,14 @@ export default function AdjustItineraryScreen() {
               Điều chỉnh lịch trình
             </Text>
           </View>
-          <View className="h-10 w-12" />
+          <TouchableOpacity
+            onPress={exitToHome}
+            className="h-10 w-12 items-center justify-center"
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="home-outline" size={22} color="#34B27D" />
+          </TouchableOpacity>
         </View>
 
         {/* Content - Scrollable list of days */}

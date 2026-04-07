@@ -1,9 +1,9 @@
-import { useItineraries } from "@/hooks/useItineraries";
-import type { Itinerary } from "@/types/group";
-import { formatCurrencyVND, formatDateRange } from "@/utils/format";
+import { itineraryService, type ItineraryResponse } from "@/services/itineraries";
+import { formatCurrencyVND } from "@/utils/format";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import React, { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -16,6 +16,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
 
 type ViewMode = "card" | "list";
+
+type ExploreItinerary = {
+  id: string;
+  name: string;
+  image: string;
+  startDate: string;
+  endDate: string;
+  duration: string;
+  memberCount: number;
+  budget: number;
+};
 
 /** Lấy tên địa điểm từ name (phần trước " - ") hoặc trả về name */
 function getLocationLabel(name: string): string {
@@ -31,8 +42,52 @@ function getLocationOverlayText(name: string): string {
   return place ? place.toUpperCase() : "";
 }
 
+function formatApiDate(dateStr?: string): string {
+  if (!dateStr) return "--/--/----";
+  const raw = dateStr.split("T")[0];
+  const [y, m, d] = raw.split("-");
+  if (!y || !m || !d) return "--/--/----";
+  return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+}
+
+function formatApiDateRange(startDate?: string, endDate?: string): string {
+  return `${formatApiDate(startDate)} - ${formatApiDate(endDate || startDate)}`;
+}
+
+function mapApiItineraryToExploreItem(api: ItineraryResponse): ExploreItinerary {
+  const start = api.start_date || "";
+  const end = api.end_date || start;
+  const startTs = Date.parse(`${start}T00:00:00`);
+  const endTs = Date.parse(`${end}T00:00:00`);
+  const days =
+    Number.isNaN(startTs) || Number.isNaN(endTs)
+      ? 1
+      : Math.max(1, Math.ceil((endTs - startTs) / 86400000));
+  return {
+    id: api.id ?? "",
+    name: api.title?.trim() || "Lịch trình chưa đặt tên",
+    image: "",
+    startDate: start,
+    endDate: end,
+    duration: `${days} ngày`,
+    memberCount: 0,
+    budget: 0,
+  };
+}
+
 export default function ExploreScreen() {
-  const { data: itineraries = [], isLoading } = useItineraries();
+  const { data: itineraries = [], isLoading } = useQuery({
+    queryKey: ["itineraries", "me", "explore"],
+    queryFn: async (): Promise<ExploreItinerary[]> => {
+      const res = await itineraryService.getMyItineraries();
+      if (res?.code !== 0 && res?.code !== 1000) {
+        throw new Error(res?.message || "Không tải được danh sách lịch trình");
+      }
+      const list = Array.isArray(res?.data) ? res.data : [];
+      return list.map(mapApiItineraryToExploreItem);
+    },
+    staleTime: 60 * 1000,
+  });
   const [viewMode, setViewMode] = useState<ViewMode>("card");
 
   const count = itineraries.length;
@@ -94,10 +149,10 @@ export default function ExploreScreen() {
   );
 }
 
-function ItineraryCard({ itinerary }: { itinerary: Itinerary }) {
+function ItineraryCard({ itinerary }: { itinerary: ExploreItinerary }) {
   const locationLabel = getLocationLabel(itinerary.name);
   const overlayText = getLocationOverlayText(itinerary.name);
-  const dateRange = formatDateRange(itinerary.startDate, itinerary.endDate);
+  const dateRange = formatApiDateRange(itinerary.startDate, itinerary.endDate);
   const budgetStr = formatCurrencyVND(itinerary.budget);
 
   return (
@@ -165,8 +220,8 @@ function ItineraryCard({ itinerary }: { itinerary: Itinerary }) {
   );
 }
 
-function ItineraryListItem({ itinerary }: { itinerary: Itinerary }) {
-  const dateRange = formatDateRange(itinerary.startDate, itinerary.endDate);
+function ItineraryListItem({ itinerary }: { itinerary: ExploreItinerary }) {
+  const dateRange = formatApiDateRange(itinerary.startDate, itinerary.endDate);
   const budgetStr = formatCurrencyVND(itinerary.budget);
 
   return (

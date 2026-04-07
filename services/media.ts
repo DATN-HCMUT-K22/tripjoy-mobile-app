@@ -24,6 +24,7 @@ export interface UploadImageOptions {
   fileName?: string; // Tên file (mặc định: image.jpg)
   fileType?: string; // MIME type (mặc định: image/jpeg)
   folder?: string; // Folder Cloudinary (mặc định: tripjoy/misc)
+  timeoutMs?: number; // Timeout upload (mặc định: 60 giây)
 }
 
 /**
@@ -44,7 +45,13 @@ export interface UploadVideoOptions {
 export async function uploadImage(
   options: UploadImageOptions
 ): Promise<MediaUploadResponse> {
-  const { fileUri, fileName = "image.jpg", fileType = "image/jpeg", folder } = options;
+  const {
+    fileUri,
+    fileName = "image.jpg",
+    fileType = "image/jpeg",
+    folder,
+    timeoutMs = 60000,
+  } = options;
 
   // Tạo FormData cho React Native
   // Format cho React Native: { uri, type, name }
@@ -64,7 +71,9 @@ export async function uploadImage(
   });
 
   const uploadWithUrl = (url: string) =>
-    httpClient.post<ApiResponse<MediaUploadResponse>>(url, formData);
+    httpClient.post<ApiResponse<MediaUploadResponse>>(url, formData, {
+      timeout: timeoutMs,
+    });
 
   // Build URL với query params
   let response: ApiResponse<MediaUploadResponse>;

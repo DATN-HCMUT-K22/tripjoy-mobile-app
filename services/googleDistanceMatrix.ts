@@ -83,6 +83,12 @@ export function formatDurationVi(seconds: number | null): string {
   if (seconds == null || Number.isNaN(seconds)) return "—";
   if (seconds < 60) return "< 1 phút";
   const m = Math.round(seconds / 60);
+  if (m >= 60 * 24) {
+    const totalHours = Math.floor(m / 60);
+    const days = Math.floor(totalHours / 24);
+    const remainHours = totalHours % 24;
+    return remainHours > 0 ? `${days} ngày ${remainHours} giờ` : `${days} ngày`;
+  }
   if (m >= 60) {
     const h = Math.floor(m / 60);
     const mm = m % 60;

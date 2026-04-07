@@ -76,7 +76,9 @@ export function MessageNotificationProvider() {
           ? message.message_content
           : message.message_type === "IMAGE"
             ? "Đã gửi ảnh"
-            : "Đã gửi nội dung";
+            : message.message_type === "VIDEO"
+              ? "Đã gửi video"
+              : "Đã gửi nội dung";
 
       store.dispatch(
         pushOrUpdateNotification({

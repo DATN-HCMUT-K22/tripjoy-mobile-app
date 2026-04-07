@@ -24,6 +24,7 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
   const avatarUri = normalizeAvatarUri(group.avatar);
   const isFileUri = !!avatarUri?.startsWith("file://");
   const [imageError, setImageError] = React.useState(false);
+  const themeColor = group.theme_color || "#34B27D";
   useEffect(() => {
     setImageError(false);
   }, [avatarUri]);
@@ -57,6 +58,8 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
     let content = "";
     if (lastMessage.message_type === "IMAGE") {
       content = "Đã gửi một ảnh";
+    } else if (lastMessage.message_type === "VIDEO") {
+      content = "Đã gửi một video";
     } else if (lastMessage.message_type === "SHARE_POST") {
       content = "Đã chia sẻ một bài viết";
     } else {
@@ -130,12 +133,12 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
                 width: 32,
                 height: 32,
                 borderRadius: 16,
-                backgroundColor: "#D1FAE5",
+                backgroundColor: `${themeColor}22`,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="location-outline" size={18} color="#34B27D" />
+              <Ionicons name="location-outline" size={18} color={themeColor} />
             </View>
             <View>
               <Text className="text-lg font-bold text-black">
@@ -155,12 +158,12 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
                 width: 32,
                 height: 32,
                 borderRadius: 16,
-                backgroundColor: "#D1FAE5",
+                backgroundColor: `${themeColor}22`,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="people-outline" size={18} color="#34B27D" />
+              <Ionicons name="people-outline" size={18} color={themeColor} />
             </View>
             <View>
               <Text className="text-lg font-bold text-black">
@@ -187,7 +190,7 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
 
       {/* Arrow */}
       <TouchableOpacity activeOpacity={0.7} onPress={goToChat}>
-        <Ionicons name="chevron-forward" size={20} color="#34B27D" />
+        <Ionicons name="chevron-forward" size={20} color={themeColor} />
       </TouchableOpacity>
     </View>
   );

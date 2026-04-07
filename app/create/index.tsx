@@ -6,16 +6,18 @@ import { SimpleCalendar } from "@/components/trip/SimpleCalendar";
 import { Button } from "@/components/ui/Button";
 import { VietnamFlag } from "@/components/ui/VietnamFlag";
 import { EXPO_PUBLIC_MOCK_DATA } from "@/config/env";
+import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
 import { sampleProvinceLocations } from "@/data/sampleProvinceLocations";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
 import { useProvinceLocations } from "@/hooks/useProvinceLocations";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { Location } from "@/types/trip";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -40,6 +42,8 @@ const TRIP_TYPE_CARD_GAP = 8;
 
 export default function CreateTripScreen() {
   const router = useRouter();
+  const { exitToHome } = useCreateTripExitToHome();
+  const { resetItinerary } = useItinerary();
   const { height: windowHeight } = useWindowDimensions();
   const locationListMaxHeight = useMemo(
     () =>
@@ -153,7 +157,7 @@ export default function CreateTripScreen() {
     }, [resetTripData])
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isProvincesError && !provincesErrorToastShownRef.current) {
       provincesErrorToastShownRef.current = true;
       showErrorToast(
@@ -315,21 +319,32 @@ export default function CreateTripScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
-      <View className="flex-row items-center px-4 py-3 border-b border-gray-100">
+      <View className="flex-row items-center border-b border-gray-100 px-2 py-3">
         <TouchableOpacity
           onPress={() => {
+            resetItinerary();
             resetTripData();
             router.back();
           }}
-          className="absolute left-4 z-10"
+          className="h-10 w-12 items-center justify-center"
           activeOpacity={0.7}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <Ionicons name="arrow-back-outline" size={24} color="#000" />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-black flex-1 text-center">
-          Thiết lập chuyến đi
-        </Text>
+        <View className="min-w-0 flex-1 items-center justify-center px-1">
+          <Text className="text-center text-xl font-bold text-black" numberOfLines={1}>
+            Thiết lập chuyến đi
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={exitToHome}
+          className="h-10 w-12 items-center justify-center"
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="home-outline" size={22} color="#34B27D" />
+        </TouchableOpacity>
       </View>
 
       {isProvincesError && (

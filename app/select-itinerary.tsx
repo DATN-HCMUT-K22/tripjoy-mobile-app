@@ -38,7 +38,9 @@ export default function SelectItineraryScreen() {
       router.back();
       return;
     }
-    const selected = itineraries.find((it) => it.id === selectedId) ?? null;
+    // Luôn tìm trong danh sách gốc để không mất dữ liệu khi search đã thay đổi.
+    const selected =
+      allItineraries.find((it) => String(it.id) === String(selectedId)) ?? null;
     if (selected) {
       setPendingItinerary(selected);
     }

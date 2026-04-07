@@ -1,6 +1,7 @@
 import { ChatMessageResponse } from "@/types/message";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
+import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 import React from "react";
 import {
@@ -206,7 +207,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       </View>
     );
 
-  // Nội dung bubble (text hoặc image)
+  // Nội dung bubble (text, ảnh hoặc video)
   const bubbleContent =
     message.message_type === "IMAGE" && message.media_url ? (
       <View style={styles.imageBubbleWrapper}>
@@ -224,6 +225,35 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             source={{ uri: message.media_url }}
             style={styles.image}
             contentFit="cover"
+          />
+          {message.message_content ? (
+            <View style={styles.imageCaption}>
+              <Text
+                style={[styles.imageCaptionText, { color: textColor }]}
+              >
+                {message.message_content}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    ) : message.message_type === "VIDEO" && message.media_url ? (
+      <View style={styles.imageBubbleWrapper}>
+        <View
+          style={[
+            styles.imageBubble,
+            {
+              backgroundColor: bubbleColor,
+              borderWidth: isBot || !isMe ? 1 : 0,
+              borderColor: borderColor,
+            },
+          ]}
+        >
+          <Video
+            source={{ uri: message.media_url }}
+            style={styles.image}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
           />
           {message.message_content ? (
             <View style={styles.imageCaption}>

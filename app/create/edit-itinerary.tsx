@@ -1,4 +1,5 @@
 import { useItinerary } from "@/contexts/ItineraryContext";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { ItineraryItem } from "@/types/itinerary";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -151,6 +152,7 @@ function DraggableItem({
 
 export default function EditItineraryScreen() {
   const router = useRouter();
+  const { exitToHome } = useCreateTripExitToHome();
   const { dayKey } = useLocalSearchParams<{ dayKey: string }>();
   const { itineraryItemsByDay, addItineraryItemsToDay } = useItinerary();
   const [items, setItems] = useState<ItineraryItem[]>(
@@ -206,17 +208,28 @@ export default function EditItineraryScreen() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView className="flex-1 bg-gray-50">
         {/* Header */}
-        <View className="flex-row items-center px-4 py-3 bg-white border-b border-gray-200">
+        <View className="flex-row items-center border-b border-gray-200 bg-white px-2 py-3">
           <TouchableOpacity
             onPress={() => router.back()}
-            className="absolute left-4 z-10"
+            className="h-10 w-12 items-center justify-center"
             activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons name="arrow-back-outline" size={24} color="#000" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-black flex-1 text-center">
-            Chỉnh sửa lịch trình
-          </Text>
+          <View className="min-w-0 flex-1 items-center justify-center px-1">
+            <Text className="text-center text-xl font-bold text-black" numberOfLines={1}>
+              Chỉnh sửa lịch trình
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={exitToHome}
+            className="h-10 w-12 items-center justify-center"
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="home-outline" size={22} color="#34B27D" />
+          </TouchableOpacity>
         </View>
 
         {/* Draggable List */}

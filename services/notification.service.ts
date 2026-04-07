@@ -389,9 +389,11 @@ class NotificationService {
           ? message.message_content
           : message.message_type === "IMAGE"
             ? "Đã gửi một ảnh"
-            : message.message_type === "SHARE_POST"
-              ? "Đã chia sẻ một bài viết"
-              : "Đã gửi tin nhắn";
+            : message.message_type === "VIDEO"
+              ? "Đã gửi một video"
+              : message.message_type === "SHARE_POST"
+                ? "Đã chia sẻ một bài viết"
+                : "Đã gửi tin nhắn";
 
       // Create notification payload
       const payload: NotificationPayload = {

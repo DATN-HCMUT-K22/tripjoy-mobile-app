@@ -42,23 +42,34 @@ function mapApiItineraryToDisplay(api: ItineraryResponse): DisplayItinerary {
   const end = new Date(endDate);
   const startTs = start.getTime();
   const endTs = end.getTime();
-  const days =
+  const calendarDays =
     Number.isNaN(startTs) || Number.isNaN(endTs)
       ? 1
-      : Math.max(1, Math.ceil((endTs - startTs) / 86400000));
+      : Math.max(1, Math.floor((endTs - startTs) / 86400000) + 1);
+  const nights = calendarDays > 1 ? calendarDays - 1 : 0;
   const budgetFromApi =
     typeof api.budget_estimate === "number" && !Number.isNaN(api.budget_estimate)
       ? api.budget_estimate
       : 0;
+  const memberFromApi =
+    typeof api.people_quantity === "number" && !Number.isNaN(api.people_quantity)
+      ? api.people_quantity
+      : typeof api.member_count === "number" && !Number.isNaN(api.member_count)
+        ? api.member_count
+        : 0;
+  const imageFromApi =
+    [api.cover_image_url, api.thumbnail_url]
+      .map((u) => (typeof u === "string" ? u.trim() : ""))
+      .find((u) => u.length > 0) ?? "";
   return {
     id: api.id ?? "",
     groupId: api.group_id ?? "",
     name: api.title ?? "Lịch trình chưa đặt tên",
-    image: "",
+    image: imageFromApi,
     startDate,
     endDate,
-    duration: `${days} ngày`,
-    memberCount: 0,
+    duration: nights > 0 ? `${calendarDays} ngày ${nights} đêm` : `${calendarDays} ngày`,
+    memberCount: memberFromApi,
     budget: budgetFromApi,
   };
 }

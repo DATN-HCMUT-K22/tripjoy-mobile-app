@@ -8,6 +8,18 @@ import { httpClient } from "./http/client";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
 
+/** BE có thể trả `group_id` hoặc `groupId` — chuẩn hóa để điều hướng `/groups/[id]/chat` khớp */
+function normalizeConversation(
+  c: ConversationResponse | null | undefined
+): ConversationResponse | null {
+  if (!c || typeof c !== "object") return null;
+  const r = c as Record<string, unknown>;
+  const gid = c.group_id ?? r.groupId;
+  const group_id =
+    typeof gid === "string" && gid.length > 0 ? gid : c.group_id ?? null;
+  return { ...c, group_id };
+}
+
 /** Một số BE chỉ trả { code: 1000 } khi POST /conversations — lấy lại từ danh sách */
 async function findDirectConversationWithUser(
   targetUserId: string
@@ -73,6 +85,14 @@ export const conversationService = {
     try {
       const response = await httpClient.get<ApiResponse<ConversationResponse[]>>("/conversations");
       console.log(`✅ [CONVERSATION SERVICE] Got ${response.data?.length || 0} conversations`);
+      if (response.data?.length) {
+        return {
+          ...response,
+          data: response.data
+            .map((item) => normalizeConversation(item))
+            .filter(Boolean) as ConversationResponse[],
+        };
+      }
       return response;
     } catch (error: any) {
       console.error(`❌ [CONVERSATION SERVICE] Failed to get conversations`);
@@ -120,7 +140,12 @@ export const conversationService = {
 
       console.log(`✅ [CONVERSATION SERVICE] Conversation created`);
       console.log(`Conversation ID: ${conv.id}`);
-      return { code: response.code ?? 0, data: conv, message: response.message };
+      const normalized = normalizeConversation(conv);
+      return {
+        code: response.code ?? 0,
+        data: normalized ?? conv,
+        message: response.message,
+      };
     } catch (error: any) {
       console.error(`❌ [CONVERSATION SERVICE] Failed to create conversation`);
       console.error(`Error:`, error.message);
@@ -152,6 +177,12 @@ export const conversationService = {
         console.log(`📊 [CONVERSATION SERVICE] Has members field:`, 'members' in (response.data || {}));
         console.log(`📊 [CONVERSATION SERVICE] Members is array:`, Array.isArray(response.data.members));
       }
+      if (response.data) {
+        const normalized = normalizeConversation(response.data);
+        if (normalized) {
+          return { ...response, data: normalized };
+        }
+      }
       return response;
     } catch (error: any) {
       console.error(`❌ [CONVERSATION SERVICE] Failed to get conversation`);
@@ -176,6 +207,12 @@ export const conversationService = {
         UpdateConversationRequest
       >(`/conversations/${conversationId}`, payload);
       console.log(`✅ [CONVERSATION SERVICE] Conversation updated successfully`);
+      if (response.data) {
+        const normalized = normalizeConversation(response.data);
+        if (normalized) {
+          return { ...response, data: normalized };
+        }
+      }
       return response;
     } catch (error: any) {
       console.error(`❌ [CONVERSATION SERVICE] Failed to update conversation`);

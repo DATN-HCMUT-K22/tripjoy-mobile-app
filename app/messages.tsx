@@ -72,25 +72,32 @@ function parseRecentUsersFromStorage(stored: string | null): RecentSearchUser[] 
   }
 }
 
-// Helper function để format time
+// Helper function để format time:
+// - Cùng ngày: HH:mm
+// - Khác ngày: English date (vd: Apr 6)
 const formatTime = (dateString?: string): string => {
   if (!dateString) return "";
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "";
+
   const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
+  const isSameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
 
-  if (minutes < 1) return "Vừa xong";
-  if (minutes < 60) return `${minutes} phút trước`;
-  if (hours < 24) return `${hours} giờ trước`;
-  if (days < 7) return `${days} ngày trước`;
+  if (isSameDay) {
+    return date.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  }
 
-  // Format date
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${day}/${month}`;
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 };
 
 const renderHighlightedText = (
@@ -270,6 +277,11 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
 
   const avatar = getAvatar();
   const displayName = getDisplayName();
+  const displayTime =
+    conversation.last_message?.created_at ||
+    conversation.updated_at ||
+    conversation.created_at ||
+    "";
   // Hiển thị "Tên: nội dung tin nhắn" từ last_message; nếu không có sender thì chỉ nội dung
   const getLastMessageSubtitle = (): string => {
     const lm = conversation.last_message;
@@ -322,11 +334,11 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
           <Text className="text-base font-bold text-black flex-1" numberOfLines={1}>
             {displayName}
           </Text>
-          {conversation.last_message?.created_at && (
+          {displayTime ? (
             <Text className="text-xs text-gray-500 ml-2">
-              {formatTime(conversation.last_message.created_at)}
+              {formatTime(displayTime)}
             </Text>
-          )}
+          ) : null}
         </View>
         <View className="flex-row items-center">
           <Text className="text-sm text-gray-600 flex-1" numberOfLines={1}>
@@ -587,15 +599,15 @@ export default function MessagesScreen() {
       resetGroupSearchState();
     }
 
-    // Sử dụng conversationId cho cả DIRECT và GROUP
-    if (conversation.type === "GROUP" && conversation.group_id) {
-      // Navigate to group chat với conversationId + thông tin cơ bản để hiển thị header ngay lập tức
+    // GROUP: ưu tiên `/groups/[groupId]/chat` (cần group_id — đã chuẩn hóa groupId từ BE trong conversationService)
+    const groupId =
+      conversation.group_id ??
+      (conversation as ConversationResponse & { groupId?: string }).groupId;
+    if (conversation.type === "GROUP" && groupId) {
       router.push({
-        pathname: `/groups/${conversation.group_id}/chat` as any,
+        pathname: `/groups/${groupId}/chat` as any,
         params: {
           conversationId: conversation.id,
-          // Các field dưới lấy trực tiếp từ danh sách conversations
-          // để tránh việc header nhảy tên/số thành viên trong lúc chờ API chi tiết
           name: conversation.name || undefined,
           avatar: conversation.avatar || undefined,
           memberCount: conversation.members?.length
@@ -603,19 +615,26 @@ export default function MessagesScreen() {
             : undefined,
         },
       } as any);
-    } else {
-      // Navigate to direct chat
-      router.push(`/chat/${conversation.id}` as any);
+      return;
     }
+    if (conversation.type === "GROUP") {
+      // Thiếu group id: vẫn mở được bằng conversation id (màn app/chat/[id])
+      router.push(`/chat/${conversation.id}` as any);
+      return;
+    }
+    router.push(`/chat/${conversation.id}` as any);
   };
 
   /** Mở chat từ kết quả search tin nhắn — nhóm dùng cùng route/params như danh sách để header đúng */
   const handleSearchMessagePress = (message: MessageSearchResponse) => {
     resetGroupSearchState();
     const conv = conversationById.get(message.conversation_id);
-    if (conv?.type === "GROUP" && conv.group_id) {
+    const searchGroupId =
+      conv?.group_id ??
+      (conv as ConversationResponse & { groupId?: string })?.groupId;
+    if (conv?.type === "GROUP" && searchGroupId) {
       router.push({
-        pathname: `/groups/${conv.group_id}/chat` as any,
+        pathname: `/groups/${searchGroupId}/chat` as any,
         params: {
           conversationId: conv.id,
           name: conv.name || undefined,
@@ -623,6 +642,13 @@ export default function MessagesScreen() {
           memberCount: conv.members?.length ? String(conv.members.length) : undefined,
           messageId: message.id,
         },
+      } as any);
+      return;
+    }
+    if (conv?.type === "GROUP") {
+      router.push({
+        pathname: `/chat/${message.conversation_id}` as any,
+        params: { messageId: message.id },
       } as any);
       return;
     }

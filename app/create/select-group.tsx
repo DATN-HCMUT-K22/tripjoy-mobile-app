@@ -1,8 +1,10 @@
 import { CreateGroupModal } from "@/components/group/CreateGroupModal";
+import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { BUDGET_CUSTOM_ID } from "@/data/budgetOptions";
 import { useGroups } from "@/hooks/useGroups";
 import { useCreateItinerary } from "@/hooks/useItineraries";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { ItineraryRequest } from "@/services/itineraries";
 import { tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { tripTypeIdsToItineraryThemes } from "@/utils/itineraryThemes";
@@ -23,7 +25,13 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-function SelectGroupScreenHeader({ onBack }: { onBack: () => void }) {
+function SelectGroupScreenHeader({
+  onBack,
+  onHome,
+}: {
+  onBack: () => void;
+  onHome: () => void;
+}) {
   return (
     <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
       <TouchableOpacity
@@ -42,19 +50,45 @@ function SelectGroupScreenHeader({ onBack }: { onBack: () => void }) {
           Chọn nhóm du lịch
         </Text>
       </View>
-      <View className="h-10 w-12" />
+      <TouchableOpacity
+        onPress={onHome}
+        className="h-10 w-12 items-center justify-center"
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="home-outline" size={22} color="#34B27D" />
+      </TouchableOpacity>
     </View>
   );
 }
 
 export default function SelectGroupScreen() {
   const router = useRouter();
+  const { exitToHome } = useCreateTripExitToHome();
   const insets = useSafeAreaInsets();
   const { tripData, resetTripData } = useTripSetup();
+  const { itineraryItemsByDay, resetItinerary } = useItinerary();
   const { data: groups = [], isLoading } = useGroups();
   const createItineraryMutation = useCreateItinerary();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+
+  const mapDayAndTimeToLocalDateTime = (dayKey: string, hhmm: string) => {
+    const [hRaw = "0", mRaw = "0"] = hhmm.split(":");
+    const h = Math.min(23, Math.max(0, Number(hRaw) || 0));
+    const m = Math.min(59, Math.max(0, Number(mRaw) || 0));
+    return `${dayKey}T${pad2(h)}:${pad2(m)}:00`;
+  };
+
+  const computeDurationMinutes = (start: string, end: string) => {
+    const [sh = "0", sm = "0"] = start.split(":");
+    const [eh = "0", em = "0"] = end.split(":");
+    const startMinutes = (Number(sh) || 0) * 60 + (Number(sm) || 0);
+    const endMinutes = (Number(eh) || 0) * 60 + (Number(em) || 0);
+    return Math.max(0, endMinutes - startMinutes);
+  };
   const estimateBudget = (budgetId?: string | null) => {
     switch (budgetId) {
       case "budget":
@@ -89,12 +123,23 @@ export default function SelectGroupScreen() {
     );
     const themeList = tripTypeIdsToItineraryThemes(tripData.tripTypes);
     const itineraryName = destination ? `Khám phá ${destination}` : "Lịch trình mới";
+    const dayKeys = Object.keys(itineraryItemsByDay).sort();
+    const tripItems = dayKeys.flatMap((dayKey) => {
+      const items = itineraryItemsByDay[dayKey] || [];
+      return items.map((item) => ({
+        duration: computeDurationMinutes(item.timeRange.start, item.timeRange.end),
+        note: item.name,
+        start_time: mapDayAndTimeToLocalDateTime(dayKey, item.timeRange.start),
+        location_id: item.locationId,
+      }));
+    });
 
     return {
       name: itineraryName,
       description: destination
         ? `Lịch trình được tạo từ Tripjoy cho chuyến đi đến ${destination}.`
         : "Lịch trình được tạo từ Tripjoy.",
+      status: "DRAFT",
       start_date,
       end_date,
       people_quantity: tripData.peopleQuantity,
@@ -102,6 +147,8 @@ export default function SelectGroupScreen() {
       destination: destination || undefined,
       themes: themeList.length > 0 ? themeList : undefined,
       group_id: groupId,
+      trip_items: tripItems,
+      expenses: [],
     };
   };
 
@@ -113,7 +160,9 @@ export default function SelectGroupScreen() {
       }
       try {
         const payload = buildItineraryPayload(selectedGroupId);
+        console.log("[CreateItinerary][MappedPayload]", JSON.stringify(payload, null, 2));
         await createItineraryMutation.mutateAsync(payload);
+        resetItinerary();
         resetTripData();
         router.push(`/groups/${selectedGroupId}/chat` as any);
       } catch (error: any) {
@@ -142,7 +191,7 @@ export default function SelectGroupScreen() {
         className="flex-1 bg-white"
         edges={["top", "left", "right", "bottom"]}
       >
-        <SelectGroupScreenHeader onBack={() => router.back()} />
+        <SelectGroupScreenHeader onBack={() => router.back()} onHome={exitToHome} />
 
         {/* Empty State */}
         <View className="flex-1 items-center justify-center px-6">
@@ -192,7 +241,7 @@ export default function SelectGroupScreen() {
       className="flex-1 bg-white"
       edges={["top", "left", "right"]}
     >
-      <SelectGroupScreenHeader onBack={() => router.back()} />
+      <SelectGroupScreenHeader onBack={() => router.back()} onHome={exitToHome} />
 
       {/* Content */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>

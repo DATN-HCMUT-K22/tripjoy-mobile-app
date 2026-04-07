@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
 import { Ionicons } from "@expo/vector-icons";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { useRouter } from "expo-router";
 import React, { useCallback } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -11,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function BudgetSelectionScreen() {
   const router = useRouter();
+  const { exitToHome } = useCreateTripExitToHome();
   const { setBudget, setCustomBudgetRange, tripData } = useTripSetup();
 
   const handleSelect = (id: string) => {
@@ -55,7 +57,14 @@ export default function BudgetSelectionScreen() {
             Chọn kinh phí
           </Text>
         </View>
-        <View className="h-10 w-12" />
+        <TouchableOpacity
+          onPress={exitToHome}
+          className="h-10 w-12 items-center justify-center"
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="home-outline" size={22} color="#34B27D" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>

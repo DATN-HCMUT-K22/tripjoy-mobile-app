@@ -1,7 +1,7 @@
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useItineraries } from "@/hooks/useItineraries";
 import { useAppSelector } from "@/store/hooks";
-import { createPost } from "@/services/social";
-import { uploadImage } from "@/services/media";
+import { uploadImage, uploadVideo, type MediaUploadResponse } from "@/services/media";
 import { mockItineraries } from "@/data/mockItineraries";
 import type { Itinerary } from "@/types/group";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
@@ -9,13 +9,14 @@ import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import * as VideoThumbnails from "expo-video-thumbnails";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,95 +25,150 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AttachedMediaGalleryModal } from "@/components/create-post/AttachedMediaGalleryModal";
 import {
   clearPendingItinerary,
-  getAndClearPendingItinerary,
   getPendingItinerary,
 } from "@/utils/pendingItinerarySelection";
 
+const ITINERARY_PLACEHOLDER_IMAGE = require("@/assets/images/loading_img.jpg");
+
 type PrivacyType = "public" | "private";
+
+type PickedMedia = {
+  uri: string;
+  kind: "image" | "video";
+  mimeType?: string;
+  fileName?: string;
+  thumbnailUri?: string;
+};
+
+function computeDurationLabel(start: string, end: string): string {
+  const s = new Date(start);
+  const e = new Date(end);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return "";
+  s.setHours(0, 0, 0, 0);
+  e.setHours(0, 0, 0, 0);
+  const days = Math.max(1, Math.floor((e.getTime() - s.getTime()) / 86400000) + 1);
+  const nights = days > 1 ? days - 1 : 0;
+  return nights > 0 ? `${days} ngày ${nights} đêm` : `${days} ngày`;
+}
 
 export default function CreatePostScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ itineraryId?: string }>();
+  const { data: myItineraries = [] } = useItineraries();
   const { requireAuth } = useRequireAuth();
   const currentUser = useAppSelector((state) => state.auth.user);
   const [content, setContent] = useState("");
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [hashtagInput, setHashtagInput] = useState("");
-  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedMedia, setSelectedMedia] = useState<PickedMedia[]>([]);
   const [privacy, setPrivacy] = useState<PrivacyType>("public");
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [selectedItinerary, setSelectedItinerary] = useState<Itinerary | null>(null);
   const [privacyWidth, setPrivacyWidth] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mediaGalleryVisible, setMediaGalleryVisible] = useState(false);
+  const [mediaGalleryIndex, setMediaGalleryIndex] = useState(0);
   const contentInputRef = useRef<TextInput>(null);
 
   const formatItineraryDateRange = (start: string, end: string) => {
     const f = (s: string) => {
       const d = new Date(s);
+      if (Number.isNaN(d.getTime())) return "—";
       return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
     };
     return `${f(start)} - ${f(end)}`;
   };
 
-  // Đồng bộ lịch trình khi quay lại từ màn "Chọn lịch trình" — đọc state (object đầy đủ field)
+  // Khi quay lại từ "Chọn lịch trình": đọc pending sau 1 frame để tránh race với router.back().
   useFocusEffect(
     useCallback(() => {
-      const t = setTimeout(() => {
-        const it = getAndClearPendingItinerary();
+      let cancelled = false;
+      const frame = requestAnimationFrame(() => {
+        if (cancelled) return;
+        const it = getPendingItinerary();
         if (it) {
           setSelectedItinerary(it);
+          clearPendingItinerary();
         }
-      }, 100);
-      return () => clearTimeout(t);
+      });
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(frame);
+      };
     }, [])
   );
 
-  // Khi mount: đọc pending (object) hoặc params (id) để tương thích
+  // Params itineraryId (mock hoặc cache danh sách /itineraries/me) — không đụng pending ở đây.
   useEffect(() => {
-    const it = getPendingItinerary();
-    if (it) {
-      setSelectedItinerary(it);
-      clearPendingItinerary();
+    const raw = params?.itineraryId;
+    const id = typeof raw === "string" ? raw.trim() : "";
+    if (!id) return;
+    const fromMock = mockItineraries.find((x) => String(x.id) === String(id));
+    if (fromMock) {
+      setSelectedItinerary(fromMock);
       return;
     }
-    const id = params?.itineraryId as string | undefined;
-    if (!id) return;
-    const found = mockItineraries.find((x) => String(x.id) === String(id));
-    if (found) setSelectedItinerary(found);
-  }, [params?.itineraryId]);
+    const fromList = myItineraries.find((x) => String(x.id) === String(id));
+    if (fromList) setSelectedItinerary(fromList);
+  }, [params?.itineraryId, myItineraries]);
 
-  const handlePickImage = async () => {
+  const handlePickMedia = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
         showErrorToast(
           "Cần quyền truy cập",
-          "Ứng dụng cần quyền truy cập thư viện ảnh để chọn ảnh."
+          "Ứng dụng cần quyền truy cập thư viện để chọn ảnh hoặc video."
         );
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
+        mediaTypes: ["images", "videos"],
+        allowsEditing: false,
         quality: 0.8,
         allowsMultipleSelection: true,
       });
 
       if (!result.canceled && result.assets) {
-        const newUris = result.assets.map((asset) => asset.uri);
-        setSelectedImages((prev) => [...prev, ...newUris]);
+        const newItems: PickedMedia[] = await Promise.all(
+          result.assets.map(async (asset) => {
+            const isVideo =
+              asset.type === "video" ||
+              (typeof asset.mimeType === "string" &&
+                asset.mimeType.startsWith("video/"));
+            let thumbnailUri: string | undefined;
+            if (isVideo) {
+              try {
+                const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, {
+                  time: 1000,
+                });
+                thumbnailUri = thumb.uri;
+              } catch {
+                thumbnailUri = undefined;
+              }
+            }
+            return {
+              uri: asset.uri,
+              kind: isVideo ? "video" : "image",
+              mimeType: asset.mimeType ?? undefined,
+              fileName: asset.fileName ?? undefined,
+              thumbnailUri,
+            };
+          })
+        );
+        setSelectedMedia((prev) => [...prev, ...newItems]);
       }
     } catch (error) {
-      showErrorToast("Không chọn được ảnh", "Không thể chọn ảnh. Vui lòng thử lại.");
+      showErrorToast("Không chọn được file", "Không thể chọn ảnh/video. Vui lòng thử lại.");
     }
   };
 
-  const handleRemoveImage = (index: number) => {
-    setSelectedImages(selectedImages.filter((_, i) => i !== index));
+  const handleRemoveMedia = (index: number) => {
+    setSelectedMedia(selectedMedia.filter((_, i) => i !== index));
   };
 
   const handleAddHashtag = () => {
@@ -128,55 +184,70 @@ export default function CreatePostScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!content.trim() && selectedImages.length === 0) {
-      showErrorToast("Thiếu nội dung", "Vui lòng nhập nội dung hoặc chọn ảnh");
+    if (!content.trim() && selectedMedia.length === 0) {
+      showErrorToast("Thiếu nội dung", "Vui lòng nhập nội dung hoặc chọn ảnh/video");
       return;
     }
 
     await requireAuth(async () => {
       setIsSubmitting(true);
       try {
-        // Upload tất cả ảnh trước khi tạo post
-        let imageUrls: string[] = [];
-        
-        if (selectedImages.length > 0) {
-          const uploadPromises = selectedImages.map((imageUri) =>
-            uploadImage({
-              fileUri: imageUri,
-              fileName: "post-image.jpg",
-              fileType: "image/jpeg",
-              folder: currentUser?.id ? `tripjoy/posts/${currentUser.id}` : "tripjoy/posts",
-            })
-          );
-          
-          try {
-            const uploadResults = await Promise.all(uploadPromises);
-            imageUrls = uploadResults.map((result) => result.secure_url);
-            console.log("[CreatePost] All images uploaded successfully:", imageUrls);
-          } catch (uploadError: any) {
-            showErrorToast(
-              "Tải ảnh thất bại",
-              uploadError?.message || "Không thể tải ảnh lên. Vui lòng thử lại."
-            );
-            setIsSubmitting(false);
-            return;
-          }
+        if (selectedMedia.length === 0) {
+          showErrorToast("Chưa có media", "Chọn ít nhất một ảnh hoặc video để upload.");
+          return;
         }
-        
-        // Tạo post với URLs đã upload
-        await createPost({
-          content: content.trim(),
-          images: imageUrls.length > 0 ? imageUrls : undefined,
+
+        const folder = currentUser?.id ? `tripjoy/posts/${currentUser.id}` : "tripjoy/posts";
+
+        const uploadPromises = selectedMedia.map((item, index) => {
+          if (item.kind === "video") {
+            return uploadVideo({
+              fileUri: item.uri,
+              fileName: item.fileName || `post-video-${index}.mp4`,
+              fileType: item.mimeType || "video/mp4",
+              folder,
+            });
+          }
+          return uploadImage({
+            fileUri: item.uri,
+            fileName: item.fileName || `post-image-${index}.jpg`,
+            fileType: item.mimeType || "image/jpeg",
+            folder,
+          });
         });
 
-        showSuccessToast("Đã đăng bài viết");
+        const uploadResults: MediaUploadResponse[] = await Promise.all(uploadPromises);
 
-        router.back();
-      } catch (error: any) {
-        showErrorToast(
-          "Đăng bài thất bại",
-          error?.response?.data?.message || "Không thể đăng bài viết. Vui lòng thử lại."
+        const logPayload = {
+          uploadedCount: uploadResults.length,
+          secureUrls: uploadResults.map((r) => r.secure_url),
+          details: uploadResults.map((r, i) => ({
+            index: i,
+            kind: selectedMedia[i]?.kind,
+            resource_type: r.resource_type,
+            secure_url: r.secure_url,
+            public_id: r.public_id,
+            format: r.format,
+            bytes: r.bytes,
+            width: r.width,
+            height: r.height,
+            duration: r.duration,
+          })),
+        };
+
+        console.log("[CreatePost] Promise.all upload xong — chưa tạo post:", logPayload);
+        console.log("[CreatePost] JSON (copy):", JSON.stringify(logPayload, null, 2));
+
+        showSuccessToast(
+          "Đã upload media",
+          `${uploadResults.length} file — xem log Metro/console (chưa tạo bài viết).`
         );
+      } catch (uploadError: unknown) {
+        const msg =
+          uploadError instanceof Error
+            ? uploadError.message
+            : "Không thể tải file lên. Vui lòng thử lại.";
+        showErrorToast("Upload thất bại", msg);
       } finally {
         setIsSubmitting(false);
       }
@@ -201,13 +272,13 @@ export default function CreatePostScreen() {
           <Text style={styles.headerTitle}>Tạo bài viết</Text>
           <TouchableOpacity
             onPress={handleSubmit}
-            disabled={isSubmitting || (!content.trim() && selectedImages.length === 0)}
+            disabled={isSubmitting || (!content.trim() && selectedMedia.length === 0)}
             activeOpacity={0.7}
           >
             <Text
               style={[
                 styles.postButton,
-                (isSubmitting || (!content.trim() && selectedImages.length === 0)) &&
+                (isSubmitting || (!content.trim() && selectedMedia.length === 0)) &&
                   styles.postButtonDisabled,
               ]}
             >
@@ -366,30 +437,54 @@ export default function CreatePostScreen() {
             </View>
           </View>
 
-          {/* Image Upload Section - scroll ngang khi nhiều ảnh */}
+          {/* Ảnh / video đính kèm */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Ảnh đính kèm</Text>
+            <Text style={styles.sectionTitle}>Ảnh & video đính kèm</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.imageScrollView}
               contentContainerStyle={styles.imageScrollContent}
             >
-              {selectedImages.map((uri, index) => (
-                <View key={`${uri}-${index}`} style={styles.imageItem}>
-                  <Image source={{ uri }} style={styles.imagePreview} contentFit="cover" />
+              {selectedMedia.map((item, index) => (
+                <Pressable
+                  key={`${item.uri}-${item.kind}-${index}`}
+                  style={styles.imageItem}
+                  onPress={() => {
+                    setMediaGalleryIndex(index);
+                    setMediaGalleryVisible(true);
+                  }}
+                >
+                  {item.kind === "video" ? (
+                    <View style={styles.videoThumbPlaceholder}>
+                      {item.thumbnailUri ? (
+                        <Image
+                          source={{ uri: item.thumbnailUri }}
+                          style={styles.imagePreview}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <Ionicons name="videocam" size={36} color="#9CA3AF" />
+                      )}
+                      <View style={styles.videoPlayBadge}>
+                        <Ionicons name="play" size={14} color="#fff" />
+                      </View>
+                    </View>
+                  ) : (
+                    <Image source={{ uri: item.uri }} style={styles.imagePreview} contentFit="cover" />
+                  )}
                   <TouchableOpacity
                     style={styles.removeImageButton}
-                    onPress={() => handleRemoveImage(index)}
+                    onPress={() => handleRemoveMedia(index)}
                     activeOpacity={0.7}
                   >
                     <Ionicons name="close-circle" size={24} color="#fff" />
                   </TouchableOpacity>
-                </View>
+                </Pressable>
               ))}
               <TouchableOpacity
                 style={styles.addImageButton}
-                onPress={handlePickImage}
+                onPress={handlePickMedia}
                 activeOpacity={0.7}
               >
                 <Ionicons name="add" size={32} color="#999" />
@@ -434,16 +529,29 @@ export default function CreatePostScreen() {
               {selectedItinerary ? (
                 <View style={styles.itineraryCard}>
                   <Image
-                    source={{ uri: selectedItinerary.image }}
+                    source={
+                      selectedItinerary.image?.trim()
+                        ? { uri: selectedItinerary.image.trim() }
+                        : ITINERARY_PLACEHOLDER_IMAGE
+                    }
                     style={styles.itineraryCardImage}
                     contentFit="cover"
                   />
                   <View style={styles.itineraryCardBody}>
                     <Text style={styles.itineraryCardTitle} numberOfLines={2}>
-                      {selectedItinerary.name}
+                      {(() => {
+                        const name = (selectedItinerary.name ?? "").trim();
+                        const computedDur = computeDurationLabel(
+                          selectedItinerary.startDate,
+                          selectedItinerary.endDate
+                        );
+                        const dur = computedDur || (selectedItinerary.duration ?? "").trim();
+                        if (name && dur && !name.includes(dur)) return `${name} - ${dur}`;
+                        return name || dur || "Lịch trình";
+                      })()}
                     </Text>
                     <View style={styles.itineraryCardRow}>
-                      <Text style={styles.itineraryCardIconEmoji}>📆</Text>
+                      <Ionicons name="calendar-outline" size={16} color="#16A34A" />
                       <Text style={styles.itineraryCardLabel}>
                         Thời gian:{" "}
                         <Text style={styles.itineraryCardValue}>
@@ -456,14 +564,17 @@ export default function CreatePostScreen() {
                       <Text style={styles.itineraryCardLabel}>
                         Số người:{" "}
                         <Text style={styles.itineraryCardValue}>
-                          {selectedItinerary.memberCount} thành viên
+                          {selectedItinerary.memberCount ?? 0} thành viên
                         </Text>
                       </Text>
                     </View>
                     <Text style={styles.itineraryCardLabel}>
                       Ngân sách:{" "}
                       <Text style={styles.itineraryCardBudget}>
-                        {new Intl.NumberFormat("vi-VN").format(selectedItinerary.budget)} đ
+                        {new Intl.NumberFormat("vi-VN").format(
+                          selectedItinerary.budget ?? 0
+                        )}{" "}
+                        đ
                       </Text>
                     </Text>
                   </View>
@@ -478,6 +589,13 @@ export default function CreatePostScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
+
+        <AttachedMediaGalleryModal
+          visible={mediaGalleryVisible}
+          items={selectedMedia}
+          initialIndex={mediaGalleryIndex}
+          onClose={() => setMediaGalleryVisible(false)}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -653,6 +771,24 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  videoThumbPlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoPlayBadge: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   removeImageButton: {
     position: "absolute",
     top: 4,
@@ -736,16 +872,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
     minHeight: 100,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   itineraryCardImage: {
-    width: 100,
-    minHeight: 100,
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
+    width: 84,
+    minHeight: 96,
+    borderTopLeftRadius: 11,
+    borderBottomLeftRadius: 11,
   },
   itineraryCardBody: {
     flex: 1,
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     justifyContent: "space-between",
   },
   itineraryCardTitle: {
@@ -759,9 +903,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginBottom: 4,
-  },
-  itineraryCardIconEmoji: {
-    fontSize: 16,
   },
   itineraryCardLabel: {
     fontSize: 13,

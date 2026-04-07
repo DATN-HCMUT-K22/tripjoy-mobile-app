@@ -25,6 +25,7 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useManualUserLocation } from "@/hooks/useManualUserLocation";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import {
   buildManualDestinationRows,
   computeTravelTimesForManual,
@@ -34,7 +35,13 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-function ManualItineraryHeader({ onBack }: { onBack: () => void }) {
+function ManualItineraryHeader({
+  onBack,
+  onHome,
+}: {
+  onBack: () => void;
+  onHome: () => void;
+}) {
   return (
     <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
       <TouchableOpacity
@@ -53,7 +60,14 @@ function ManualItineraryHeader({ onBack }: { onBack: () => void }) {
           Thiết lập lịch trình
         </Text>
       </View>
-      <View className="h-10 w-12" />
+      <TouchableOpacity
+        onPress={onHome}
+        className="h-10 w-12 items-center justify-center"
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="home-outline" size={22} color="#34B27D" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -222,17 +236,17 @@ function ItineraryItemCard({
           </View>
 
           {/* Transportation options */}
-          <View className="flex-row items-center gap-3 mt-2 pt-3 pb-0 border-t border-gray-100 flex-wrap">
+          <View className="mt-2 flex-row items-start justify-between border-t border-gray-100 pt-3 pb-0">
             {TRANSPORT_DISPLAY_ORDER.filter(
               (type) => displayTransport[type] != null && displayTransport[type] !== ""
             ).map((type) => (
-              <View key={type} className="items-center">
+              <View key={type} className="flex-1 items-center px-0.5">
                 <Ionicons
                   name={getTransportIcon(type) as any}
                   size={16}
                   color="#666"
                 />
-                <Text className="text-xs text-gray-600 mt-1">
+                <Text className="mt-1 text-center text-[11px] text-gray-600" numberOfLines={1}>
                   {displayTransport[type]}
                 </Text>
               </View>
@@ -246,6 +260,7 @@ function ItineraryItemCard({
 
 export default function ManualItineraryScreen() {
   const router = useRouter();
+  const { exitToHome } = useCreateTripExitToHome();
   const insets = useSafeAreaInsets();
   const { tripData } = useTripSetup();
   const {
@@ -304,6 +319,7 @@ export default function ManualItineraryScreen() {
   const {
     coords: userCoords,
     permissionDenied,
+    serviceUnavailable,
     loading: locationLoading,
     requestAndFetch,
   } = useManualUserLocation();
@@ -466,6 +482,7 @@ export default function ManualItineraryScreen() {
           resetItinerary();
           router.back();
         }}
+        onHome={exitToHome}
       />
 
       <ScrollView
@@ -640,6 +657,21 @@ export default function ManualItineraryScreen() {
                     <Text className="text-sm font-semibold text-primary">
                       Cho phép vị trí
                     </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {!permissionDenied && serviceUnavailable && (
+                <View className="mb-3 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                  <Text className="text-sm text-amber-900">
+                    Đã cấp quyền vị trí nhưng chưa lấy được vị trí hiện tại. Hãy bật dịch vụ
+                    vị trí (GPS) của thiết bị rồi thử lại.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => void requestAndFetch()}
+                    className="mt-2 self-start"
+                    activeOpacity={0.8}
+                  >
+                    <Text className="text-sm font-semibold text-primary">Thử lại</Text>
                   </TouchableOpacity>
                 </View>
               )}

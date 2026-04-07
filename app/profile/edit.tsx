@@ -329,7 +329,14 @@ export default function EditProfileScreen() {
           if (res.data) {
             dispatch(updateUserInStore(res.data));
           } else {
-            dispatch(updateUserInStore(payload));
+            dispatch(
+              updateUserInStore({
+                fullName: payload.fullName,
+                bio: payload.bio,
+                avatarUrl: payload.avatarUrl,
+                dateOfBirth: payload.dateOfBirth,
+              }),
+            );
           }
           showSuccessToast("Đã cập nhật thông tin");
           router.back();
@@ -435,7 +442,7 @@ export default function EditProfileScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: "images",
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -475,13 +482,16 @@ export default function EditProfileScreen() {
             <TouchableOpacity
               onPress={() => router.back()}
               activeOpacity={0.7}
-              style={{ padding: 4 }}
+              style={{ padding: 4, marginTop: -36 }}
             >
-              <Text style={{ fontSize: 16 }}>Hủy</Text>
+              <Text style={{ fontSize: 14, lineHeight: 22 }}>Hủy</Text>
             </TouchableOpacity>
           }
           centerElement={
-            <Text className="text-lg font-semibold text-black">
+            <Text
+              className="text-lg font-semibold text-black"
+              style={{ marginTop: -36, lineHeight: 22 }}
+            >
               Cập nhật thông tin
             </Text>
           }
@@ -495,16 +505,13 @@ export default function EditProfileScreen() {
               style={{
                 paddingHorizontal: 8,
                 paddingVertical: 4,
+                marginTop: -36,
                 opacity:
                   isSavingProfile || isChangingPassword || !hasProfileChanges
                     ? 0.5
                     : 1,
               }}
-            >
-              <Text className="text-primary font-semibold">
-                {isSavingProfile ? "Đang lưu..." : "Lưu"}
-              </Text>
-            </TouchableOpacity>
+            ></TouchableOpacity>
           }
         />
 

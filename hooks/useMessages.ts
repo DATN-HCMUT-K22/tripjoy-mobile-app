@@ -21,7 +21,7 @@ interface UseMessagesReturn {
   loadMessages: (page?: number) => Promise<void>;
   loadMore: () => Promise<void>;
   sendMessage: (content: string, options?: {
-    messageType?: "TEXT" | "IMAGE" | "SHARE_POST";
+    messageType?: "TEXT" | "IMAGE" | "VIDEO" | "SHARE_POST";
     mediaUrl?: string;
     sharePostUrl?: string;
     parentMessageId?: string;
@@ -263,7 +263,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
     async (
       content: string,
       options?: {
-        messageType?: "TEXT" | "IMAGE" | "SHARE_POST";
+        messageType?: "TEXT" | "IMAGE" | "VIDEO" | "SHARE_POST";
         mediaUrl?: string;
         sharePostUrl?: string;
         parentMessageId?: string;

@@ -3,6 +3,7 @@ import { mockGroups } from "@/data/mockGroups";
 import {
   groupService,
   CreateGroupPayload,
+  UpdateGroupPayload,
   AddMemberPayload,
   UpdateMemberRolePayload,
   TransferLeadershipPayload,
@@ -87,6 +88,33 @@ export function useCreateGroup() {
     },
     onError: (error: Error) => {
       showErrorToast("Tạo nhóm thất bại", error);
+    },
+  });
+}
+
+/**
+ * Hook cập nhật thông tin group
+ */
+export function useUpdateGroup(groupId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: UpdateGroupPayload) => {
+      if (!groupId) throw new Error("Missing group id");
+      const response = await groupService.updateGroup(groupId, payload);
+      if (isGroupApiSuccess(response.code) && response.data) {
+        return response.data;
+      }
+      throw new Error(response.message || "Failed to update group");
+    },
+    onSuccess: () => {
+      if (groupId) {
+        queryClient.invalidateQueries({ queryKey: ["group", groupId] });
+      }
+      showSuccessToast("Cập nhật thông tin nhóm thành công!");
+    },
+    onError: (error: Error) => {
+      showErrorToast("Cập nhật nhóm thất bại", error);
     },
   });
 }

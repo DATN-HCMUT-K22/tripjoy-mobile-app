@@ -1,13 +1,10 @@
-import { SharedHeader } from "@/components/common/SharedHeader";
+import {
+  SharedHeader,
+  type SharedHeaderProps,
+} from "@/components/common/SharedHeader";
 import React from "react";
 
-interface SocialHeaderProps {
-  onNotificationPress?: () => void;
-  onMessagePress?: () => void;
-  notificationCount?: number;
-  messageCount?: number;
-  activeIcon?: "notification" | "message" | null;
-}
+type SocialHeaderProps = SharedHeaderProps;
 
 /**
  * Header dùng chung cho màn Home, Profile, Danh sách nhóm:

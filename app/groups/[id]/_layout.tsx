@@ -11,6 +11,7 @@ export default function GroupDetailLayout() {
       <Stack.Screen name="chat" options={{ headerShown: false }} />
       <Stack.Screen name="info" options={{ headerShown: false }} />
       <Stack.Screen name="members" options={{ headerShown: false }} />
+      <Stack.Screen name="edit" options={{ headerShown: false }} />
     </Stack>
   );
 }

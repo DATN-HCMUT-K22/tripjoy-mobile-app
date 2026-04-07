@@ -441,6 +441,10 @@ export default function RootLayout() {
                           }}
                         />
                         <Stack.Screen
+                          name="chat/[id]"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
                           name="groups"
                           options={{ headerShown: false }}
                         />

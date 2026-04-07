@@ -13,6 +13,7 @@ import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
 import { showErrorToast } from "@/utils/toast";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -35,6 +36,7 @@ type ListRow = {
 
 export default function AddLocationScreen() {
   const router = useRouter();
+  const { exitToHome } = useCreateTripExitToHome();
   const { dayKey, fromScreen, draftLocationIds } = useLocalSearchParams<{
     dayKey: string;
     fromScreen?: string;
@@ -210,7 +212,14 @@ export default function AddLocationScreen() {
             Thêm địa điểm
           </Text>
         </View>
-        <View className="h-10 w-12" />
+        <TouchableOpacity
+          onPress={exitToHome}
+          className="h-10 w-12 items-center justify-center"
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="home-outline" size={22} color="#34B27D" />
+        </TouchableOpacity>
       </View>
 
       <View className="px-4 py-3 border-b border-gray-200">

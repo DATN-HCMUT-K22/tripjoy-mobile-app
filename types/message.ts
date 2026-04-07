@@ -2,7 +2,7 @@
 /**
  * Message types theo API
  */
-export type MessageType = "TEXT" | "IMAGE" | "SHARE_POST";
+export type MessageType = "TEXT" | "IMAGE" | "VIDEO" | "SHARE_POST";
 
 /**
  * Message status
@@ -39,7 +39,7 @@ export interface ChatMessageResponse {
   id: string; // UUID
   message_type: MessageType;
   message_content: string;
-  media_url?: string; // URL ảnh (nếu message_type = "IMAGE")
+  media_url?: string; // URL ảnh/video (IMAGE / VIDEO)
   share_post_url?: string; // URL post (nếu message_type = "SHARE_POST")
   is_bot: boolean;
   status: MessageStatus;
@@ -66,8 +66,8 @@ export interface ChatMessageResponse {
  */
 export interface SendMessageRequest {
   message_content: string; // Required
-  message_type?: MessageType; // "TEXT" | "IMAGE" | "SHARE_POST", default: "TEXT"
-  media_url?: string; // Required nếu message_type = "IMAGE"
+  message_type?: MessageType; // "TEXT" | "IMAGE" | "VIDEO" | "SHARE_POST", default: "TEXT"
+  media_url?: string; // Kèm IMAGE hoặc VIDEO
   share_post_url?: string; // Required nếu message_type = "SHARE_POST"
   parent_message_id?: string; // UUID của message được reply
 }

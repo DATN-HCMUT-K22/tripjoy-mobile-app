@@ -22,6 +22,7 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => 
   const avatarUri = normalizeAvatarUri(group.avatar);
   const isFileUri = !!avatarUri?.startsWith("file://");
   const [imageError, setImageError] = React.useState(false);
+  const themeColor = group.theme_color || "#34B27D";
   useEffect(() => {
     setImageError(false);
   }, [avatarUri]);
@@ -55,6 +56,8 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => 
     let content = "";
     if (lastMessage.message_type === "IMAGE") {
       content = "Đã gửi một ảnh";
+    } else if (lastMessage.message_type === "VIDEO") {
+      content = "Đã gửi một video";
     } else if (lastMessage.message_type === "SHARE_POST") {
       content = "Đã chia sẻ một bài viết";
     } else {
@@ -165,7 +168,9 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => 
             justifyContent: "center",
           }}
         >
-          <Text className="text-primary font-bold text-xl">{initial}</Text>
+          <Text style={{ color: themeColor, fontWeight: "700", fontSize: 20 }}>
+            {initial}
+          </Text>
         </View>
       </View>
 
@@ -180,12 +185,12 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => 
                   width: 40,
                   height: 40,
                   borderRadius: 20,
-                  backgroundColor: "#D1FAE5",
+                  backgroundColor: `${themeColor}22`,
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="location-outline" size={24} color="#34B27D" />
+                <Ionicons name="location-outline" size={24} color={themeColor} />
               </View>
               <View>
                 <Text className="text-2xl font-bold text-black">
@@ -207,12 +212,12 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => 
                   width: 40,
                   height: 40,
                   borderRadius: 20,
-                  backgroundColor: "#D1FAE5",
+                  backgroundColor: `${themeColor}22`,
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="people-outline" size={24} color="#34B27D" />
+                <Ionicons name="people-outline" size={24} color={themeColor} />
               </View>
               <View>
                 <Text className="text-2xl font-bold text-black">
@@ -234,12 +239,12 @@ export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => 
                 width: 32,
                 height: 32,
                 borderRadius: 16,
-                backgroundColor: "#D1FAE5",
+                backgroundColor: `${themeColor}22`,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="chevron-forward" size={18} color="#34B27D" />
+              <Ionicons name="chevron-forward" size={18} color={themeColor} />
             </View>
           </TouchableOpacity>
         </View>

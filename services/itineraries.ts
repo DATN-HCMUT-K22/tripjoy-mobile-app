@@ -39,6 +39,10 @@ export type ItineraryResponse = {
   end_date?: string;
   group_id?: string | null;
   budget_estimate?: number;
+  people_quantity?: number;
+  member_count?: number;
+  cover_image_url?: string | null;
+  thumbnail_url?: string | null;
   themes?: string[];
   created_by_user?: UserSimpleResponse | null;
 };

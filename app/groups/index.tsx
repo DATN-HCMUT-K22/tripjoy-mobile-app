@@ -7,7 +7,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -48,7 +48,7 @@ export default function GroupsScreen() {
   );
 
   // Log khi component mount hoặc groups thay đổi
-  React.useEffect(() => {
+  useEffect(() => {
     console.log("📊 [GroupsScreen] Groups data:", {
       count: groups.length,
       isLoading,
