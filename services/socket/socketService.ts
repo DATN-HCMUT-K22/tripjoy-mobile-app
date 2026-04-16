@@ -1,6 +1,6 @@
 import { EXPO_PUBLIC_API_URL } from "@/config/env";
 import { store } from "@/store";
-import { ChatMessageResponse } from "@/types/message";
+import { ChatMessageResponse, ConversationResponse } from "@/types/message";
 import { storage } from "@/utils/storage";
 import { io, Socket } from "socket.io-client";
 
@@ -11,6 +11,8 @@ export interface ServerToClientEvents {
   update_like: (messageId: string, userId: string, isLiked: boolean) => void;
   update_pin: (messageId: string, userId: string, isPinned: boolean) => void;
   notification: (notification: NotificationObject) => void;
+  /** Khi được thêm vào hội thoại DIRECT mới */
+  new_conversation: (conversation: ConversationResponse) => void;
   error: (error: ErrorResponse) => void;
 }
 
@@ -56,7 +58,8 @@ class SocketService {
     (messageId: string, userId: string, isPinned: boolean) => void
   > = new Set();
   private notificationCallbacks: Set<(notification: NotificationObject) => void> = new Set();
-  
+  private newConversationCallbacks: Set<(conversation: ConversationResponse) => void> = new Set();
+
   // Flags để đảm bảo chỉ đăng ký socket listener một lần
   private isMessageListenerRegistered = false;
   private isTypingListenerRegistered = false;
@@ -64,6 +67,7 @@ class SocketService {
   private isLikeUpdateListenerRegistered = false;
   private isPinUpdateListenerRegistered = false;
   private isNotificationListenerRegistered = false;
+  private isNewConversationListenerRegistered = false;
 
   /**
    * Kết nối với Socket.IO server
@@ -274,12 +278,61 @@ class SocketService {
       this.likeUpdateCallbacks.clear();
       this.pinUpdateCallbacks.clear();
       this.notificationCallbacks.clear();
+      this.newConversationCallbacks.clear();
       this.isMessageListenerRegistered = false;
       this.isTypingListenerRegistered = false;
       this.isStopTypingListenerRegistered = false;
       this.isLikeUpdateListenerRegistered = false;
       this.isPinUpdateListenerRegistered = false;
       this.isNotificationListenerRegistered = false;
+      this.isNewConversationListenerRegistered = false;
+    }
+  }
+
+  /**
+   * Hội thoại DIRECT mới (BE: `new_conversation` → ConversationResponse)
+   */
+  onNewConversation(
+    callback: (conversation: ConversationResponse) => void
+  ): void {
+    if (!this.socket) {
+      console.warn("\n⚠️ [SOCKET] Cannot listen new_conversation - socket not initialized\n");
+      return;
+    }
+
+    this.newConversationCallbacks.add(callback);
+
+    if (!this.isNewConversationListenerRegistered) {
+      this.isNewConversationListenerRegistered = true;
+      this.socket.on("new_conversation", (conversation: ConversationResponse) => {
+        this.newConversationCallbacks.forEach((cb) => {
+          try {
+            cb(conversation);
+          } catch (error) {
+            console.error("Error in new_conversation callback:", error);
+          }
+        });
+      });
+    }
+  }
+
+  offNewConversation(
+    callback?: (conversation: ConversationResponse) => void
+  ): void {
+    if (!this.socket) return;
+
+    if (callback) {
+      this.newConversationCallbacks.delete(callback);
+      if (this.newConversationCallbacks.size === 0 && this.isNewConversationListenerRegistered) {
+        this.socket.off("new_conversation");
+        this.isNewConversationListenerRegistered = false;
+      }
+    } else {
+      this.newConversationCallbacks.clear();
+      if (this.isNewConversationListenerRegistered) {
+        this.socket.off("new_conversation");
+        this.isNewConversationListenerRegistered = false;
+      }
     }
   }
 
@@ -389,9 +442,9 @@ class SocketService {
         console.log(`\n📨 [SOCKET] Received message [${timestamp}]`);
         console.log(`Message ID: ${message.id}`);
         console.log(`Conversation ID: ${message.conversation_id}`);
-        console.log(`Sender ID: ${message.sender_id}`);
+        console.log(`Sender ID: ${message.sender_id ?? (message.sender as { id?: string } | undefined)?.id}`);
         console.log(`Message Type: ${message.message_type}`);
-        console.log(`Content: ${message.message_content.substring(0, 50)}...`);
+        console.log(`Content: ${(message.message_content ?? "").substring(0, 50)}...`);
         console.log(`Callbacks count: ${this.messageCallbacks.size}`);
         
         // Gọi tất cả callbacks

@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AttachedMediaGalleryModal } from "@/components/create-post/AttachedMediaGalleryModal";
+import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
 import {
   clearPendingItinerary,
   getPendingItinerary,
@@ -57,8 +58,13 @@ function computeDurationLabel(start: string, end: string): string {
 export default function CreatePostScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ itineraryId?: string }>();
-  const { data: myItineraries = [] } = useItineraries();
-  const { requireAuth } = useRequireAuth();
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const shouldLoadAuthenticatedData = isAuthenticated || !!accessToken;
+  const { data: myItineraries = [] } = useItineraries({
+    enabled: shouldLoadAuthenticatedData,
+  });
+  const { requireAuth, checkAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
   const currentUser = useAppSelector((state) => state.auth.user);
   const [content, setContent] = useState("");
   const [hashtags, setHashtags] = useState<string[]>([]);
@@ -72,6 +78,12 @@ export default function CreatePostScreen() {
   const [mediaGalleryVisible, setMediaGalleryVisible] = useState(false);
   const [mediaGalleryIndex, setMediaGalleryIndex] = useState(0);
   const contentInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (!shouldLoadAuthenticatedData) {
+      void checkAuth();
+    }
+  }, [checkAuth, shouldLoadAuthenticatedData]);
 
   const formatItineraryDateRange = (start: string, end: string) => {
     const f = (s: string) => {
@@ -595,6 +607,10 @@ export default function CreatePostScreen() {
           items={selectedMedia}
           initialIndex={mediaGalleryIndex}
           onClose={() => setMediaGalleryVisible(false)}
+        />
+        <LoginRequiredModal
+          visible={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>

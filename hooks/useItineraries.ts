@@ -6,12 +6,15 @@ import {
   ItineraryResponse,
   GenerateItineraryRequest,
   ITINERARY_STATUS,
+  type AiModifyItineraryRequest,
+  type TripItemResponse,
 } from "@/services/itineraries";
 import type { Itinerary as DisplayItinerary } from "@/types/group";
 import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
 import { timeAgo } from "@/utils/format";
-import { showSuccessToast } from "@/utils/toast";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 const PLACEHOLDER_ITINERARY_IMAGE =
   "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400";
@@ -151,7 +154,8 @@ function resolveItineraryTab(
 /**
  * Danh sách lịch của user: GET `/itineraries/me`.
  */
-export function useItineraries() {
+export function useItineraries(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   return useQuery({
     queryKey: ["itineraries", "me"],
     queryFn: async (): Promise<DisplayItinerary[]> => {
@@ -168,6 +172,7 @@ export function useItineraries() {
       return list.map(mapApiItineraryToDisplay);
     },
     staleTime: 60 * 1000,
+    enabled,
   });
 }
 
@@ -215,10 +220,56 @@ export function useItineraryDetail(
     },
     enabled,
     staleTime: 30 * 1000,
+    /** Tài liệu: poll GET mỗi 3–5s khi AI đang sinh lịch */
     refetchInterval: (q) => {
       const d = q.state.data;
-      return poll && d?.status === ITINERARY_STATUS.GENERATING ? 2500 : false;
+      const st = normalizeStatus(d?.status);
+      return poll && st === ITINERARY_STATUS.GENERATING ? 4000 : false;
     },
+  });
+}
+
+/** GET `/itineraries/{id}/items` — hoạt động theo ngày/giờ. */
+export function useItineraryTripItems(
+  itineraryId: string | undefined,
+  options?: {
+    enabled?: boolean;
+    /**
+     * Trạng thái lịch (từ GET detail). Khi `GENERATING`, poll items cùng nhịp với detail
+     * để sau ai-modify / ai-generate vẫn thấy địa điểm mới khi BE cập nhật xong.
+     */
+    itineraryStatus?: string;
+    pollWhileGenerating?: boolean;
+  }
+) {
+  const enabled = !!itineraryId && (options?.enabled ?? true);
+  const poll = options?.pollWhileGenerating !== false;
+  const itemStatusNorm = normalizeStatus(options?.itineraryStatus);
+
+  const itemsRefetchInterval = useMemo(() => {
+    if (!poll) return false;
+    return itemStatusNorm === ITINERARY_STATUS.GENERATING ? 4000 : false;
+  }, [poll, itemStatusNorm]);
+
+  return useQuery({
+    queryKey: ["itineraries", "detail", itineraryId, "items"],
+    queryFn: async (): Promise<TripItemResponse[]> => {
+      if (!itineraryId) return [];
+      if (EXPO_PUBLIC_MOCK_DATA) {
+        await new Promise((r) => setTimeout(r, 150));
+        return [];
+      }
+      const res = await itineraryService.getTripItems(itineraryId);
+      const code = res?.code;
+      if (code !== 0 && code !== 1000) {
+        throw new Error(res?.message || "Không tải được hoạt động trong lịch");
+      }
+      return Array.isArray(res?.data) ? res.data : [];
+    },
+    enabled,
+    /** Items đổi sau AI — không giữ cache lâu để back vào lại vẫn thấy bản mới */
+    staleTime: 0,
+    refetchInterval: itemsRefetchInterval,
   });
 }
 
@@ -307,7 +358,7 @@ export function useCreateItinerary() {
   });
 }
 
-/** POST `/itineraries/generate` (202) — sau đó dùng `useItineraryDetail(id)` để poll. */
+/** POST `/itineraries/ai-generate` (202) — sau đó dùng `useItineraryDetail(id)` để poll. */
 export function useGenerateItinerary() {
   const queryClient = useQueryClient();
 
@@ -322,6 +373,55 @@ export function useGenerateItinerary() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+    },
+  });
+}
+
+/** POST `/itineraries/{id}/ai-modify` — thay địa điểm không ưa bằng gợi ý AI. */
+export function useAiModifyItinerary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (args: {
+      itineraryId: string;
+      payload: AiModifyItineraryRequest;
+    }) => {
+      const res = await itineraryService.aiModifyItinerary(
+        args.itineraryId,
+        args.payload
+      );
+      const code = res?.code;
+      if (code !== 0 && code !== 1000) {
+        throw new Error(res?.message || "Không điều chỉnh được lịch bằng AI");
+      }
+      return res.data ?? null;
+    },
+    onSuccess: async (data, { itineraryId }) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["itineraries", "detail", itineraryId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["itineraries", "detail", itineraryId, "items"],
+      });
+      await queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+      await queryClient.refetchQueries({
+        queryKey: ["itineraries", "detail", itineraryId],
+      });
+      await queryClient.refetchQueries({
+        queryKey: ["itineraries", "detail", itineraryId, "items"],
+      });
+      const st = normalizeStatus(data?.status);
+      if (st === ITINERARY_STATUS.GENERATING) {
+        showSuccessToast(
+          "Đã gửi cho AI",
+          "Lịch đang được cập nhật. Danh sách địa điểm sẽ tự làm mới khi xong."
+        );
+      } else {
+        showSuccessToast("Đã cập nhật lịch trình");
+      }
+    },
+    onError: (error) => {
+      showErrorToast("Không điều chỉnh được lịch", error);
     },
   });
 }

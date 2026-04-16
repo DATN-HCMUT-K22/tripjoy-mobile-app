@@ -9,6 +9,7 @@ export const sampleProvinceLocations: Location[] = [
   {
     id: "sample-hn",
     name: "Hà Nội",
+    nameEn: "Hanoi",
     subtitle: "Thủ đô — 21.0285°N, 105.8542°E",
     hashtag: "#HàNội",
     image: "https://images.unsplash.com/photo-1599708153386-00641df9d42e?w=400&q=80",
@@ -21,6 +22,7 @@ export const sampleProvinceLocations: Location[] = [
   {
     id: "sample-hcm",
     name: "TP. Hồ Chí Minh",
+    nameEn: "Ho Chi Minh City",
     subtitle: "Trung tâm Q.1 — 10.7769°N, 106.7009°E",
     hashtag: "#TPHCM",
     image: "https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400&q=80",
@@ -33,6 +35,7 @@ export const sampleProvinceLocations: Location[] = [
   {
     id: "sample-dng",
     name: "Đà Nẵng",
+    nameEn: "Da Nang",
     subtitle: "Trung tâm thành phố — 16.0544°N, 108.2022°E",
     hashtag: "#ĐàNẵng",
     image: "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=400&q=80",
@@ -45,6 +48,7 @@ export const sampleProvinceLocations: Location[] = [
   {
     id: "sample-ct",
     name: "Cần Thơ",
+    nameEn: "Can Tho",
     subtitle: "Trung tâm TP Cần Thơ — 10.0452°N, 105.7469°E",
     hashtag: "#CầnThơ",
     image: "https://images.unsplash.com/photo-1596422847844-309f7bf78dc9?w=400&q=80",
@@ -57,6 +61,7 @@ export const sampleProvinceLocations: Location[] = [
   {
     id: "sample-hp",
     name: "Hải Phòng",
+    nameEn: "Hai Phong",
     subtitle: "Trung tâm thành phố — 20.8449°N, 106.6881°E",
     hashtag: "#HảiPhòng",
     image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=400&q=80",

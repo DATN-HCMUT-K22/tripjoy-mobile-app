@@ -1,6 +1,8 @@
 export interface Location {
   id: string;
   name: string;
+  /** Tên tiếng Anh (địa danh hành chính) — gửi `city` khi search POI Tier 2 */
+  nameEn?: string;
   subtitle: string;
   hashtag: string;
   image: string;

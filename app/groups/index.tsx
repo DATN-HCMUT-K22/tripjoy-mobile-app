@@ -1,10 +1,13 @@
 import { CreateGroupModal, GroupCard, GroupListItem } from "@/components/group";
+import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
 import { SocialHeader } from "@/components/social/SocialHeader";
 import { useConversations } from "@/hooks/useConversations";
+import { useGuestMode } from "@/hooks/useGuestMode";
 import { useGroups } from "@/hooks/useGroups";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useAppSelector } from "@/store/hooks";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -20,7 +23,11 @@ type ViewMode = "card" | "list";
 
 export default function GroupsScreen() {
   const router = useRouter();
-  const { requireAuth } = useRequireAuth();
+  const { requireAuth, checkAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
+  const { isGuest } = useGuestMode();
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const shouldLoadAuthenticatedData = !isGuest && (isAuthenticated || !!accessToken);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [activeIcon, setActiveIcon] = useState<
@@ -28,23 +35,27 @@ export default function GroupsScreen() {
   >(null);
 
   // Fetch groups từ API
-  const { data: groups = [], isLoading, error, refetch } = useGroups();
+  const { data: groups = [], isLoading, error, refetch } = useGroups({
+    enabled: shouldLoadAuthenticatedData,
+  });
   // Danh sách conversation nhóm để tìm conversationId khi nhấn icon mũi tên
   const { groupConversations, refetch: refetchConversations } =
-    useConversations();
+    useConversations({ enabled: shouldLoadAuthenticatedData });
 
   // Reset activeIcon, refetch groups và conversations khi quay lại màn này
   useFocusEffect(
     useCallback(() => {
       console.log("🔍 [GroupsScreen] useFocusEffect triggered - refetching groups & conversations");
       setActiveIcon(null);
+      void checkAuth();
+      if (!shouldLoadAuthenticatedData) return;
       refetch().then(() => {
         console.log("✅ [GroupsScreen] Groups refetched successfully");
       }).catch((err) => {
         console.error("❌ [GroupsScreen] Failed to refetch groups:", err);
       });
       refetchConversations().catch(() => {});
-    }, [refetch, refetchConversations])
+    }, [checkAuth, refetch, refetchConversations, shouldLoadAuthenticatedData])
   );
 
   // Log khi component mount hoặc groups thay đổi
@@ -63,7 +74,8 @@ export default function GroupsScreen() {
   );
 
   // Badge notification dùng chung với màn Home
-  const { unreadCount: notificationUnreadCount } = useNotifications();
+  const { unreadCount } = useNotifications({ enabled: shouldLoadAuthenticatedData });
+  const notificationUnreadCount = shouldLoadAuthenticatedData ? unreadCount : 0;
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -197,6 +209,10 @@ export default function GroupsScreen() {
       <CreateGroupModal
         visible={isCreateModalVisible}
         onClose={() => setIsCreateModalVisible(false)}
+      />
+      <LoginRequiredModal
+        visible={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
       />
     </SafeAreaView>
   );

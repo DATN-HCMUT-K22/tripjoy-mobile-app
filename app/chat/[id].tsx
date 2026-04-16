@@ -8,7 +8,8 @@ import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
 import { useChatStore } from "@/stores/chat.store";
-import { ChatMessageResponse } from "@/types/message";
+import { ChatMessageResponse, getChatSenderId } from "@/types/message";
+import { getDirectPeerAvatarUrl } from "@/utils/conversationDisplay";
 import { showErrorToast } from "@/utils/toast";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
@@ -186,13 +187,13 @@ export default function ChatScreen() {
   };
 
   const getAvatar = () => {
-    if (conversation?.avatar) return conversation.avatar;
-    if (conversation?.type === "DIRECT" && conversation.members && conversation.members.length > 0) {
-      const otherMember = conversation.members.find(
-        (m) => m.id !== currentUser?.id
-      );
-      return otherMember?.avatarUrl || null;
+    if (conversation?.type === "DIRECT" && conversation.members?.length) {
+      const peer = getDirectPeerAvatarUrl(conversation, currentUser?.id ?? null);
+      if (peer) return peer;
+      if (conversation.avatar) return conversation.avatar;
+      return null;
     }
+    if (conversation?.avatar) return conversation.avatar;
     return null;
   };
 
@@ -266,7 +267,8 @@ export default function ChatScreen() {
     let prev: ChatMessageResponse | null = null;
     messages.forEach((msg) => {
       const showSep = shouldShowDateSeparator(msg, prev);
-      const showSender = !prev || prev.sender_id !== msg.sender_id;
+      const showSender =
+        !prev || getChatSenderId(prev) !== getChatSenderId(msg);
       if (showSep) {
         list.push({ type: "date", key: `date-${msg.id}-${msg.created_at}`, date: msg.created_at });
       }

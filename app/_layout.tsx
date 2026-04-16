@@ -370,26 +370,18 @@ export default function RootLayout() {
 
   // Nếu đã authenticated, không hiện SplashScreen - render app bình thường
   if (isAuthenticated) {
-    // User đã authenticated, không cần check redirect
     console.log("User authenticated, rendering app normally");
-  } else {
-    // Chưa authenticated, check nếu cần redirect đến login
-    // Chỉ hiển thị loading nếu đang redirect và chưa ở login page
-    const needsRedirect =
-      shouldRedirectToLogin &&
-      !isOnLoginPage &&
-      !showOnboarding;
-
-    if (needsRedirect && !isOnLoginPage) {
-      // Đang redirect, hiển thị loading
-      console.log("Showing loading while redirecting to login...");
-      return <SimpleLogoLoading />;
-    }
-    
-    // Nếu đã ở login page, render app bình thường để hiển thị login screen
-    if (isOnLoginPage) {
-      console.log("On login page, rendering app normally");
-    }
+  } else if (isOnLoginPage) {
+    console.log("On login page, rendering app normally");
+  } else if (
+    shouldRedirectToLogin &&
+    !showOnboarding
+  ) {
+    // Phải mount Stack / navigator — nếu return SimpleLogoLoading thì không có Stack,
+    // router.replace("/login") không đổi màn → kẹt logo vô hạn dù API vẫn log.
+    console.log(
+      "Pending redirect to login — rendering Stack so navigation can complete"
+    );
   }
 
   console.log("Rendering main app with providers");
@@ -465,6 +457,10 @@ export default function RootLayout() {
                         />
                         <Stack.Screen
                           name="notifications"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="itinerary/[id]"
                           options={{ headerShown: false }}
                         />
                       </Stack>

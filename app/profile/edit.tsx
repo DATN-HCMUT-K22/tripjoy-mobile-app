@@ -3,7 +3,9 @@ import { SocialHeader } from "@/components/social/SocialHeader";
 import { useConversations } from "@/hooks/useConversations";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useGuestMode } from "@/hooks/useGuestMode";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { uploadImage } from "@/services/media";
 import {
   changePassword,
   updateCurrentUser,
@@ -235,15 +237,23 @@ export default function EditProfileScreen() {
   const { requireAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
 
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
   const userFromRedux = useAppSelector((state) => state.auth.user);
+  const { isGuest } = useGuestMode();
+  const shouldLoadAuthenticatedData =
+    isGuest === false && (isAuthenticated || !!accessToken);
 
   const { data: currentUser } = useCurrentUser(
     isAuthenticated && !userFromRedux,
   );
   const user = userFromRedux || currentUser;
 
-  const { conversations } = useConversations();
-  const { unreadCount: notificationUnreadCount } = useNotifications();
+  const { conversations } = useConversations({
+    enabled: shouldLoadAuthenticatedData,
+  });
+  const { unreadCount: notificationUnreadCount } = useNotifications({
+    enabled: shouldLoadAuthenticatedData,
+  });
 
   const unreadConversationsCount = useMemo(
     () =>
@@ -313,17 +323,32 @@ export default function EditProfileScreen() {
         .filter((name): name is string => !!name && name.trim().length > 0) ||
       [];
 
-    const payload: UserUpdateRequest = {
-      fullName: fullName.trim() || undefined,
-      bio: bioTrim || undefined,
-      avatarUrl: avatarUrl || undefined,
-      dateOfBirth: dateOfBirth || undefined,
-      roles: roleNames.length > 0 ? roleNames : ["USER"],
-    };
-
     try {
       setIsSavingProfile(true);
       await requireAuth(async () => {
+        let finalAvatarUrl = (avatarUrl || "").trim() || undefined;
+        // Cùng luồng upload multipart như tạo/sửa nhóm: POST /media/upload/image
+        if (finalAvatarUrl && !/^https?:\/\//i.test(finalAvatarUrl)) {
+          const lower = finalAvatarUrl.toLowerCase();
+          const fileType = lower.endsWith(".png") ? "image/png" : "image/jpeg";
+          const fileName = lower.endsWith(".png") ? "avatar.png" : "avatar.jpg";
+          const uploaded = await uploadImage({
+            fileUri: finalAvatarUrl,
+            fileName,
+            fileType,
+            folder: "tripjoy/avatars/users",
+          });
+          finalAvatarUrl = uploaded.secure_url || uploaded.url;
+        }
+
+        const payload: UserUpdateRequest = {
+          fullName: fullName.trim() || undefined,
+          bio: bioTrim || undefined,
+          avatarUrl: finalAvatarUrl,
+          dateOfBirth: dateOfBirth || undefined,
+          roles: roleNames.length > 0 ? roleNames : ["USER"],
+        };
+
         const res = await updateCurrentUser(payload);
         if (res.code === 1000 || res.code === 0) {
           if (res.data) {
@@ -448,7 +473,6 @@ export default function EditProfileScreen() {
         quality: 0.8,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
-        // TODO: upload lên server lấy URL thật; tạm thời set trực tiếp local uri
         setAvatarUrl(result.assets[0].uri);
       }
     });

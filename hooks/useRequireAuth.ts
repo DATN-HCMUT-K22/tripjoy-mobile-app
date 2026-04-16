@@ -14,6 +14,12 @@ export function useRequireAuth() {
   const requireAuth = async <T>(
     action: () => Promise<T> | T
   ): Promise<T | null> => {
+    const isGuestMode = await storage.isGuestMode();
+    if (isGuestMode) {
+      setShowLoginModal(true);
+      return null;
+    }
+
     // Check từ Redux trước, nếu không có thì check storage
     let hasToken = !!accessToken || isAuthenticated;
 
@@ -38,6 +44,12 @@ export function useRequireAuth() {
 
   // Hàm helper để check token mà không cần action
   const checkAuth = async (): Promise<boolean> => {
+    const isGuestMode = await storage.isGuestMode();
+    if (isGuestMode) {
+      setShowLoginModal(true);
+      return false;
+    }
+
     // Check từ Redux trước, nếu không có thì check storage
     let hasToken = !!accessToken || isAuthenticated;
 

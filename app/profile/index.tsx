@@ -5,6 +5,7 @@ import { SocialHeader } from "@/components/social/SocialHeader";
 import { VietnamFlag } from "@/components/ui/VietnamFlag";
 import { useConversations } from "@/hooks/useConversations";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useGuestMode } from "@/hooks/useGuestMode";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
@@ -210,17 +211,24 @@ export default function ProfileScreen() {
   const [activeIcon, setActiveIcon] = useState<
     "notification" | "message" | null
   >(null);
-  const { conversations } = useConversations();
-  const { unreadCount: notificationUnreadCount } = useNotifications();
+  const { isGuest } = useGuestMode();
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const shouldLoadAuthenticatedData = !isGuest && (isAuthenticated || !!accessToken);
+  const { conversations } = useConversations({
+    enabled: shouldLoadAuthenticatedData,
+  });
+  const { unreadCount } = useNotifications({
+    enabled: shouldLoadAuthenticatedData,
+  });
+  const notificationUnreadCount = shouldLoadAuthenticatedData ? unreadCount : 0;
   const userFromRedux = useAppSelector((state) => state.auth.user);
   const { checkAuth, showLoginModal, setShowLoginModal, requireAuth } =
     useRequireAuth();
 
   // Fetch current user nếu chưa có trong Redux
   const { data: currentUser, isLoading: isCurrentUserLoading } = useCurrentUser(
-    isAuthenticated && !userFromRedux
+    shouldLoadAuthenticatedData && !userFromRedux
   );
 
   // Cập nhật Redux khi có user từ API

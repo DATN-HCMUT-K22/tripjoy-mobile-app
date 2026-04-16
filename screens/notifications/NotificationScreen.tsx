@@ -15,13 +15,18 @@ import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useAppSelector } from "@/store/hooks";
+import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
 import { NotificationResponse } from "@/services/notifications";
 import { EmptyState } from "./components/EmptyState";
 import { NotificationItem } from "./components/NotificationItem";
 import { NotificationSkeletonList } from "./components/NotificationSkeleton";
 
 export function NotificationScreen() {
-  const { requireAuth } = useRequireAuth();
+  const { requireAuth, checkAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const shouldLoadAuthenticatedData = isAuthenticated || !!accessToken;
   const {
     items,
     loading,
@@ -31,11 +36,17 @@ export function NotificationScreen() {
     refresh,
     loadMore,
     markAsRead,
-  } = useNotifications();
+  } = useNotifications({ enabled: shouldLoadAuthenticatedData });
 
   const navigation = useNavigation();
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? "light"];
+
+  React.useEffect(() => {
+    if (!shouldLoadAuthenticatedData) {
+      void checkAuth();
+    }
+  }, [checkAuth, shouldLoadAuthenticatedData]);
 
   const inboxItems = useMemo(
     () => items.filter((n) => !n.is_archived),
@@ -116,6 +127,10 @@ export function NotificationScreen() {
             }
           />
         )}
+        <LoginRequiredModal
+          visible={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+        />
       </View>
     </SafeAreaView>
   );

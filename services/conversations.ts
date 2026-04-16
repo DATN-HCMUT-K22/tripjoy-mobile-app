@@ -13,7 +13,7 @@ function normalizeConversation(
   c: ConversationResponse | null | undefined
 ): ConversationResponse | null {
   if (!c || typeof c !== "object") return null;
-  const r = c as Record<string, unknown>;
+  const r = c as unknown as Record<string, unknown>;
   const gid = c.group_id ?? r.groupId;
   const group_id =
     typeof gid === "string" && gid.length > 0 ? gid : c.group_id ?? null;

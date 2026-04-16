@@ -3,6 +3,7 @@ import { formatCurrencyVND } from "@/utils/format";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -76,6 +77,7 @@ function mapApiItineraryToExploreItem(api: ItineraryResponse): ExploreItinerary 
 }
 
 export default function ExploreScreen() {
+  const router = useRouter();
   const { data: itineraries = [], isLoading } = useQuery({
     queryKey: ["itineraries", "me", "explore"],
     queryFn: async (): Promise<ExploreItinerary[]> => {
@@ -135,11 +137,25 @@ export default function ExploreScreen() {
       >
         {viewMode === "card" ? (
           itineraries.map((it) => (
-            <ItineraryCard key={it.id} itinerary={it} />
+            <ItineraryCard
+              key={it.id}
+              itinerary={it}
+              onPress={() => {
+                if (!it.id) return;
+                router.push(`/itinerary/${it.id}` as any);
+              }}
+            />
           ))
         ) : (
           itineraries.map((it) => (
-            <ItineraryListItem key={it.id} itinerary={it} />
+            <ItineraryListItem
+              key={it.id}
+              itinerary={it}
+              onPress={() => {
+                if (!it.id) return;
+                router.push(`/itinerary/${it.id}` as any);
+              }}
+            />
           ))
         )}
       </ScrollView>
@@ -149,14 +165,24 @@ export default function ExploreScreen() {
   );
 }
 
-function ItineraryCard({ itinerary }: { itinerary: ExploreItinerary }) {
+function ItineraryCard({
+  itinerary,
+  onPress,
+}: {
+  itinerary: ExploreItinerary;
+  onPress: () => void;
+}) {
   const locationLabel = getLocationLabel(itinerary.name);
   const overlayText = getLocationOverlayText(itinerary.name);
   const dateRange = formatApiDateRange(itinerary.startDate, itinerary.endDate);
   const budgetStr = formatCurrencyVND(itinerary.budget);
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.88}
+      onPress={onPress}
+    >
       <View style={styles.cardImageWrap}>
         <Image
           source={
@@ -216,16 +242,26 @@ function ItineraryCard({ itinerary }: { itinerary: ExploreItinerary }) {
           <Text style={styles.cardBudget}>{budgetStr}</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-function ItineraryListItem({ itinerary }: { itinerary: ExploreItinerary }) {
+function ItineraryListItem({
+  itinerary,
+  onPress,
+}: {
+  itinerary: ExploreItinerary;
+  onPress: () => void;
+}) {
   const dateRange = formatApiDateRange(itinerary.startDate, itinerary.endDate);
   const budgetStr = formatCurrencyVND(itinerary.budget);
 
   return (
-    <View style={styles.listItem}>
+    <TouchableOpacity
+      style={styles.listItem}
+      activeOpacity={0.88}
+      onPress={onPress}
+    >
       <Image
         source={itinerary.image ? { uri: itinerary.image } : require("@/assets/images/loading_img.jpg")}
         style={styles.listItemImage}
@@ -252,7 +288,7 @@ function ItineraryListItem({ itinerary }: { itinerary: ExploreItinerary }) {
           <Text style={styles.listItemBudget}>{budgetStr}</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

@@ -1,28 +1,24 @@
 import { EXPO_PUBLIC_MOCK_DATA } from "@/config/env";
-import { getLocations, normalizeLocationsPayload } from "@/services/locations";
+import { fetchAdministrativeProvincesVN } from "@/services/locations";
 import { mapLocationDtoToTripLocation } from "@/utils/mapLocationDtoToTrip";
 import type { Location } from "@/types/trip";
 import { useQuery } from "@tanstack/react-query";
 
+const TWENTY_FOUR_H_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Danh sách địa điểm (tỉnh/thành) từ GET /locations.
- * Khi EXPO_PUBLIC_MOCK_DATA: không gọi API (màn hình dùng mock riêng).
+ * Danh sách tỉnh/thành VN (Tier 1) từ GET /locations/administrative.
+ * Cache HTTP 24h + AsyncStorage (trong service) — không gọi API khi EXPO_PUBLIC_MOCK_DATA.
  */
 export function useProvinceLocations() {
   return useQuery({
-    queryKey: ["locations", "provinces"],
+    queryKey: ["locations", "administrative", "PROVINCE", "VN"],
     queryFn: async (): Promise<Location[]> => {
-      const response = await getLocations();
-      if (response.code !== 1000 && response.code !== 0) {
-        throw new Error(
-          response.message || "Không tải được danh sách tỉnh thành"
-        );
-      }
-      const list = normalizeLocationsPayload(response.data);
+      const list = await fetchAdministrativeProvincesVN();
       return list.map(mapLocationDtoToTripLocation);
     },
     enabled: !EXPO_PUBLIC_MOCK_DATA,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: TWENTY_FOUR_H_MS,
+    gcTime: TWENTY_FOUR_H_MS * 2,
   });
 }

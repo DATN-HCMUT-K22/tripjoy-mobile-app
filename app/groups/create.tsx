@@ -1,12 +1,14 @@
 import { ContactItem } from "@/components/group/ContactItem";
 import { useCreateGroup } from "@/hooks/useGroups";
-import { useUsers } from "@/hooks/useUsers";
+import { useUserSearchDebounce } from "@/hooks/useUserSearchDebounce";
+import { UserSimpleResponse } from "@/types/search";
 import { useAppSelector } from "@/store/hooks";
+import { showSuccessToast } from "@/utils/toast";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -24,7 +26,9 @@ export default function CreateGroupScreen() {
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<UserSimpleResponse[]>(
+    []
+  );
   const [visible, setVisible] = useState(true);
   const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
   const slideAnim = useRef(
@@ -32,15 +36,19 @@ export default function CreateGroupScreen() {
   ).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Fetch users từ API
-  const {
-    data: users = [],
-    isLoading: isLoadingUsers,
-    error: usersError,
-  } = useUsers(visible);
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const searchEnabled = visible && isAuthenticated && !!accessToken;
 
-  // Lấy user hiện tại từ Redux để filter ra khỏi danh sách
+  const { results: searchResults, isLoading: isSearchingUsers } =
+    useUserSearchDebounce(searchText, { enabled: searchEnabled });
+
   const currentUser = useAppSelector((state) => state.auth.user);
+
+  const displayUsers = useMemo(
+    () => searchResults.filter((u) => u.id !== currentUser?.id),
+    [searchResults, currentUser?.id]
+  );
 
   // Create group mutation
   const createGroupMutation = useCreateGroup();
@@ -80,63 +88,40 @@ export default function CreateGroupScreen() {
     });
   };
 
-  // Filter users theo search text và loại bỏ user hiện tại
-  const filteredUsers = users.filter((user) => {
-    // Loại bỏ user hiện tại
-    if (currentUser && user.id === currentUser.id) {
-      return false;
-    }
-    
-    // Filter theo search text
-    const searchLower = searchText.toLowerCase();
-    const fullName = (user.fullName || user.username || "").toLowerCase();
-    const email = (user.email || "").toLowerCase();
-    return (
-      fullName.includes(searchLower) ||
-      email.includes(searchLower)
-    );
-  });
-
   const toggleContact = (contactId: string) => {
-    setSelectedContacts((prev) =>
-      prev.includes(contactId)
-        ? prev.filter((id) => id !== contactId)
-        : [...prev, contactId]
-    );
+    setSelectedMembers((prev) => {
+      const exists = prev.some((u) => u.id === contactId);
+      if (exists) {
+        return prev.filter((u) => u.id !== contactId);
+      }
+      const fromList = displayUsers.find((u) => u.id === contactId);
+      if (fromList) {
+        return [...prev, fromList];
+      }
+      return prev;
+    });
   };
 
   const removeContact = (contactId: string) => {
-    setSelectedContacts((prev) => prev.filter((id) => id !== contactId));
+    setSelectedMembers((prev) => prev.filter((u) => u.id !== contactId));
   };
 
-  // Get selected users data
-  const selectedUsersData = users.filter((user) =>
-    selectedContacts.includes(user.id)
-  );
-
   const handleCreate = async () => {
-    if (!groupName.trim() || selectedContacts.length === 0) {
+    if (!groupName.trim() || selectedMembers.length === 0) {
       return;
     }
 
     try {
-      console.log("Creating group:", {
-        name: groupName,
-        description: groupDescription,
-        member_ids: selectedContacts,
-      });
-
       await createGroupMutation.mutateAsync({
         name: groupName.trim(),
         description: groupDescription.trim() || undefined,
         theme_color: "#34B27D", // Màu mặc định
-        member_ids: selectedContacts,
+        member_ids: selectedMembers.map((m) => m.id),
       });
 
-      // handleClose sẽ được gọi trong onSuccess của mutation
-    } catch (error) {
-      // Error đã được xử lý trong mutation onError
-      console.error("Create group error:", error);
+      showSuccessToast("Tạo nhóm thành công!");
+    } catch {
+      // Lỗi đã xử lý trong mutation onError (toast)
     }
   };
 
@@ -227,56 +212,65 @@ export default function CreateGroupScreen() {
                 <Ionicons name="search-outline" size={20} color="#9CA3AF" />
                 <TextInput
                   className="flex-1 ml-2 text-base text-gray-800"
-                  placeholder="Tìm tên hoặc email"
+                  placeholder="Tìm tên hoặc username"
                   placeholderTextColor="#9CA3AF"
                   value={searchText}
                   onChangeText={setSearchText}
                 />
               </View>
 
-              {/* Users List */}
+              {/* Users List — GET /users/search?q= (debounce 300ms) */}
               <View>
-                {isLoadingUsers ? (
-                  <View className="py-8 items-center">
-                    <Text className="text-gray-500">Đang tải danh sách...</Text>
-                  </View>
-                ) : usersError ? (
-                  <View className="py-8 items-center">
-                    <Text className="text-red-500">
-                      Không thể tải danh sách người dùng
+                {!searchText.trim() ? (
+                  <View className="py-8 items-center px-2">
+                    <Text className="text-gray-500 text-center">
+                      Nhập tên hoặc username để tìm và thêm thành viên
                     </Text>
                   </View>
-                ) : filteredUsers.length === 0 ? (
+                ) : isSearchingUsers ? (
+                  <View className="py-8 items-center">
+                    <Text className="text-gray-500">Đang tìm...</Text>
+                  </View>
+                ) : displayUsers.length === 0 ? (
                   <View className="py-8 items-center">
                     <Text className="text-gray-500">
                       Không tìm thấy người dùng
                     </Text>
                   </View>
                 ) : (
-                  filteredUsers.map((user) => {
-                    const displayName =
-                      user.fullName || user.username || user.email || "User";
-                    return (
-                      <ContactItem
-                        key={user.id}
-                        contact={{
-                          id: user.id,
-                          name: displayName,
-                          email: user.email || "",
-                          avatar: user.avatarUrl || "",
-                        }}
-                        isSelected={selectedContacts.includes(user.id)}
-                        onToggle={toggleContact}
-                      />
-                    );
-                  })
+                  <ScrollView
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator
+                    style={{ maxHeight: 280 }}
+                  >
+                    {displayUsers.map((user) => {
+                      const displayName =
+                        user.fullName || user.username || "User";
+                      return (
+                        <ContactItem
+                          key={user.id}
+                          contact={{
+                            id: user.id,
+                            name: displayName,
+                            email: user.username ? `@${user.username}` : "",
+                            avatar: user.avatarUrl || "",
+                          }}
+                          isSelected={selectedMembers.some(
+                            (m) => m.id === user.id
+                          )}
+                          onToggle={toggleContact}
+                        />
+                      );
+                    })}
+                  </ScrollView>
                 )}
               </View>
             </View>
           </ScrollView>
 
           {/* Bottom Action Bar */}
-          {selectedContacts.length > 0 && (
+          {selectedMembers.length > 0 && (
             <View className="px-4 py-3 bg-white border-t border-gray-200">
               <View className="flex-row items-center justify-between">
                 {/* Selected Contacts */}
@@ -287,13 +281,13 @@ export default function CreateGroupScreen() {
                     className="flex-1"
                   >
                     <View className="flex-row items-center gap-2">
-                      {selectedUsersData.map((user) => (
+                      {selectedMembers.map((user) => (
                         <View key={user.id} className="relative">
                           <ExpoImage
                             source={{
                               uri: resolveUserAvatarUri(
                                 user.avatarUrl,
-                                user.fullName || user.username
+                                user.fullName || user.username || "User"
                               ),
                             }}
                             style={{ width: 40, height: 40, borderRadius: 20 }}
@@ -332,13 +326,13 @@ export default function CreateGroupScreen() {
                   activeOpacity={0.8}
                   disabled={
                     !groupName.trim() ||
-                    selectedContacts.length === 0 ||
+                    selectedMembers.length === 0 ||
                     createGroupMutation.isPending
                   }
                   style={{
                     backgroundColor:
                       groupName.trim() &&
-                      selectedContacts.length > 0 &&
+                      selectedMembers.length > 0 &&
                       !createGroupMutation.isPending
                         ? "#34B27D"
                         : "#D1D5DB",

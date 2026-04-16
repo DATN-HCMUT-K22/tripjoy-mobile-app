@@ -7,8 +7,9 @@ const isApiSuccess = (code?: number) => code === 0 || code === 1000;
  * Hook để quản lý conversations
  * Sử dụng React Query để cache và auto-refresh
  */
-export function useConversations() {
+export function useConversations(options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
+  const enabled = options?.enabled ?? true;
 
   // Query để lấy danh sách conversations
   const {
@@ -27,6 +28,7 @@ export function useConversations() {
     },
     staleTime: 30000, // 30 giây
     refetchOnWindowFocus: true,
+    enabled,
   });
 
   // Mutation để tạo conversation mới

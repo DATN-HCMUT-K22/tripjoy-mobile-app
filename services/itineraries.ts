@@ -67,8 +67,8 @@ export type ItineraryRequest = {
 };
 
 /**
- * POST `/itineraries/generate` — **camelCase** trên wire (không @JsonProperty).
- * HTTP 202; sau đó poll GET `/itineraries/{id}` khi `status === GENERATING`.
+ * POST `/itineraries/ai-generate` — theo tài liệu module (JSON camelCase).
+ * HTTP **202 Accepted**; sau đó poll GET `/itineraries/{id}` mỗi 3–5s khi `status === GENERATING`.
  */
 export type GenerateItineraryRequest = {
   destination: string;
@@ -76,9 +76,14 @@ export type GenerateItineraryRequest = {
   longitude: number;
   startDate: string;
   endDate: string;
-  peopleQuantity?: number;
-  budgetEstimate?: number;
-  themes?: string[];
+  peopleQuantity: number;
+  budgetEstimate: number;
+  themes: string[];
+};
+
+/** POST `/itineraries/{id}/ai-modify` — đồng bộ. */
+export type AiModifyItineraryRequest = {
+  unwantedPlaceIds: string[];
 };
 
 export type ExpenseRequest = {
@@ -133,6 +138,8 @@ export type LocationResponse = {
 
 export type TripItemResponse = {
   id?: string;
+  /** Một số BE trả `location_id` phẳng thay vì/như `location.id`. */
+  location_id?: string;
   duration?: number;
   note?: string;
   location?: LocationResponse;
@@ -145,6 +152,10 @@ export type TripItemResponse = {
 
 export type TravelNotebookResponse = {
   id?: string;
+  /** Markdown từ AI */
+  food_guide?: string;
+  climate_info?: string;
+  cultural_notes?: string;
   name?: string;
   description?: string;
   itinerary?: {
@@ -213,8 +224,21 @@ export const itineraryService = {
    */
   generateItinerary: (payload: GenerateItineraryRequest) =>
     httpClient.post<ApiEnvelope<ItineraryResponse>, GenerateItineraryRequest>(
-      "/itineraries/generate",
+      "/itineraries/ai-generate",
       payload
+    ),
+
+  /** Chỉnh lịch bằng AI (đồng bộ): loại place và gợi ý thay thế. */
+  aiModifyItinerary: (itineraryId: string, payload: AiModifyItineraryRequest) =>
+    httpClient.post<ApiEnvelope<ItineraryResponse>, AiModifyItineraryRequest>(
+      `/itineraries/${itineraryId}/ai-modify`,
+      payload
+    ),
+
+  /** Sinh Travel Notebook (markdown) cho một lịch. */
+  generateTravelNotebook: (itineraryId: string) =>
+    httpClient.post<ApiEnvelope<TravelNotebookResponse>>(
+      `/notebooks/${itineraryId}/ai-generate`
     ),
 
   updateItinerary: (itineraryId: string, payload: ItineraryRequest) =>

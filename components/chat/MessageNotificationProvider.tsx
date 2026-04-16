@@ -1,7 +1,7 @@
 import { socketService } from "@/services/socket/socketService";
 import { store } from "@/store";
 import { pushOrUpdateNotification } from "@/store/slices/messageNotificationSlice";
-import { ChatMessageResponse } from "@/types/message";
+import { ChatMessageResponse, getChatSenderId } from "@/types/message";
 import React, { useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { MessageNotificationBanner } from "./MessageNotificationBanner";
@@ -37,7 +37,7 @@ export function MessageNotificationProvider() {
       console.log(`\n[MessageNotificationProvider] [DEVICE: ${deviceId}] Received message:`, {
         messageId: message.id,
         conversationId: message.conversation_id,
-        senderId: message.sender_id,
+        senderId: getChatSenderId(message),
         currentUserId,
         currentOpenConversationId,
         appState: appStateRef.current,
@@ -53,7 +53,7 @@ export function MessageNotificationProvider() {
         return;
       }
       
-      if (message.sender_id === currentUserId) {
+      if (getChatSenderId(message) === currentUserId) {
         console.log(`[MessageNotificationProvider] [DEVICE: ${deviceId}] ⏭️ Message from self, skipping (this is for in-app banner, not push notification)`);
         return;
       }

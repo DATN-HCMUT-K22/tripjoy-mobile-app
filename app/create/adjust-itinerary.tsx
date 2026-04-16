@@ -3,8 +3,10 @@ import { useTempLocation } from "@/contexts/TempLocationContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { mockAttractions } from "@/data/mockAttractions";
 import { mockItineraryItems } from "@/data/mockItineraryItems";
+import InteractiveMap from "@/components/InteractiveMap";
 import { ItineraryItem } from "@/types/itinerary";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import type { LocationForMap } from "@/utils/mapLocations";
 import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
 import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { Ionicons } from "@expo/vector-icons";
@@ -605,6 +607,29 @@ export default function AdjustItineraryScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const sectionPositions = useRef<Record<string, number>>({});
 
+  const mapPinsByDay = useMemo(() => {
+    const out: Record<string, LocationForMap[]> = {};
+    Object.entries(draftItemsByDay).forEach(([dayKey, items]) => {
+      const pins: LocationForMap[] = [];
+      items.forEach((item) => {
+        const ext = externalPlacesById[item.locationId];
+        const mock = mockAttractions.find((attr) => attr.id === item.locationId);
+        const lat = ext?.latitude ?? mock?.latitude;
+        const lng = ext?.longitude ?? mock?.longitude;
+        if (
+          typeof lat === "number" &&
+          typeof lng === "number" &&
+          !Number.isNaN(lat) &&
+          !Number.isNaN(lng)
+        ) {
+          pins.push({ latitude: lat, longitude: lng });
+        }
+      });
+      out[dayKey] = pins;
+    });
+    return out;
+  }, [draftItemsByDay, externalPlacesById]);
+
   useEffect(() => {
     if (!scrollDayKey) return;
     const timer = setTimeout(() => {
@@ -657,6 +682,7 @@ export default function AdjustItineraryScreen() {
           <View className="px-4 py-4">
             {days.map((day) => {
               const dayItems = draftItemsByDay[day.key] || [];
+              const dayMapPins = mapPinsByDay[day.key] || [];
               return (
                 <View
                   key={day.key}
@@ -669,6 +695,12 @@ export default function AdjustItineraryScreen() {
                   <Text className="text-lg font-bold text-black mb-4">
                     Ngày {day.dayNumber}: {day.label}
                   </Text>
+
+                  {dayMapPins.length > 0 ? (
+                    <View className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                      <InteractiveMap locations={dayMapPins} height={220} />
+                    </View>
+                  ) : null}
 
                   {/* Items List */}
                   {dayItems.length > 0 ? (

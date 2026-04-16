@@ -1,4 +1,9 @@
-import { ChatMessageResponse } from "@/types/message";
+import {
+  ChatMessageResponse,
+  getChatSenderId,
+  getSenderAvatarParts,
+  getSenderLabel,
+} from "@/types/message";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { ResizeMode, Video } from "expo-av";
@@ -56,8 +61,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   
-  const isMe = message.sender_id === currentUserId;
-  const isBot = message.is_bot;
+  const isMe = getChatSenderId(message) === currentUserId;
+  const isBot = message.is_bot === true;
   
   // Color scheme - supports dark mode
   const bubbleColor = isBot 
@@ -91,9 +96,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     : "#F3F4F6";
 
   const s = message.sender;
-  const senderDisplayName = isMe
-    ? "Bạn"
-    : (s?.fullName || s?.full_name || s?.username || "Người gửi");
+  const senderDisplayName = isMe ? "Bạn" : getSenderLabel(s);
+  const avatarParts = getSenderAvatarParts(s);
+  const resolvedAvatarUri = resolveUserAvatarUri(avatarParts.uri, avatarParts.nameHint);
 
   // Like: ưu tiên like_count và chỉ tin field is_liked_by_current_user cho user hiện tại
   const likeCount = message.like_count ?? message.likes_count ?? 0;
@@ -113,12 +118,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         />
       ) : (
         <Image
-          source={{
-            uri: resolveUserAvatarUri(
-              s?.avatar_url || s?.avatarUrl,
-              s?.fullName || s?.full_name || s?.username
-            ),
-          }}
+          source={{ uri: resolvedAvatarUri }}
           style={styles.avatar}
           contentFit="cover"
         />

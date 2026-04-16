@@ -61,7 +61,7 @@ export default function LoginScreen() {
       console.error("Error message:", error?.message);
       console.error("Error stack:", error?.stack);
 
-      showErrorToast("Đăng nhập thất bại", error);
+      showErrorToast("Đăng nhập thất bại", undefined, { hideDetail: true });
     }
   };
 

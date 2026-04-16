@@ -7,15 +7,23 @@ import { mockItineraries } from "@/data/mockItineraries";
 import { useMessages } from "@/hooks/useMessages";
 import { usePinnedMessages } from "@/hooks/usePinnedMessages";
 import { conversationService } from "@/services/conversations";
+import { uploadImage, uploadVideo } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
 import { useChatStore } from "@/stores/chat.store";
-import { ChatMessageResponse, ConversationResponse } from "@/types/message";
+import {
+  ChatMessageResponse,
+  ConversationResponse,
+  getChatSenderId,
+} from "@/types/message";
+import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Video, ResizeMode } from "expo-av";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -31,6 +39,35 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
+
+type PickedMedia = {
+  uri: string;
+  kind: "image" | "video";
+  mimeType?: string | null;
+  fileName?: string | null;
+};
+
+function inferMediaKind(asset: ImagePicker.ImagePickerAsset): "image" | "video" {
+  if (asset.type === "video") return "video";
+  if (asset.type === "image") return "image";
+  const mime = asset.mimeType?.toLowerCase() ?? "";
+  if (mime.startsWith("video/")) return "video";
+  return "image";
+}
+
+function defaultUploadFileMeta(
+  kind: "image" | "video",
+  mimeType?: string | null,
+  preferredName?: string | null
+) {
+  const fileName =
+    preferredName?.trim() ||
+    (kind === "video" ? "message-video.mp4" : "message-image.jpg");
+  const fileType =
+    (mimeType && mimeType.trim()) ||
+    (kind === "video" ? "video/mp4" : "image/jpeg");
+  return { fileName, fileType };
+}
 
 // Helper function để check xem có cần hiển thị date separator không
 // Nếu khoảng cách giữa 2 messages > 15 phút thì hiển thị separator
@@ -67,6 +104,8 @@ export default function GroupChatScreen() {
     messageId?: string | string[]; // mở từ search tin nhắn / deep link
   }>();
   const [input, setInput] = useState("");
+  const [selectedMedia, setSelectedMedia] = useState<PickedMedia | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dispatch = useAppDispatch();
@@ -268,52 +307,123 @@ export default function GroupChatScreen() {
     };
   }, [input, conversationId]);
 
-  // Handle send message
-  const handleSend = async () => {
-    // Validation
-    if (!input.trim()) {
-      console.warn("⚠️ [CHAT] Cannot send empty message");
+  const handlePickMedia = async () => {
+    if (!conversationId) {
+      showErrorToast("Chưa có hội thoại", "Không tìm thấy cuộc trò chuyện để gửi file.");
       return;
     }
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        showErrorToast("Cần quyền truy cập thư viện", "Vui lòng cấp quyền trong Cài đặt.");
+        return;
+      }
 
-    if (!conversationId) {
-      console.error("❌ [CHAT] Cannot send message - conversationId is missing");
-      console.error("Params:", params);
-      console.error("Group ID:", groupId);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images", "videos"],
+        allowsEditing: false,
+        quality: 0.85,
+        videoMaxDuration: 120,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const a = result.assets[0];
+        setSelectedMedia({
+          uri: a.uri,
+          kind: inferMediaKind(a),
+          mimeType: a.mimeType ?? null,
+          fileName: a.fileName ?? null,
+        });
+      }
+    } catch (error) {
+      showErrorToast("Không chọn được file", error);
+    }
+  };
+
+  // Handle send message (text + optional ảnh/video qua POST messages + media_url)
+  const handleSend = async () => {
+    if ((!input.trim() && !selectedMedia) || !conversationId) {
+      if (!conversationId) {
+        showErrorToast("Chưa có hội thoại", "Không tìm thấy cuộc trò chuyện.");
+      }
       return;
     }
 
     const content = input.trim();
     setInput("");
+    const mediaToSend = selectedMedia;
+    setSelectedMedia(null);
 
-    // Stop typing
     if (socketService.isConnected()) {
       socketService.sendStopTyping(conversationId);
     }
 
-    console.log("\n📤 [CHAT] Sending message");
-    console.log(`ConversationId: ${conversationId}`);
-    console.log(`Content: ${content}`);
-    console.log(`Content length: ${content.length}`);
-    
+    const folder = `tripjoy/messages/${conversationId}`;
+
     try {
-      const result = await sendMessage(content);
-      if (!result) {
-        console.error("❌ [CHAT] Failed to send message - result is null");
-        setInput(content); // Restore input nếu lỗi
+      if (mediaToSend) {
+        setUploadingMedia(true);
+        try {
+          const { fileName, fileType } = defaultUploadFileMeta(
+            mediaToSend.kind,
+            mediaToSend.mimeType,
+            mediaToSend.fileName
+          );
+
+          const uploadResult =
+            mediaToSend.kind === "video"
+              ? await uploadVideo({
+                  fileUri: mediaToSend.uri,
+                  fileName,
+                  fileType,
+                  folder,
+                })
+              : await uploadImage({
+                  fileUri: mediaToSend.uri,
+                  fileName,
+                  fileType,
+                  folder,
+                });
+
+          const mediaUrl = uploadResult.secure_url;
+          const caption =
+            content ||
+            (mediaToSend.kind === "video" ? "Đã gửi video" : "Đã gửi ảnh");
+
+          const result = await sendMessage(caption, {
+            messageType: mediaToSend.kind === "video" ? "VIDEO" : "IMAGE",
+            mediaUrl,
+          });
+
+          if (!result) {
+            setSelectedMedia(mediaToSend);
+            setInput(content);
+            showErrorToast("Không gửi được tin nhắn", "Vui lòng thử lại.");
+          }
+        } catch (err) {
+          showErrorToast(
+            mediaToSend.kind === "video" ? "Tải video lên thất bại" : "Tải ảnh lên thất bại",
+            err
+          );
+          setSelectedMedia(mediaToSend);
+          setInput(content);
+        } finally {
+          setUploadingMedia(false);
+        }
       } else {
-        console.log("✅ [CHAT] Message sent successfully");
-        console.log("Message result:", result);
+        const result = await sendMessage(content);
+        if (!result) {
+          setInput(content);
+        }
       }
-    } catch (err: any) {
-      console.error("❌ [CHAT] Exception when sending message:", err);
-      console.error("Error details:", {
-        message: err?.message,
-        status: err?.status || err?.response?.status,
-        data: err?.response?.data,
-        stack: err?.stack,
-      });
-      setInput(content); // Restore input nếu lỗi
+    } catch {
+      setUploadingMedia(false);
+      if (mediaToSend) {
+        setSelectedMedia(mediaToSend);
+        setInput(content);
+      } else {
+        setInput(content);
+      }
     }
   };
 
@@ -372,7 +482,8 @@ export default function GroupChatScreen() {
     let prev: ChatMessageResponse | null = null;
     messages.forEach((msg) => {
       const showSep = shouldShowDateSeparator(msg, prev);
-      const showSender = !prev || prev.sender_id !== msg.sender_id;
+      const showSender =
+        !prev || getChatSenderId(prev) !== getChatSenderId(msg);
       if (showSep) {
         list.push({ type: "date", key: `date-${msg.id}-${msg.created_at}`, date: msg.created_at });
       }
@@ -783,14 +894,50 @@ export default function GroupChatScreen() {
         />
       </View>
 
+      {/* Preview ảnh / video trước khi gửi */}
+      {selectedMedia && (
+        <View style={styles.imagePreviewContainer}>
+          {selectedMedia.kind === "video" ? (
+            <Video
+              source={{ uri: selectedMedia.uri }}
+              style={styles.imagePreview}
+              useNativeControls
+              resizeMode={ResizeMode.CONTAIN}
+            />
+          ) : (
+            <Image
+              source={{ uri: selectedMedia.uri }}
+              style={styles.imagePreview}
+              contentFit="cover"
+            />
+          )}
+          <TouchableOpacity
+            style={styles.removeImageButton}
+            onPress={() => setSelectedMedia(null)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close-circle" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Input */}
       <SafeAreaView 
         edges={["bottom"]} 
         style={[styles.inputContainer, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}
       >
         <View style={styles.inputWrapper}>
-        <TouchableOpacity activeOpacity={0.7} className="mr-3">
-          <Ionicons name="image-outline" size={24} color="#6B7280" />
+        <TouchableOpacity
+          activeOpacity={0.7}
+          className="mr-3"
+          onPress={handlePickMedia}
+          disabled={uploadingMedia || !conversationId}
+        >
+          <Ionicons
+            name="image-outline"
+            size={24}
+            color={uploadingMedia || !conversationId ? "#9CA3AF" : "#6B7280"}
+          />
         </TouchableOpacity>
         <View className="flex-1">
           <TextInput
@@ -802,20 +949,26 @@ export default function GroupChatScreen() {
             multiline
             onSubmitEditing={handleSend}
             returnKeyType="send"
-            editable={!loading}
+            editable={!loading && !uploadingMedia}
           />
         </View>
         <TouchableOpacity
           activeOpacity={0.7}
           className="ml-3"
           onPress={handleSend}
-          disabled={!input.trim() || loading}
+          disabled={(!input.trim() && !selectedMedia) || loading || uploadingMedia}
         >
-          <Ionicons
-            name="send"
-            size={24}
-            color={input.trim() && !loading ? "#34B27D" : "#9CA3AF"}
-          />
+          {uploadingMedia ? (
+            <ActivityIndicator size="small" color="#34B27D" />
+          ) : (
+            <Ionicons
+              name="send"
+              size={24}
+              color={
+                (input.trim() || selectedMedia) && !loading ? "#34B27D" : "#9CA3AF"
+              }
+            />
+          )}
         </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -887,5 +1040,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  imagePreviewContainer: {
+    position: "relative",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  imagePreview: {
+    width: "100%",
+    height: 200,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    borderRadius: 12,
   },
 });

@@ -6,6 +6,7 @@ import { useAppSelector } from "@/store/hooks";
 import { useChatStore } from "@/stores/chat.store";
 import { ConversationResponse } from "@/types/message";
 import { MessageSearchResponse, UserSimpleResponse } from "@/types/search";
+import { getDirectPeerAvatarUrl } from "@/utils/conversationDisplay";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -171,7 +172,10 @@ const SearchMessageResultRow: React.FC<SearchMessageResultRowProps> = ({
   if (!isGroup && conversation?.type === "DIRECT" && conversation.members?.length) {
     const other = conversation.members.find((m) => m.id !== currentUserId);
     headerTitle = other?.fullName || other?.username || "Chat riêng";
-    avatarUri = other?.avatarUrl || null;
+    avatarUri =
+      getDirectPeerAvatarUrl(conversation, currentUserId) ||
+      other?.avatarUrl ||
+      null;
   } else if (!isGroup && !headerTitle) {
     headerTitle = "Tin nhắn";
     avatarUri = null;
@@ -242,16 +246,16 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     enabled: conversation.type === "GROUP" && !!conversation.group_id,
   });
 
-  // Lấy avatar - ưu tiên conversation avatar, sau đó là member avatar (nếu DIRECT)
+  // Avatar: nhóm = ảnh nhóm; DIRECT = ảnh đối phương trước, rồi mới `conversation.avatar`
   const getAvatar = () => {
     if (conversation.type === "GROUP" && groupInfo?.avatar) return groupInfo.avatar;
-    if (conversation.avatar) return conversation.avatar;
-    if (conversation.type === "DIRECT" && conversation.members && conversation.members.length > 0) {
-      const otherMember = conversation.members.find(
-        (m) => m.id !== currentUserId
-      );
-      return otherMember?.avatarUrl || null;
+    if (conversation.type === "DIRECT") {
+      const peer = getDirectPeerAvatarUrl(conversation, currentUserId);
+      if (peer) return peer;
+      if (conversation.avatar) return conversation.avatar;
+      return null;
     }
+    if (conversation.avatar) return conversation.avatar;
     return null;
   };
 

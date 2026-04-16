@@ -1,4 +1,4 @@
-/** Snapshot địa điểm từ Google Places (không có trong mockAttractions). */
+/** Snapshot POI Tier 2 (TripJoy location id hoặc tạm từ Google trước resolve). */
 export interface ExternalPlaceSnapshot {
   name: string;
   subtitle: string;

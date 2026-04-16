@@ -76,17 +76,20 @@ export default function CreateTripScreen() {
     refetch: refetchProvinces,
   } = useProvinceLocations();
 
-  /** Luôn có 5 tỉnh/thành mẫu (tên + lat/lon) ở đầu; thêm bản ghi từ API (không trùng id). */
+  /**
+   * Có API: chỉ danh sách BE (63 tỉnh/thành).
+   * Đang tải lần đầu: [] — không flash 5 tỉnh mẫu (trước đây api rỗng → nhầm hiển thị mẫu).
+   * Tải xong mà rỗng/lỗi: fallback 5 tỉnh mẫu.
+   */
   const locations: Location[] = useMemo(() => {
     const samples = sampleProvinceLocations;
     if (EXPO_PUBLIC_MOCK_DATA) return samples;
 
     const apiList = apiLocations ?? [];
-    const apiIds = new Set(apiList.map((l) => l.id));
-    const samplesNotInApi = samples.filter((s) => !apiIds.has(s.id));
-    if (apiList.length > 0) return [...samplesNotInApi, ...apiList];
+    if (apiList.length > 0) return apiList;
+    if (isLoadingProvinces) return [];
     return samples;
-  }, [apiLocations]);
+  }, [apiLocations, isLoadingProvinces]);
 
   const useCompactLocationRow = !EXPO_PUBLIC_MOCK_DATA;
 
@@ -286,11 +289,11 @@ export default function CreateTripScreen() {
   ) => {
     return (
       <>
-        {!EXPO_PUBLIC_MOCK_DATA && isLoadingProvinces && (
+        {!EXPO_PUBLIC_MOCK_DATA && isLoadingProvinces && filtered.length === 0 && (
           <View className="flex-row items-center gap-2 py-2 mb-2 px-1">
             <ActivityIndicator size="small" color="#34B27D" />
             <Text className="text-xs text-gray-500 flex-1">
-              Đang tải thêm tỉnh/thành từ máy chủ… (có thể chọn sẵn các điểm mẫu bên dưới)
+              Đang tải danh sách tỉnh/thành từ máy chủ…
             </Text>
           </View>
         )}

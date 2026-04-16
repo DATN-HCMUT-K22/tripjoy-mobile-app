@@ -26,7 +26,7 @@ const TRIP_TYPE_ID_TO_THEME: Record<string, string> = {
 };
 
 /**
- * Đổi `tripTypes` (id) → mảng theme cho `ItineraryRequest.themes` / `GenerateItineraryRequest.themes`.
+ * Đổi `tripTypes` (id) → mảng theme cho `ItineraryRequest.themes`.
  */
 export function tripTypeIdsToItineraryThemes(ids: string[]): string[] {
   return ids

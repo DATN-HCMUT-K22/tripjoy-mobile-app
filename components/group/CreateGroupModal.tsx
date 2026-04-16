@@ -1,10 +1,11 @@
 import { ContactItem } from "@/components/group/ContactItem";
 import { useCreateGroup } from "@/hooks/useGroups";
-import { useUsers } from "@/hooks/useUsers";
+import { useUserSearchDebounce } from "@/hooks/useUserSearchDebounce";
+import { UserSimpleResponse } from "@/types/search";
 import { useAppSelector } from "@/store/hooks";
 import { uploadImage } from "@/services/media";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
-import { showErrorToast } from "@/utils/toast";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -45,11 +46,12 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const expandedY = 0;
   const collapsedY = expandedY;
 
-  const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<UserSimpleResponse[]>(
+    []
+  );
   const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const slideAnim = useRef(new Animated.Value(windowHeight)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const sheetPositionRef = useRef(expandedY);
@@ -64,28 +66,21 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const groupDescription = watch("groupDescription");
   const searchText = watch("searchText");
 
-  // Fetch users từ API - chỉ khi modal visible và đã authenticated
-  const {
-    data: users = [],
-    isLoading: isLoadingUsers,
-    error: usersError,
-  } = useUsers(visible);
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const searchEnabled = visible && isAuthenticated && !!accessToken;
+
+  const { results: searchResults, isLoading: isSearchingUsers } =
+    useUserSearchDebounce(searchText || "", { enabled: searchEnabled });
+
   const createGroupMutation = useCreateGroup();
 
-  // Lấy user hiện tại từ Redux để filter ra khỏi danh sách
   const currentUser = useAppSelector((state) => state.auth.user);
 
-  // Debug logging
-  useEffect(() => {
-    if (visible) {
-      console.log("[CreateGroupModal] Users state:", {
-        usersCount: users.length,
-        isLoadingUsers,
-        usersError: usersError ? String(usersError) : null,
-        users: users.slice(0, 3), // Log first 3 users
-      });
-    }
-  }, [visible, users, isLoadingUsers, usersError]);
+  const displayUsers = useMemo(
+    () => searchResults.filter((u) => u.id !== currentUser?.id),
+    [searchResults, currentUser?.id]
+  );
 
   useEffect(() => {
     if (visible) {
@@ -95,7 +90,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         groupDescription: "",
         searchText: "",
       });
-      setSelectedContacts([]);
+      setSelectedMembers([]);
       setIsDescriptionFocused(false);
       setSelectedImage(null);
 
@@ -125,14 +120,6 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     }
   }, [visible, expandedY, windowHeight, fadeAnim, slideAnim, reset]);
 
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setDebouncedSearchText((searchText || "").trim().toLowerCase());
-    }, 250);
-
-    return () => clearTimeout(timeoutId);
-  }, [searchText]);
-
   const handleClose = () => {
     Animated.parallel([
       Animated.timing(slideAnim, {
@@ -152,46 +139,23 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     });
   };
 
-  // Filter users theo search text và loại bỏ user hiện tại
-  const filteredUsers = useMemo(
-    () =>
-      users.filter((user) => {
-        if (currentUser && user.id === currentUser.id) {
-          return false;
-        }
-
-        if (!debouncedSearchText) {
-          return true;
-        }
-
-        const fullName = (user.fullName || "").toLowerCase();
-        const email = (user.email || "").toLowerCase();
-        const username = (user.username || "").toLowerCase();
-        return (
-          fullName.includes(debouncedSearchText) ||
-          email.includes(debouncedSearchText) ||
-          username.includes(debouncedSearchText)
-        );
-      }),
-    [users, currentUser, debouncedSearchText]
-  );
-
   const toggleContact = (contactId: string) => {
-    setSelectedContacts((prev) =>
-      prev.includes(contactId)
-        ? prev.filter((id) => id !== contactId)
-        : [...prev, contactId]
-    );
+    setSelectedMembers((prev) => {
+      const exists = prev.some((u) => u.id === contactId);
+      if (exists) {
+        return prev.filter((u) => u.id !== contactId);
+      }
+      const fromList = displayUsers.find((u) => u.id === contactId);
+      if (fromList) {
+        return [...prev, fromList];
+      }
+      return prev;
+    });
   };
 
   const removeContact = (contactId: string) => {
-    setSelectedContacts((prev) => prev.filter((id) => id !== contactId));
+    setSelectedMembers((prev) => prev.filter((u) => u.id !== contactId));
   };
-
-  const selectedUsersData = useMemo(
-    () => users.filter((user) => selectedContacts.includes(user.id)),
-    [users, selectedContacts]
-  );
 
   // Bỏ pan gesture, chỉ auto slide lên full height
 
@@ -221,7 +185,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
   const handleCreate = async (values: CreateGroupFormValues) => {
     const trimmedName = values.groupName.trim();
-    if (!trimmedName || selectedContacts.length === 0) {
+    if (!trimmedName || selectedMembers.length === 0) {
       return;
     }
 
@@ -239,9 +203,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             folder: "tripjoy/avatars/groups",
           });
           avatarUrl = uploadResult.secure_url;
-          console.log("[CreateGroupModal] Image uploaded successfully:", avatarUrl);
-        } catch (uploadError: any) {
-          console.error("[CreateGroupModal] Failed to upload image:", uploadError);
+        } catch (uploadError: unknown) {
+          showErrorToast("Không tải được ảnh nhóm", uploadError);
           avatarUrl = undefined;
         } finally {
           setIsUploadingImage(false);
@@ -254,15 +217,14 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         avatar: avatarUrl,
         description: values.groupDescription.trim() || undefined,
         theme_color: "#34B27D", // Màu mặc định, có thể thêm picker sau
-        member_ids: selectedContacts,
+        member_ids: selectedMembers.map((m) => m.id),
       });
 
       // Close modal sau khi tạo thành công
-      // Toast và navigation đã được xử lý trong useCreateGroup hook
+      showSuccessToast("Tạo nhóm thành công!");
       handleClose();
-    } catch (error) {
-      // Error đã được handle trong useCreateGroup hook
-      console.error("Failed to create group:", error);
+    } catch {
+      // Lỗi đã xử lý trong useCreateGroup (toast)
     }
   };
 
@@ -426,7 +388,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   render={({ field: { onChange, value } }) => (
                     <TextInput
                       className="flex-1 ml-2 text-base text-gray-800"
-                      placeholder="Tìm tên hoặc email"
+                      placeholder="Tìm tên hoặc username"
                       placeholderTextColor="#9CA3AF"
                       value={value}
                       onChangeText={onChange}
@@ -435,47 +397,62 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 />
               </View>
 
-              {/* Users List */}
+              {/* Users List — GET /users/search?q= (debounce 300ms) */}
               <View>
-                {isLoadingUsers ? (
-                  <View className="py-8 items-center">
-                    <Text className="text-gray-500">Đang tải danh sách...</Text>
+                {!searchText?.trim() ? (
+                  <View className="py-8 items-center px-2">
+                    <Text className="text-gray-500 text-center">
+                      Nhập tên hoặc username để tìm và thêm thành viên
+                    </Text>
                   </View>
-                ) : filteredUsers.length === 0 ? (
+                ) : isSearchingUsers ? (
+                  <View className="py-8 items-center">
+                    <Text className="text-gray-500">Đang tìm...</Text>
+                  </View>
+                ) : displayUsers.length === 0 ? (
                   <View className="py-8 items-center">
                     <Text className="text-gray-500">
                       Không tìm thấy người dùng
                     </Text>
                   </View>
                 ) : (
-                  filteredUsers.map((user) => {
-                    const displayName =
-                      user.fullName || user.username || user.email || "User";
-                    const avatarUrl = resolveUserAvatarUri(
-                      user.avatarUrl,
-                      displayName
-                    );
-                    return (
-                      <ContactItem
-                        key={user.id}
-                        contact={{
-                          id: user.id,
-                          name: displayName,
-                          email: user.email || "",
-                          avatar: avatarUrl,
-                        }}
-                        isSelected={selectedContacts.includes(user.id)}
-                        onToggle={toggleContact}
-                      />
-                    );
-                  })
+                  <ScrollView
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator
+                    style={{ maxHeight: 280 }}
+                  >
+                    {displayUsers.map((user) => {
+                      const displayName =
+                        user.fullName || user.username || "User";
+                      const avatarUrl = resolveUserAvatarUri(
+                        user.avatarUrl,
+                        displayName
+                      );
+                      return (
+                        <ContactItem
+                          key={user.id}
+                          contact={{
+                            id: user.id,
+                            name: displayName,
+                            email: user.username ? `@${user.username}` : "",
+                            avatar: avatarUrl,
+                          }}
+                          isSelected={selectedMembers.some(
+                            (m) => m.id === user.id
+                          )}
+                          onToggle={toggleContact}
+                        />
+                      );
+                    })}
+                  </ScrollView>
                 )}
               </View>
             </View>
           </ScrollView>
 
           {/* Bottom Action Bar */}
-          {selectedContacts.length > 0 && (
+          {selectedMembers.length > 0 && (
             <View className="px-4 py-3 bg-white border-t border-gray-200">
               <View className="flex-row items-center justify-between">
                 {/* Selected Users */}
@@ -486,12 +463,9 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     className="flex-1"
                   >
                     <View className="flex-row items-center gap-2">
-                      {selectedUsersData.map((user) => {
+                      {selectedMembers.map((user) => {
                         const displayName =
-                          user.fullName ||
-                          user.username ||
-                          user.email ||
-                          "User";
+                          user.fullName || user.username || "User";
                         const chipAvatarUri = resolveUserAvatarUri(
                           user.avatarUrl,
                           displayName
@@ -549,14 +523,14 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   activeOpacity={0.8}
                   disabled={
                     !groupName.trim() ||
-                    selectedContacts.length === 0 ||
+                    selectedMembers.length === 0 ||
                     createGroupMutation.isPending ||
                     isUploadingImage
                   }
                   style={{
                     backgroundColor:
                       groupName.trim() &&
-                      selectedContacts.length > 0 &&
+                      selectedMembers.length > 0 &&
                       !createGroupMutation.isPending
                         ? "#34B27D"
                         : "#D1D5DB",

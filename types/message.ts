@@ -1,3 +1,26 @@
+/**
+ * User gọn (BE Conversations doc — khớp members / sender)
+ */
+export interface UserSimple {
+  id: string;
+  username: string;
+  fullName: string;
+  avatarUrl?: string;
+}
+
+/**
+ * Mã lỗi API chat (tham chiếu Integration Guide)
+ * - 4001: Conversation not found
+ * - 4011: Pin limit exceeded (max 50 / chat)
+ * - 4013: Cannot DM yourself
+ * - 5007: Media upload to Cloudinary failed
+ */
+export const CHAT_API_ERROR_CODES = {
+  CONVERSATION_NOT_FOUND: 4001,
+  PIN_LIMIT_EXCEEDED: 4011,
+  CANNOT_DM_SELF: 4013,
+  CLOUDINARY_UPLOAD_FAILED: 5007,
+} as const;
 
 /**
  * Message types theo API
@@ -33,32 +56,67 @@ export interface ParentMessage {
 }
 
 /**
- * ChatMessageResponse theo API doc
+ * ChatMessageResponse theo BE Integration Guide (Conversations)
  */
 export interface ChatMessageResponse {
-  id: string; // UUID
-  message_type: MessageType;
+  id: string;
+  conversation_id: string;
+  /** Theo doc BE; một số response vẫn có sender_id + sender dạng legacy */
+  sender?: UserSimple | MessageSender | null;
+  sender_id?: string;
   message_content: string;
-  media_url?: string; // URL ảnh/video (IMAGE / VIDEO)
-  share_post_url?: string; // URL post (nếu message_type = "SHARE_POST")
-  is_bot: boolean;
-  status: MessageStatus;
-  sender_id: string; // UUID của người gửi
-  sender?: MessageSender | null; // API có thể null nếu chưa populate
-  conversation_id: string; // UUID của conversation
-  parent_message_id?: string; // UUID của message được reply (nếu có)
-  parent_message?: ParentMessage; // Thông tin message được reply (nếu có)
-  created_at: string; // ISO 8601 format: "2025-01-15T10:30:00"
-  updated_at?: string; // ISO 8601, có khi pin/cập nhật
-  // Các field có thể có từ API
-  likes_count?: number;
-  is_liked?: boolean;
+  message_type: MessageType;
+  media_url?: string;
+  share_post_url?: string; // SHARE_POST (mở rộng app)
+  parent_message?: ChatMessageResponse | ParentMessage;
+  parent_message_id?: string;
+  is_pinned?: boolean;
   like_count?: number;
   is_liked_by_current_user?: boolean;
-  is_pinned?: boolean;
-  // Optimistic UI fields
-  _isOptimistic?: boolean; // Flag để đánh dấu message tạm thời
-  _tempId?: string; // Temporary ID cho optimistic message
+  created_at: string;
+  updated_at?: string;
+  /** Legacy / optimistic */
+  is_bot?: boolean;
+  status?: MessageStatus;
+  likes_count?: number;
+  is_liked?: boolean;
+  _isOptimistic?: boolean;
+  _tempId?: string;
+}
+
+/** BE doc ưu tiên `sender`; một response vẫn có `sender_id` */
+export function getChatSenderId(m: ChatMessageResponse): string {
+  if (m.sender_id) return m.sender_id;
+  const s = m.sender;
+  if (s && typeof (s as { id?: string }).id === "string") return (s as { id: string }).id;
+  return "";
+}
+
+/** Tên hiển thị — UserSimple (doc) + MessageSender legacy */
+export function getSenderLabel(
+  sender: ChatMessageResponse["sender"],
+  fallback = "Người gửi"
+): string {
+  if (!sender) return fallback;
+  const m = sender as MessageSender & UserSimple;
+  return (
+    m.fullName ||
+    m.full_name ||
+    m.username ||
+    fallback
+  );
+}
+
+/** Avatar cho resolveUserAvatarUri */
+export function getSenderAvatarParts(sender: ChatMessageResponse["sender"]): {
+  uri?: string;
+  nameHint: string;
+} {
+  if (!sender) return { nameHint: "" };
+  const m = sender as MessageSender & UserSimple;
+  const uri = m.avatar_url ?? m.avatarUrl ?? undefined;
+  const nameHint = m.fullName || m.full_name || m.username || "";
+  return { uri, nameHint };
 }
 
 /**
@@ -110,33 +168,23 @@ export interface ConversationMember {
   username?: string | null;
   fullName?: string | null;
   avatarUrl?: string | null;
+  /** Một số BE trả snake_case */
+  avatar_url?: string | null;
 }
 
 /**
- * ConversationResponse theo API doc
+ * ConversationResponse theo BE Integration Guide (field optional = BE có thể thiếu khi legacy)
  */
 export interface ConversationResponse {
-  id: string; // UUID
+  id: string;
   type: "DIRECT" | "GROUP";
-  group_id?: string | null; // UUID or null
-  name?: string | null; // Tên hiển thị
-  avatar?: string | null; // URL
-  last_message?: {
-    id: string;
-    message_content: string;
-    message_type?: string;
-    sender_id?: string;
-    sender?: {
-      id: string;
-      username?: string | null;
-      fullName?: string | null;
-      avatarUrl?: string | null;
-    };
-    created_at?: string;
-  } | null;
+  group_id?: string | null;
+  name?: string | null;
+  avatar?: string | null;
+  last_message?: ChatMessageResponse | null;
   unread_count?: number | null;
+  members?: (UserSimple | ConversationMember)[];
   is_pinned?: boolean | null;
-  members?: ConversationMember[];
   created_at?: string;
   created_by?: string | null;
   updated_at?: string;

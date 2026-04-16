@@ -1,10 +1,17 @@
 import { messageService } from "@/services/messages";
 import { socketService } from "@/services/socket/socketService";
 import { useAppSelector } from "@/store/hooks";
-import { ChatMessageResponse, TypingUser } from "@/types/message";
+import {
+  ChatMessageResponse,
+  TypingUser,
+  getChatSenderId,
+} from "@/types/message";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
+
+/** Sort lịch sử tin nhắn theo BE Conversations Integration Guide */
+const MESSAGE_HISTORY_SORT = "createdAt,desc";
 
 interface UseMessagesOptions {
   conversationId: string;
@@ -95,12 +102,10 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
             limit: pageSize,
           });
         } else {
-          // Fallback về page-based hoặc load lần đầu
           response = await messageService.getMessages(conversationId, {
             page,
             size: pageSize,
-            sort: "created_at,desc", // Mới nhất trước (theo field BE)
-            limit: pageSize, // Thêm limit cho cursor-based nếu API hỗ trợ
+            sort: MESSAGE_HISTORY_SORT,
           });
         }
 
@@ -135,20 +140,12 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
 
           // Update cursors nếu có (chỉ update khi load lần đầu hoặc load more)
           if (response.data?.cursors) {
-            // Update before cursor để dùng cho lần load tiếp theo (scroll up)
             if (response.data.cursors.before) {
               setBeforeCursor(response.data.cursors.before);
             }
-            // Update after cursor để track messages mới nhất
             if (response.data.cursors.after) {
               setAfterCursor(response.data.cursors.after);
             }
-          }
-          
-          // Nếu load lần đầu và có messages, set before cursor từ message đầu tiên
-          if (page === 0 && newMessages.length > 0 && !response.data?.cursors?.before) {
-            const firstMessageTime = newMessages[0].created_at;
-            setBeforeCursor(firstMessageTime);
           }
 
           // Set hasMore - hỗ trợ cả 2 format
@@ -282,12 +279,14 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         is_bot: false,
         status: "SENDING",
         sender_id: currentUser?.id || "",
-        sender: currentUser ? {
-          id: currentUser.id,
-          username: currentUser.username || "",
-          fullName: currentUser.fullName || currentUser.full_name,
-          avatarUrl: currentUser.avatarUrl || currentUser.avatar_url,
-        } : null,
+        sender: currentUser
+          ? {
+              id: currentUser.id,
+              username: currentUser.username || "",
+              fullName: currentUser.fullName || "",
+              avatarUrl: currentUser.avatarUrl ?? undefined,
+            }
+          : null,
         conversation_id: conversationId,
         parent_message_id: options?.parentMessageId,
         created_at: new Date().toISOString(),
@@ -481,8 +480,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
   );
 
   /**
-   * Pin message
-   * POST /api/v1/messages/{messageId}/pin?conversationId=...
+   * Pin message — POST /api/v1/messages/{messageId}/pin
    * Optimistic: set is_pinned = true. Refetch pinned list do Screen gọi usePinnedMessages.refetch sau khi thành công.
    */
   const pinMessage = useCallback(
@@ -493,10 +491,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         )
       );
       try {
-        const response = await messageService.pinMessage(
-          messageId,
-          conversationId
-        );
+        const response = await messageService.pinMessage(messageId);
         if (response.code === 1000 || response.code === 0) {
           // Refetch pinned do Screen gọi usePinnedMessages.refetch
         } else {
@@ -517,7 +512,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         setError(err?.message || "Không thể pin tin nhắn");
       }
     },
-    [conversationId]
+    []
   );
 
   /**
@@ -526,10 +521,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
   const unpinMessage = useCallback(
     async (messageId: string) => {
       try {
-        const response = await messageService.unpinMessage(
-          messageId,
-          conversationId
-        );
+        const response = await messageService.unpinMessage(messageId);
         if (response.code === 1000 || response.code === 0) {
           // Cập nhật local state; realtime qua socket update_pin sẽ đồng bộ thêm
           setMessages((prev) =>
@@ -545,7 +537,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         setError(err.message || "Không thể unpin tin nhắn");
       }
     },
-    [conversationId]
+    []
   );
 
   // Auto load messages khi mount
@@ -621,7 +613,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
             });
           }
           // Nếu là message của mình và có optimistic message tương ứng, thay thế
-          if (message.sender_id === currentUser?.id) {
+          if (getChatSenderId(message) === currentUser?.id) {
             // Tìm optimistic message có cùng content và thời gian gần đây
             const optimisticIndex = prev.findIndex(
               (m) =>

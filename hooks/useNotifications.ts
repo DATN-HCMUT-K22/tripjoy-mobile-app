@@ -24,11 +24,13 @@ import {
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import Toast from "react-native-toast-message";
 
-export function useNotifications() {
+export function useNotifications(options?: { enabled?: boolean }) {
   const state = useAppSelector((s) => s.notifications);
   const dispatch = useAppDispatch();
+  const enabled = options?.enabled ?? true;
 
   const loadUnreadCount = useCallback(async () => {
+    if (!enabled) return;
     try {
       console.log("[useNotifications] 🔄 Fetching /notifications/unread-count ...");
       const res = await getUnreadNotificationCount();
@@ -44,10 +46,11 @@ export function useNotifications() {
       // Không toast lỗi cho badge
       console.error("[useNotifications] ❌ Failed to load unread-count:", e);
     }
-  }, [dispatch]);
+  }, [dispatch, enabled]);
 
   const loadPage = useCallback(
     async (page: number, replace = false) => {
+      if (!enabled) return;
       dispatch(setLoading(true));
       dispatch(setError(null));
       try {
@@ -97,7 +100,7 @@ export function useNotifications() {
         dispatch(setLoading(false));
       }
     },
-    [dispatch, state.pageSize]
+    [dispatch, enabled, state.pageSize]
   );
 
   const refresh = useCallback(async () => {
@@ -183,12 +186,13 @@ export function useNotifications() {
   );
 
   useEffect(() => {
+    if (!enabled) return;
     // Load lần đầu khi dùng hook
     void refresh();
     return () => {
       dispatch(resetNotificationState());
     };
-  }, [dispatch, refresh]);
+  }, [dispatch, enabled, refresh]);
 
   return {
     ...state,

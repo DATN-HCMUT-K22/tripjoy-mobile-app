@@ -40,7 +40,16 @@ const isSuccessCode = (code: number) => code === 0 || code === 1000;
 /**
  * Hook lấy danh sách posts (API getPosts hoặc mock khi EXPO_PUBLIC_MOCK_DATA)
  */
-export function usePosts(params?: { page?: number; limit?: number }) {
+export function usePosts(
+  params?: {
+    page?: number;
+    size?: number;
+    q?: string;
+    hashtag?: string;
+    creator_id?: string;
+    sort?: string;
+  }
+) {
   return useQuery({
     queryKey: ["posts", params],
     queryFn: async (): Promise<DisplayPost[]> => {

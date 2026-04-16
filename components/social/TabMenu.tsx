@@ -14,7 +14,8 @@ export const TabMenu: React.FC<TabMenuProps> = ({ activeTab, onTabChange }) => {
   ];
 
   return (
-    <View className="flex-row bg-white border-b border-gray-200">
+    <View className="bg-white border-b border-gray-200">
+      <View className="flex-row">
       {tabs.map((tab) => (
         <TouchableOpacity
           key={tab.key}
@@ -44,6 +45,7 @@ export const TabMenu: React.FC<TabMenuProps> = ({ activeTab, onTabChange }) => {
           )}
         </TouchableOpacity>
       ))}
+      </View>
     </View>
   );
 };

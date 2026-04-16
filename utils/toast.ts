@@ -60,8 +60,12 @@ function resolveErrorDetail(error?: any): string {
 /**
  * Hiển thị toast lỗi — `error` có thể là object lỗi API, `{ message: string }`, hoặc chuỗi mô tả.
  */
-export function showErrorToast(title: string, error?: any) {
-  const message = resolveErrorDetail(error);
+export function showErrorToast(
+  title: string,
+  error?: any,
+  options?: { hideDetail?: boolean }
+) {
+  const message = options?.hideDetail ? undefined : resolveErrorDetail(error);
   Toast.show({
     type: "error",
     text1: title,

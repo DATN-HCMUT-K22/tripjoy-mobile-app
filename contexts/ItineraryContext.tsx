@@ -7,7 +7,7 @@ interface ItineraryContextType {
   selectedLocationsByDay: Record<string, string[]>;
   // Lưu itinerary items theo ngày: { dayKey: ItineraryItem[] }
   itineraryItemsByDay: Record<string, ItineraryItem[]>;
-  /** Địa điểm từ Google Places (id = place id), dùng khi không có trong mockAttractions */
+  /** Địa điểm POI (id = locationId TripJoy sau resolve / từ GET search), kèm snapshot hiển thị */
   externalPlacesById: Record<string, ExternalPlaceSnapshot>;
   upsertExternalPlaces: (snapshots: Record<string, ExternalPlaceSnapshot>) => void;
   // Thêm địa điểm cho một ngày

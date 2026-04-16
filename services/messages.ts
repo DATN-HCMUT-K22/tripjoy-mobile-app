@@ -42,22 +42,18 @@ export const messageService = {
   },
 
   /**
-   * Lấy lịch sử messages (cursor-based pagination)
+   * Lấy lịch sử messages
    * GET /api/v1/conversations/{conversationId}/messages
-   * 
-   * @param conversationId - UUID của conversation
-   * @param options - Pagination options
-   * @param options.before - ISO timestamp để load messages cũ hơn (scroll up)
-   * @param options.after - ISO timestamp để load messages mới hơn
-   * @param options.limit - Số lượng messages (default: 30, max: 100)
+   *
+   * BE Integration Guide (chính): `page` (0-based), `size`, `sort` (vd. `createdAt,desc`).
+   * Tuỳ chọn: `before` / `after` / `limit` nếu BE hỗ trợ cursor.
    */
   async getMessages(
     conversationId: string,
     options?: {
-      before?: string;  // ISO timestamp
-      after?: string;   // ISO timestamp
-      limit?: number;   // Default: 30, max: 100
-      // Legacy support
+      before?: string;
+      after?: string;
+      limit?: number;
       page?: number;
       size?: number;
       sort?: string;
@@ -69,14 +65,12 @@ export const messageService = {
     
     const params: Record<string, string | number> = {};
     
-    // Cursor-based pagination (new format)
     if (options?.before) params.before = options.before;
     if (options?.after) params.after = options.after;
     if (options?.limit !== undefined) {
-      params.limit = Math.min(Math.max(1, options.limit), 100); // Clamp between 1-100
+      params.limit = Math.min(Math.max(1, options.limit), 100);
     }
     
-    // Legacy pagination support (for backward compatibility)
     if (options?.page !== undefined) params.page = options.page;
     if (options?.size !== undefined) params.size = options.size;
     if (options?.sort) params.sort = options.sort;
@@ -177,36 +171,17 @@ export const messageService = {
   },
 
   /**
-   * Pin message
-   * POST /api/v1/messages/{messageId}/pin?conversationId={conversationId}
+   * Pin message — POST /api/v1/messages/{messageId}/pin
    */
-  async pinMessage(
-    messageId: string,
-    conversationId: string
-  ): Promise<ApiResponse<null>> {
-    return httpClient.post<ApiResponse<null>>(
-      `/messages/${messageId}/pin`,
-      undefined,
-      {
-        params: { conversationId },
-      }
-    );
+  async pinMessage(messageId: string): Promise<ApiResponse<null>> {
+    return httpClient.post<ApiResponse<null>>(`/messages/${messageId}/pin`);
   },
 
   /**
-   * Unpin message
-   * DELETE /api/v1/messages/{messageId}/pin?conversationId={conversationId}
+   * Unpin message — DELETE /api/v1/messages/{messageId}/pin
    */
-  async unpinMessage(
-    messageId: string,
-    conversationId: string
-  ): Promise<ApiResponse<null>> {
-    return httpClient.delete<ApiResponse<null>>(
-      `/messages/${messageId}/pin`,
-      {
-        params: { conversationId },
-      }
-    );
+  async unpinMessage(messageId: string): Promise<ApiResponse<null>> {
+    return httpClient.delete<ApiResponse<null>>(`/messages/${messageId}/pin`);
   },
 
   /**

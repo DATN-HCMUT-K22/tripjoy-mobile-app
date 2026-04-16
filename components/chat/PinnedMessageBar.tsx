@@ -1,5 +1,5 @@
 import { PinnedMessageItem, PinnedMessageType } from "@/components/chat/PinnedMessageItem";
-import { ChatMessageResponse } from "@/types/message";
+import { ChatMessageResponse, getSenderAvatarParts, getSenderLabel } from "@/types/message";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -18,16 +18,12 @@ export interface PinnedMessageBarProps {
 }
 
 function getSenderName(msg: ChatMessageResponse | undefined): string {
-  if (!msg?.sender) return "Người gửi";
-  const s = msg.sender as Record<string, unknown>;
-  return (s.fullName ?? s.full_name ?? s.username) as string || "Người gửi";
+  return getSenderLabel(msg?.sender);
 }
 
 function getAvatarUrl(msg: ChatMessageResponse | undefined): string | null {
-  if (!msg?.sender) return null;
-  const s = msg.sender as Record<string, unknown>;
-  const url = s.avatarUrl ?? s.avatar_url;
-  return (typeof url === "string" && url) ? url : null;
+  const { uri } = getSenderAvatarParts(msg?.sender);
+  return uri ?? null;
 }
 
 /** Map API message_type (TEXT, IMAGE, SHARE_POST) -> PinnedMessageType */

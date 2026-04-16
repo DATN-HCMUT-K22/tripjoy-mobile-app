@@ -6,7 +6,9 @@ import { logout as logoutAction } from "@/store/slices/authSlice";
 import { clearQueue } from "@/store/slices/messageNotificationSlice";
 import { storage } from "@/utils/storage";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -197,7 +199,16 @@ export function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
               {user && (
                 <View style={styles.userInfo}>
                   <View style={styles.avatarContainer}>
-                    <Ionicons name="person" size={32} color="#34B27D" />
+                    <Image
+                      source={{
+                        uri: resolveUserAvatarUri(
+                          user.avatarUrl,
+                          user.fullName || user.username
+                        ),
+                      }}
+                      style={styles.avatarImage}
+                      contentFit="cover"
+                    />
                   </View>
                   <View style={styles.userDetails}>
                     <Text style={styles.userName} numberOfLines={1}>
@@ -260,6 +271,22 @@ export function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
                   </>
                 )}
               </ScrollView>
+
+              {isGuest && (
+                <View style={styles.bottomCtaContainer}>
+                  <TouchableOpacity
+                    style={styles.loginCtaButton}
+                    onPress={() => {
+                      onClose();
+                      router.push("/login");
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.loginCtaText}>Đăng nhập</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </SafeAreaView>
           </Animated.View>
         </View>
@@ -326,6 +353,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
   userDetails: {
     flex: 1,
@@ -373,5 +405,32 @@ const styles = StyleSheet.create({
   logoutText: {
     color: "#EF4444",
     fontWeight: "600",
+  },
+  bottomCtaContainer: {
+    paddingHorizontal: Platform.OS === "ios" ? 20 : 16,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === "ios" ? 14 : 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+    backgroundColor: "#FFFFFF",
+  },
+  loginCtaButton: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#34B27D",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  loginCtaText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });

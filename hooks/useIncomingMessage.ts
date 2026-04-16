@@ -4,6 +4,7 @@ import { socketService } from "@/services/socket/socketService";
 import { store } from "@/store";
 import { useChatStore } from "@/stores/chat.store";
 import { ChatMessageResponse } from "@/types/message";
+import { useQueryClient } from "@tanstack/react-query";
 import { appStateManager } from "@/utils/appStateManager";
 import { useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
@@ -18,6 +19,7 @@ import { AppState, AppStateStatus } from "react-native";
  * - Nếu appState === "active" nhưng không trong chat: show notification
  */
 export function useIncomingMessage() {
+  const queryClient = useQueryClient();
   const {
     currentChatId,
     addMessage,
@@ -114,7 +116,7 @@ export function useIncomingMessage() {
       // If not cached, try to get from message metadata
       if (groupId === undefined && (message as any).group_id) {
         groupId = (message as any).group_id;
-        if (groupId !== null) {
+        if (groupId != null) {
           setConversationGroupId(conversationId, groupId);
         }
       }
@@ -259,6 +261,36 @@ export function useIncomingMessage() {
       }
     };
   }, [addMessage, increaseUnread, getConversationGroupId, setConversationGroupId, setCurrentChatId]);
+
+  /** BE: `new_conversation` — làm mới inbox */
+  useEffect(() => {
+    const handleNewConversation = () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    };
+
+    let cancelled = false;
+
+    const setup = async () => {
+      const state = store.getState();
+      if (!state.auth.isAuthenticated || !state.auth.user?.id) return;
+      try {
+        if (!socketService.isConnected()) {
+          await socketService.connect();
+        }
+        if (cancelled) return;
+        socketService.onNewConversation(handleNewConversation);
+      } catch {
+        /* socket lỗi — inbox vẫn load khi user vào màn */
+      }
+    };
+
+    setup();
+
+    return () => {
+      cancelled = true;
+      socketService.offNewConversation(handleNewConversation);
+    };
+  }, [queryClient]);
 
   return {
     setCurrentChatId,

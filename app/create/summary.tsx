@@ -1,14 +1,18 @@
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
-import { formatCurrencyVND } from "@/utils/format";
-import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
+import { useGenerateItinerary } from "@/hooks/useItineraries";
+import { tripSetupToAiGenerateRequest } from "@/utils/aiItineraryGenerate";
+import { formatCurrencyVND } from "@/utils/format";
+import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -21,13 +25,52 @@ export default function TripSummaryScreen() {
   const { exitToHome } = useCreateTripExitToHome();
   const { tripData } = useTripSetup();
   const { resetItinerary } = useItinerary();
+  const generateAiMutation = useGenerateItinerary();
+
+  const handleAiGenerate = async () => {
+    const dest =
+      tripData.destinationLocation?.name?.trim() ||
+      tripData.location?.name?.trim();
+    if (!dest) {
+      showErrorToast(
+        "Chưa chọn điểm đến",
+        "Hãy chọn điểm đến trước khi dùng lịch AI.",
+      );
+      return;
+    }
+    if (!tripData.startDate || !tripData.endDate) {
+      showErrorToast(
+        "Chưa chọn thời gian",
+        "Bạn cần chọn ngày bắt đầu và kết thúc chuyến đi.",
+      );
+      return;
+    }
+    try {
+      const body = tripSetupToAiGenerateRequest(tripData);
+      const res = await generateAiMutation.mutateAsync(body);
+      const id = res?.id;
+      if (!id) {
+        showErrorToast(
+          "Không nhận được lịch trình",
+          "Phản hồi từ máy chủ thiếu mã lịch. Thử lại sau.",
+        );
+        return;
+      }
+      router.push({
+        pathname: "/create/ai-wait",
+        params: { itineraryId: id },
+      } as any);
+    } catch (e) {
+      showErrorToast("Không khởi tạo được lịch AI", e);
+    }
+  };
 
   const selectedBudgetOption = budgetOptions.find(
-    (opt) => opt.id === tripData.budget
+    (opt) => opt.id === tripData.budget,
   );
 
   const selectedTripTypes = tripTypeOptions.filter((type) =>
-    tripData.tripTypes.includes(type.id)
+    tripData.tripTypes.includes(type.id),
   );
 
   const calculateDays = () => {
@@ -65,7 +108,10 @@ export default function TripSummaryScreen() {
           <Ionicons name="arrow-back-outline" size={24} color="#000" />
         </TouchableOpacity>
         <View className="min-w-0 flex-1 items-center justify-center px-1">
-          <Text className="text-center text-xl font-bold text-black" numberOfLines={1}>
+          <Text
+            className="text-center text-xl font-bold text-black"
+            numberOfLines={1}
+          >
             Tóm tắt chuyến đi
           </Text>
         </View>
@@ -278,15 +324,23 @@ export default function TripSummaryScreen() {
       <View className="px-6 py-4 bg-white items-center border-t border-gray-200">
         <TouchableOpacity
           activeOpacity={0.8}
-          className=""
-          onPress={() => {
-            // Navigate to AI creation
-            console.log("AI creation");
-          }}
+          disabled={generateAiMutation.isPending}
+          onPress={handleAiGenerate}
         >
-          <Text className="text-lg font-bold text-[#2BB673] text-center leading-relaxed">
-            Hãy để Tripjoy tạo lịch trình cho bạn!
-          </Text>
+          {generateAiMutation.isPending ? (
+            <View className="flex-row items-center justify-center gap-2 py-1">
+              <ActivityIndicator color="#2BB673" />
+              <Text className="text-base font-semibold text-[#2BB673]">
+                Đang gửi yêu cầu…
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text className="text-lg font-bold text-[#2BB673] text-center leading-relaxed">
+                Hãy để Tripjoy tạo lịch trình cho bạn!
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
 
         <View className="w-full flex-row items-center justify-center px-1">

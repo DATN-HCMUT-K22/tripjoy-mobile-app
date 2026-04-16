@@ -18,7 +18,8 @@ import { useRouter } from "expo-router";
  * Hook để lấy danh sách tất cả groups
  * Nếu EXPO_PUBLIC_MOCK_DATA = true thì dùng mock data, ngược lại call API
  */
-export function useGroups() {
+export function useGroups(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   return useQuery({
     queryKey: ["groups"],
     queryFn: async () => {
@@ -35,6 +36,7 @@ export function useGroups() {
     },
     staleTime: 0, // Data luôn được coi là stale, sẽ refetch khi cần
     gcTime: 5 * 60 * 1000, // Cache 5 phút (đổi tên từ cacheTime)
+    enabled,
   });
 }
 
@@ -79,9 +81,6 @@ export function useCreateGroup() {
     onSuccess: (data: Group) => {
       // Invalidate và refetch groups list
       queryClient.invalidateQueries({ queryKey: ["groups"] });
-
-      // Hiển thị toast thành công
-      showSuccessToast("Tạo nhóm thành công!");
 
       // Điều hướng về màn danh sách nhóm
       router.push("/groups");

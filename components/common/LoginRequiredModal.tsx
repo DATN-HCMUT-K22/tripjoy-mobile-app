@@ -21,7 +21,7 @@ export function LoginRequiredModal({
 
   const handleCancel = () => {
     onClose();
-    router.back();
+    router.replace("/(tabs)");
   };
 
   return (
@@ -37,10 +37,9 @@ export function LoginRequiredModal({
             <Ionicons name="lock-closed" size={48} color="#2EC989" />
           </View>
 
-          <Text style={styles.title}>Đăng nhập để tiếp tục</Text>
+          <Text style={styles.title}>Bạn cần đăng nhập để tiếp tục</Text>
           <Text style={styles.message}>
-            Bạn cần đăng nhập để thực hiện thao tác này. Vui lòng đăng nhập để
-            tiếp tục sử dụng ứng dụng.
+            Bạn cần đăng nhập để tiếp tục sử dụng tính năng này.
           </Text>
 
           <View style={styles.buttonContainer}>

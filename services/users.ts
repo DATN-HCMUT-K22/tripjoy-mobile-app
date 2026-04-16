@@ -7,6 +7,14 @@ export interface GetUsersResponse {
   data: User[];
 }
 
+export interface UserPageDto {
+  content: User[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+}
+
 /**
  * Body tạo user mới (theo UserCreationRequest trong tài liệu API)
  */
@@ -41,8 +49,22 @@ export interface UserUpdateRequest {
 
 /**
  * Lấy danh sách tất cả users (admin view)
- * GET /users
+ * GET /users?page=&size=&q=
  */
+export const getUsersPage = (params?: {
+  q?: string;
+  page?: number;
+  size?: number;
+}) =>
+  httpClient.get<ApiResponse<UserPageDto>>("/users", {
+    params: {
+      ...(params?.q ? { q: params.q } : {}),
+      page: params?.page ?? 0,
+      size: params?.size ?? 20,
+    },
+  });
+
+/** @deprecated Dùng getUsersPage thay cho response phân trang mới */
 export const getUsers = () => httpClient.get<GetUsersResponse>("/users");
 
 /**

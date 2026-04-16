@@ -5,7 +5,7 @@ import {
 import { Location } from "@/types/trip";
 import React, { createContext, ReactNode, useContext, useState } from "react";
 
-interface TripSetupData {
+export interface TripSetupData {
   location: Location | null; // Điểm đến (giữ để tương thích)
   departureLocation: Location | null; // Điểm đi
   destinationLocation: Location | null; // Điểm đến

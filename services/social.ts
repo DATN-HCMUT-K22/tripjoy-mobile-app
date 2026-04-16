@@ -19,8 +19,38 @@ export interface Post {
 
 export interface GetPostsResponse {
   code: number;
-  data: Post[];
+  data:
+    | Post[]
+    | {
+        content?: Post[];
+        totalElements?: number;
+        totalPages?: number;
+        size?: number;
+        number?: number;
+      };
 }
+
+export type GetPostsParams = {
+  q?: string;
+  hashtag?: string;
+  creator_id?: string;
+  itinerary_id?: string;
+  start_date?: string;
+  end_date?: string;
+  min_days?: number;
+  max_days?: number;
+  min_budget?: number;
+  max_budget?: number;
+  min_people?: number;
+  max_people?: number;
+  origin_id?: string;
+  destination_id?: string;
+  page?: number;
+  size?: number;
+  /** @deprecated Dùng size theo Spring pagination */
+  limit?: number;
+  sort?: string;
+};
 
 export interface LikePostResponse {
   code: number;
@@ -53,9 +83,12 @@ export interface CommentPostResponse {
  * Lấy danh sách posts (public - không cần auth)
  * Nếu có token, server sẽ trả về thêm thông tin như isLiked, isBookmarked
  */
-export const getPosts = (params?: { page?: number; limit?: number }) =>
+export const getPosts = (params?: GetPostsParams) =>
   httpClient.get<GetPostsResponse>("/posts", {
-    params,
+    params: {
+      ...params,
+      ...(params?.size === undefined && params?.limit ? { size: params.limit } : {}),
+    },
     skipAuth: false, // Optional auth - có token thì gửi, không có thì không gửi
   });
 

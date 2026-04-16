@@ -8,6 +8,7 @@ export default function CreateLayout() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="ai-wait" />
       <Stack.Screen name="add-location" />
       <Stack.Screen name="adjust-itinerary" />
       <Stack.Screen name="budget" />

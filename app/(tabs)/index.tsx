@@ -6,6 +6,7 @@ import { SocialHeader } from "@/components/social/SocialHeader";
 import { TabMenu } from "@/components/social/TabMenu";
 import { useAuthLogger } from "@/hooks/useAuthLogger";
 import { useConversations } from "@/hooks/useConversations";
+import { useGuestMode } from "@/hooks/useGuestMode";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import {
@@ -16,6 +17,7 @@ import {
   useSharePost,
 } from "@/hooks/useSocial";
 import { TabType } from "@/types/social";
+import { useAppSelector } from "@/store/hooks";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, SafeAreaView, ScrollView, View } from "react-native";
@@ -23,6 +25,12 @@ import { ActivityIndicator, SafeAreaView, ScrollView, View } from "react-native"
 export default function HomeScreen() {
   const router = useRouter();
   const { requireAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
+  const { isGuest } = useGuestMode();
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
+  /** Chỉ gọi API cần đăng nhập khi thật sự có phiên (không chỉ "không phải guest" — tránh 401 ở màn login / trước khi đăng nhập). */
+  const shouldLoadAuthenticatedData =
+    isGuest === false && (isAuthenticated || !!accessToken);
   const { data: allPosts = [], isLoading: postsLoading } = usePosts();
   const likePostMutation = useLikePost();
   const bookmarkPostMutation = useBookmarkPost();
@@ -54,13 +62,19 @@ export default function HomeScreen() {
   >(null);
 
   // Lấy conversations để tính unread count
-  const { conversations } = useConversations();
-  const { unreadCount: notificationUnreadCount } = useNotifications();
+  const { conversations } = useConversations({
+    enabled: shouldLoadAuthenticatedData,
+  });
+  const { unreadCount } = useNotifications({
+    enabled: shouldLoadAuthenticatedData,
+  });
+  const notificationUnreadCount = shouldLoadAuthenticatedData ? unreadCount : 0;
 
   // Tổng unread_count từ tất cả conversation
   const unreadConversationsCount = useMemo(() => {
+    if (!shouldLoadAuthenticatedData) return 0;
     return conversations.reduce((sum, conv) => sum + (conv.unread_count ?? 0), 0);
-  }, [conversations]);
+  }, [conversations, shouldLoadAuthenticatedData]);
 
   // Reset activeIcon khi quay lại màn này
   useFocusEffect(
@@ -142,7 +156,10 @@ export default function HomeScreen() {
 
         <SearchBar onSearch={handleSearch} />
 
-        <TabMenu activeTab={activeTab} onTabChange={setActiveTab} />
+        <TabMenu
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
 
         <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
           <View className="pb-4">
@@ -165,7 +182,28 @@ export default function HomeScreen() {
           </View>
         </ScrollView>
 
-        <BottomNavigation />
+        <BottomNavigation
+          onExplorePress={async () => {
+            await requireAuth(async () => {
+              router.push("/explore");
+            });
+          }}
+          onCreatePress={async () => {
+            await requireAuth(async () => {
+              router.push("/create");
+            });
+          }}
+          onCommunityPress={async () => {
+            await requireAuth(async () => {
+              router.push("/groups");
+            });
+          }}
+          onProfilePress={async () => {
+            await requireAuth(async () => {
+              router.push("/profile");
+            });
+          }}
+        />
       </View>
 
       <LoginRequiredModal
