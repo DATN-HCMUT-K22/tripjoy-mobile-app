@@ -1,6 +1,8 @@
 import { conversationService } from "@/services/conversations";
 import { useChatStore } from "@/stores/chat.store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAppDispatch } from "@/store/hooks";
+import { setConversationsFromServer, resetUnread } from "@/store/slices/conversationSlice";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
 
@@ -10,6 +12,7 @@ const isApiSuccess = (code?: number) => code === 0 || code === 1000;
  */
 export function useConversations(options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
   const enabled = options?.enabled ?? true;
   const reconcileUnreadFromServer = useChatStore((state) => state.reconcileUnreadFromServer);
   const setUnread = useChatStore((state) => state.setUnread);
@@ -29,7 +32,13 @@ export function useConversations(options?: { enabled?: boolean }) {
         for (const conversation of response.data) {
           unreadSnapshot[conversation.id] = Math.max(0, conversation.unread_count ?? 0);
         }
+
+        // Zustand reconciliation for backward compatibility
         reconcileUnreadFromServer(unreadSnapshot);
+
+        // Redux reconciliation for conversation list (source of truth)
+        dispatch(setConversationsFromServer(response.data));
+
         return response.data;
       }
       throw new Error(response.message || "Failed to load conversations");
@@ -89,7 +98,13 @@ export function useConversations(options?: { enabled?: boolean }) {
       throw new Error(response.message || "Failed to mark conversation as read");
     },
     onSuccess: ({ conversationId }) => {
+      // Zustand update
       setUnread(conversationId, 0);
+
+      // Redux update
+      dispatch(resetUnread({ conversationId }));
+
+      // React Query cache update
       queryClient.setQueryData(["conversations"], (prev: any) => {
         if (!Array.isArray(prev)) return prev;
         return prev.map((conversation: any) =>

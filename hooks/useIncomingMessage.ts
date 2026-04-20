@@ -8,6 +8,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { appStateManager } from "@/utils/appStateManager";
 import { useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
+import { messageDeduper } from "@/utils/messageDeduplication";
+import { incrementUnreadOptimistic, updateLastMessage, setConnectionStatus } from "@/store/slices/conversationSlice";
 
 /**
  * Hook để xử lý incoming messages từ socket
@@ -60,6 +62,12 @@ export function useIncomingMessage() {
 
   useEffect(() => {
     const handleReceiveMessage = async (message: ChatMessageResponse) => {
+      // 🔥 DEDUPLICATION CHECK - Block duplicate socket events
+      if (messageDeduper.isDuplicate(message.id)) {
+        console.log('[useIncomingMessage] 🚫 Duplicate message blocked:', message.id);
+        return;
+      }
+
       // Lấy currentChatId từ store mới nhất mỗi lần nhận message (tránh stale closure)
       // Zustand store có method getState() để lấy state mới nhất
       const latestCurrentChatId = useChatStore.getState().currentChatId;
@@ -85,7 +93,7 @@ export function useIncomingMessage() {
         senderId,
         deviceInfo: `User: ${currentUserId?.substring(0, 8)}...`,
       });
-      
+
       // Debug: Log tất cả state để kiểm tra
       const allState = useChatStore.getState();
       console.log("[useIncomingMessage] 🔍 Debug - Full chat store state:", {
@@ -96,6 +104,17 @@ export function useIncomingMessage() {
 
       // Always store message trong store (kể cả tin nhắn của chính mình, để đồng bộ UI)
       addMessage(conversationId, message);
+
+      // 🔥 Redux: Update last message preview
+      store.dispatch(updateLastMessage({
+        conversationId,
+        message: {
+          id: message.id,
+          message_content: message.message_content,
+          created_at: message.created_at,
+          sender: message.sender,
+        },
+      }));
 
       // If user is in the current chat, don't increase unread or show notification
       if (isCurrentChat && isAppActive) {
@@ -151,6 +170,8 @@ export function useIncomingMessage() {
       if (!isAppActive) {
         console.log("[useIncomingMessage] App not active, showing notification");
         increaseUnread(conversationId);
+        // 🔥 Redux: Increment unread count
+        store.dispatch(incrementUnreadOptimistic({ conversationId }));
         await notificationService.showMessageNotification(message, senderName, groupId);
         return;
       }
@@ -165,6 +186,8 @@ export function useIncomingMessage() {
           conversationId,
         });
         increaseUnread(conversationId);
+        // 🔥 Redux: Increment unread count
+        store.dispatch(incrementUnreadOptimistic({ conversationId }));
         try {
           await notificationService.showMessageNotification(message, senderName, groupId);
           console.log("[useIncomingMessage] ✅ Notification service called successfully");
@@ -227,6 +250,8 @@ export function useIncomingMessage() {
         if (socket) {
           reconnectListener = () => {
             console.log("[useIncomingMessage] 🔄 Socket reconnected, ensuring listener is active");
+            // 🔥 Redux: Update connection status
+            store.dispatch(setConnectionStatus('connected'));
             if (callbackRef.current && isMounted) {
               // Re-register listener sau khi reconnect (socketService.onReceiveMessage sẽ tự check duplicate)
               socketService.onReceiveMessage(callbackRef.current);
@@ -234,8 +259,22 @@ export function useIncomingMessage() {
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
             queryClient.refetchQueries({ queryKey: ["conversations"], type: "active" });
           };
-          
+
+          // 🔥 Redux: Track disconnect status
+          const disconnectListener = () => {
+            console.log("[useIncomingMessage] 🔌 Socket disconnected");
+            store.dispatch(setConnectionStatus('disconnected'));
+          };
+
+          // 🔥 Redux: Track reconnect attempts
+          const reconnectAttemptListener = () => {
+            console.log("[useIncomingMessage] 🔄 Socket reconnecting...");
+            store.dispatch(setConnectionStatus('connecting'));
+          };
+
           socket.on("connect", reconnectListener);
+          socket.on("disconnect", disconnectListener);
+          socket.on("reconnect_attempt" as any, reconnectAttemptListener);
         }
         
         // Return cleanup function

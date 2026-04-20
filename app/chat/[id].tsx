@@ -1,12 +1,16 @@
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
+import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
+import { TypingIndicatorBubble } from "@/components/chat/TypingIndicatorBubble";
 import { useMessages } from "@/hooks/useMessages";
 import { conversationService } from "@/services/conversations";
 import { uploadImage, uploadVideo } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
+import { setActiveConversation, resetUnread as resetUnreadRedux, selectTypingUsersForConversation } from "@/store/slices/conversationSlice";
+import { useSocketTyping } from "@/hooks/useSocketTyping";
 import { useChatStore } from "@/stores/chat.store";
 import { ChatMessageResponse, getChatSenderId } from "@/types/message";
 import { getDirectPeerAvatarUrl } from "@/utils/conversationDisplay";
@@ -18,10 +22,9 @@ import { Video, ResizeMode } from "expo-av";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   StyleSheet,
   Text,
   TextInput,
@@ -29,6 +32,8 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import type { FlashListProps } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
@@ -86,7 +91,7 @@ export default function ChatScreen() {
   const [input, setInput] = useState("");
   const [selectedMedia, setSelectedMedia] = useState<PickedMedia | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
+  const flashListRef = useRef<FlashList<any> | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [likesModalVisible, setLikesModalVisible] = useState(false);
@@ -111,11 +116,15 @@ export default function ChatScreen() {
     if (conversationId) {
       setCurrentChatId(conversationId);
       resetUnread(conversationId);
+      // 🔥 Redux: Set active conversation to prevent unread increment
+      dispatch(setActiveConversation(conversationId));
       return () => {
         setCurrentChatId(null);
+        // 🔥 Redux: Clear active conversation
+        dispatch(setActiveConversation(null));
       };
     }
-  }, [conversationId, setCurrentChatId, resetUnread]);
+  }, [conversationId, setCurrentChatId, resetUnread, dispatch]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -126,7 +135,10 @@ export default function ChatScreen() {
         try {
           await conversationService.markConversationRead(conversationId);
           if (!cancelled) {
+            // Zustand update
             resetUnread(conversationId);
+            // 🔥 Redux: Reset unread count
+            dispatch(resetUnreadRedux({ conversationId }));
           }
           return;
         } catch {
@@ -144,7 +156,7 @@ export default function ChatScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [conversationId, resetUnread]);
+  }, [conversationId, resetUnread, dispatch]);
 
   // Đảm bảo header bị tắt
   useLayoutEffect(() => {
@@ -267,7 +279,7 @@ export default function ChatScreen() {
         hasScrolledToBottomRef.current = true;
         const delay = params.scrollToEnd === "1" ? 300 : 100;
         const t = setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
+          flashListRef.current?.scrollToEnd({ animated: true });
         }, delay);
         return () => clearTimeout(t);
       }
@@ -282,7 +294,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (typingUsers.length > 0) {
       const t = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        flashListRef.current?.scrollToEnd({ animated: true });
       }, 100);
       return () => clearTimeout(t);
     }
@@ -315,7 +327,7 @@ export default function ChatScreen() {
     const idx = messageIdToIndex.get(params.messageId);
     if (idx === undefined) return;
     const t = setTimeout(() => {
-      flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+      flashListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
     }, 200);
     return () => clearTimeout(t);
   }, [params.messageId, messageIdToIndex]);
@@ -428,27 +440,55 @@ export default function ChatScreen() {
   };
 
   // Handle like/unlike (API: is_liked_by_current_user)
-  const handleLike = async (messageId: string) => {
+  // 🔥 Memoize callbacks for FlashList performance
+  const handleLike = useCallback(async (messageId: string) => {
     const msg = messages.find((m) => m.id === messageId);
     if (!msg) return;
     const isLiked = msg.is_liked_by_current_user === true;
     if (isLiked) await unlikeMessage(messageId);
     else await likeMessage(messageId);
-  };
+  }, [messages, unlikeMessage, likeMessage]);
 
-  const handleShowLikes = (messageId: string) => {
+  const handleShowLikes = useCallback((messageId: string) => {
     setLikesModalMessageId(messageId);
     setLikesModalVisible(true);
-  };
+  }, []);
+
+  // 🔥 Memoize renderItem for FlashList
+  const renderItem = useCallback(({ item }: { item: any }) => {
+    if (item.type === "date") {
+      return <DateSeparator dateString={item.date} />;
+    }
+    return (
+      <ChatBubble
+        message={item.message}
+        currentUserId={currentUser?.id}
+        showSenderName={item.showSenderName}
+        onLike={handleLike}
+        onShowLikes={handleShowLikes}
+      />
+    );
+  }, [currentUser?.id, handleLike, handleShowLikes]);
+
+  const keyExtractor = useCallback((item: any) => item.key, []);
+
+  // 🔥 Typing indicators
+  const { emitTyping, emitStopTyping } = useSocketTyping(conversationId);
+  const typingUsersRedux = useAppSelector(state =>
+    conversationId ? selectTypingUsersForConversation(state, conversationId) : []
+  );
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
   return (
-    <SafeAreaView 
-      style={[styles.container, { backgroundColor: isDark ? "#000000" : "#FFFFFF" }]} 
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: isDark ? "#000000" : "#FFFFFF" }]}
       edges={["top"]}
     >
+      {/* 🔥 Connection Status Banner */}
+      <ConnectionBanner />
+
       {/* Header */}
       <View style={[styles.header, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderBottomColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
         <View className="flex-row items-center">
@@ -488,24 +528,12 @@ export default function ChatScreen() {
 
       {/* Messages */}
       <View style={styles.messagesWrapper}>
-        <FlatList
-          ref={flatListRef}
+        <FlashList
+          ref={flashListRef}
           data={listData}
-          keyExtractor={(item) => item.key}
-          renderItem={({ item }) => {
-            if (item.type === "date") {
-              return <DateSeparator dateString={item.date} />;
-            }
-            return (
-              <ChatBubble
-                message={item.message}
-                currentUserId={currentUser?.id}
-                showSenderName={item.showSenderName}
-                onLike={handleLike}
-                onShowLikes={handleShowLikes}
-              />
-            );
-          }}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          estimatedItemSize={80 as any}
           style={styles.messagesContainer}
           contentContainerStyle={[
             styles.messagesContent,
@@ -543,6 +571,13 @@ export default function ChatScreen() {
             )
           }
           ListFooterComponent={
+            typingUsersRedux.length > 0 ? (
+              <TypingIndicatorBubble
+                usernames={typingUsersRedux.map(u => u.username)}
+              />
+            ) : null
+          }
+          ListFooterComponent={
             <>
               {typingUsers.length > 0 && (
                 <View style={styles.typingWrapper}>
@@ -575,7 +610,7 @@ export default function ChatScreen() {
           <TouchableOpacity
             style={styles.scrollToBottomButton}
             onPress={() => {
-              flatListRef.current?.scrollToEnd({ animated: true });
+              flashListRef.current?.scrollToEnd({ animated: true });
               setShowScrollToBottom(false);
             }}
             activeOpacity={0.8}
@@ -633,7 +668,14 @@ export default function ChatScreen() {
         <View className="flex-1">
           <TextInput
             value={input}
-            onChangeText={setInput}
+            onChangeText={(text) => {
+              setInput(text);
+              if (text.length > 0) {
+                emitTyping();
+              } else {
+                emitStopTyping();
+              }
+            }}
             placeholder="Nhắn tin..."
             className="bg-gray-100 rounded-full px-4 py-3 text-sm"
             placeholderTextColor="#9CA3AF"
