@@ -1,29 +1,42 @@
-import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
 import { DraggableApiItineraryItemCard } from "@/components/itinerary/DraggableApiItineraryItemCard";
+import ItineraryRouteMap, {
+  type ItineraryMapLocation,
+} from "@/components/itinerary/ItineraryRouteMap";
 import {
   ITINERARY_STATUS,
   useAiModifyItinerary,
   useItineraryDetail,
   useItineraryTripItems,
 } from "@/hooks/useItineraries";
-import type { LocationResponse, TripItemResponse } from "@/services/itineraries";
+import type {
+  LocationResponse,
+  TripItemResponse,
+} from "@/services/itineraries";
 import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
 import { getLocationImageUrl } from "@/utils/locationImages";
-import { showErrorToast } from "@/utils/toast";
+import { LocationForMap } from "@/utils/mapLocations";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
-  Linking,
   Modal,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 function dayKeyFromItem(row: TripItemResponse): string {
   const raw = (row.start_time || "").trim();
@@ -66,7 +79,9 @@ function formatTimeRange(start?: string, durationMin?: number): string {
   return `${startStr} – ${endStr}`;
 }
 
-function coordsFromLocation(loc?: LocationResponse | null): LocationForMap | null {
+function coordsFromLocation(
+  loc?: LocationResponse | null,
+): LocationForMap | null {
   const lat = loc?.routable_lat ?? loc?.lat;
   const lng = loc?.routable_lng ?? loc?.lng;
   if (
@@ -128,9 +143,9 @@ export default function ItineraryDetailScreen() {
 
   const [adjustModalVisible, setAdjustModalVisible] = useState(false);
   const [selectedUnwantedIds, setSelectedUnwantedIds] = useState<string[]>([]);
-  const [draftItemsByDay, setDraftItemsByDay] = useState<Record<string, TripItemResponse[]>>(
-    {}
-  );
+  const [draftItemsByDay, setDraftItemsByDay] = useState<
+    Record<string, TripItemResponse[]>
+  >({});
 
   const {
     data: detail,
@@ -156,7 +171,10 @@ export default function ItineraryDetailScreen() {
     const cur = normItineraryStatus(detail?.status);
     const prev = prevDetailStatusRef.current;
     prevDetailStatusRef.current = cur;
-    if (prev === ITINERARY_STATUS.GENERATING && cur !== ITINERARY_STATUS.GENERATING) {
+    if (
+      prev === ITINERARY_STATUS.GENERATING &&
+      cur !== ITINERARY_STATUS.GENERATING
+    ) {
       void refetchDetail();
       void refetchItems();
     }
@@ -167,7 +185,7 @@ export default function ItineraryDetailScreen() {
       if (!itineraryId) return;
       void refetchDetail();
       void refetchItems();
-    }, [itineraryId, refetchDetail, refetchItems])
+    }, [itineraryId, refetchDetail, refetchItems]),
   );
 
   const itemsByDay = useMemo(() => {
@@ -233,7 +251,7 @@ export default function ItineraryDetailScreen() {
     setSelectedUnwantedIds((prev) =>
       prev.includes(placeId)
         ? prev.filter((x) => x !== placeId)
-        : [...prev, placeId]
+        : [...prev, placeId],
     );
   }, []);
 
@@ -254,7 +272,8 @@ export default function ItineraryDetailScreen() {
     normItineraryStatus(detail?.status) === ITINERARY_STATUS.GENERATING;
   const normalizedStatus = normItineraryStatus(detail?.status);
   const canEditItineraryItems =
-    normalizedStatus === ITINERARY_STATUS.DRAFT || normalizedStatus === ITINERARY_STATUS.FAILED;
+    normalizedStatus === ITINERARY_STATUS.DRAFT ||
+    normalizedStatus === ITINERARY_STATUS.FAILED;
   const statusInteractionMessage = canEditItineraryItems
     ? "Bạn có thể xoá và sắp xếp lại địa điểm trong lịch."
     : "Lịch trình đã khóa chỉnh sửa do trạng thái hiện tại.";
@@ -272,7 +291,7 @@ export default function ItineraryDetailScreen() {
   const hasDateRange = !!(detail?.start_date || detail?.end_date);
   const dateRangeLabel = hasDateRange
     ? `${formatHeaderDate(detail?.start_date)} – ${formatHeaderDate(
-        detail?.end_date || detail?.start_date
+        detail?.end_date || detail?.start_date,
       )}`
     : "";
   const coverUri =
@@ -283,7 +302,13 @@ export default function ItineraryDetailScreen() {
   const moveItem = useCallback((dayKey: string, from: number, to: number) => {
     setDraftItemsByDay((prev) => {
       const rows = [...(prev[dayKey] || [])];
-      if (from < 0 || to < 0 || from >= rows.length || to >= rows.length || from === to) {
+      if (
+        from < 0 ||
+        to < 0 ||
+        from >= rows.length ||
+        to >= rows.length ||
+        from === to
+      ) {
         return prev;
       }
       const [picked] = rows.splice(from, 1);
@@ -292,17 +317,20 @@ export default function ItineraryDetailScreen() {
     });
   }, []);
 
-  const deleteItem = useCallback((dayKey: string, id?: string, fallbackIndex?: number) => {
-    if (!id && typeof fallbackIndex !== "number") return;
-    setDraftItemsByDay((prev) => {
-      const rows = [...(prev[dayKey] || [])];
-      const next =
-        typeof id === "string" && id.length > 0
-          ? rows.filter((x) => x.id !== id)
-          : rows.filter((_, idx) => idx !== fallbackIndex);
-      return { ...prev, [dayKey]: next };
-    });
-  }, []);
+  const deleteItem = useCallback(
+    (dayKey: string, id?: string, fallbackIndex?: number) => {
+      if (!id && typeof fallbackIndex !== "number") return;
+      setDraftItemsByDay((prev) => {
+        const rows = [...(prev[dayKey] || [])];
+        const next =
+          typeof id === "string" && id.length > 0
+            ? rows.filter((x) => x.id !== id)
+            : rows.filter((_, idx) => idx !== fallbackIndex);
+        return { ...prev, [dayKey]: next };
+      });
+    },
+    [],
+  );
 
   if (!itineraryId) {
     return (
@@ -316,14 +344,19 @@ export default function ItineraryDetailScreen() {
             <Ionicons name="arrow-back-outline" size={24} color="#000" />
           </TouchableOpacity>
           <View className="min-w-0 flex-1 items-center px-1">
-            <Text className="text-center text-xl font-bold text-black" numberOfLines={1}>
+            <Text
+              className="text-center text-xl font-bold text-black"
+              numberOfLines={1}
+            >
               Lịch trình
             </Text>
           </View>
           <View className="h-10 w-12" />
         </View>
         <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-center text-gray-600">Thiếu mã lịch trình.</Text>
+          <Text className="text-center text-gray-600">
+            Thiếu mã lịch trình.
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -370,233 +403,280 @@ export default function ItineraryDetailScreen() {
         </View>
       ) : (
         <View className="flex-1">
-        <ScrollView
-          className="flex-1"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingBottom: showAiAdjustFab ? 100 : 28,
-          }}
-        >
-          {loading && !detail && tripItems.length === 0 ? (
-            <View className="items-center py-16">
-              <ActivityIndicator size="large" color="#2BB673" />
-              <Text className="mt-3 text-sm text-gray-500">Đang tải lịch trình…</Text>
-            </View>
-          ) : null}
-
-          {isGeneratingItinerary ? (
-            <View className="mx-4 mt-3 flex-row items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-              <ActivityIndicator color="#2BB673" />
-              <Text className="ml-3 flex-1 text-sm leading-5 text-emerald-900">
-                AI đang cập nhật lịch trình. Danh sách sẽ tự làm mới khi xong.
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Thẻ tóm tắt chuyến — giống manual */}
-          <View className="px-4 pt-4">
-            <View className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-              {coverUri ? (
-                <Image
-                  source={{ uri: coverUri }}
-                  style={{ width: "100%", height: 200 }}
-                  contentFit="cover"
-                />
-              ) : (
-                <View
-                  className="w-full items-center justify-center bg-gray-200"
-                  style={{ height: 200 }}
-                >
-                  <Ionicons name="image-outline" size={48} color="#9CA3AF" />
-                </View>
-              )}
-              <View className="border-t border-gray-100 px-4 py-3">
-                <Text className="text-base font-bold text-black" numberOfLines={2}>
-                  {title}
-                </Text>
-                {dateRangeLabel ? (
-                  <Text className="mt-1 text-xs text-gray-500">{dateRangeLabel}</Text>
-                ) : null}
-              </View>
-            </View>
-          </View>
-
-          {/* Cụm nút hành động */}
-          <View className="px-4 pt-4">
-            <TouchableOpacity
-              onPress={() => router.push({ pathname: '/itinerary/expenses', params: { itineraryId: String(itineraryId) } })}
-              activeOpacity={0.8}
-              className="flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3"
-            >
-              <Ionicons name="wallet-outline" size={20} color="#047857" />
-              <Text className="ml-2 font-semibold text-emerald-800 text-sm">Quản lý chi phí</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Status Banner - show once at top */}
-          {dayKeys.length > 0 && (
-            <View className="px-4 pt-4">
-              <View
-                className={`rounded-xl border px-3 py-2.5 ${
-                  canEditItineraryItems
-                    ? "border-emerald-200 bg-emerald-50"
-                    : "border-amber-200 bg-amber-50"
-                }`}
-              >
-                <Text
-                  className={`text-xs leading-5 ${
-                    canEditItineraryItems ? "text-emerald-900" : "text-amber-900"
-                  }`}
-                >
-                  {statusInteractionMessage}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Error loading items - show once */}
-          {itemsError && !itemsLoading ? (
-            <View className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <Text className="text-sm text-amber-900">
-                {itemsErr instanceof Error
-                  ? itemsErr.message
-                  : "Không tải được danh sách hoạt động."}
-              </Text>
-              <TouchableOpacity
-                className="mt-2 self-start"
-                onPress={() => void refetchItems()}
-                activeOpacity={0.8}
-              >
-                <Text className="text-sm font-semibold text-primary">Thử lại</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-
-          {/* Loading items */}
-          {itemsLoading && tripItems.length === 0 ? (
-            <View className="items-center py-10">
-              <ActivityIndicator color="#2BB673" />
-              <Text className="mt-2 text-sm text-gray-500">Đang tải hoạt động…</Text>
-            </View>
-          ) : null}
-
-          {/* Loop through ALL days */}
-          <View className="px-4 pt-4">
-            {dayKeys.map((dayKey, dayIndex) => {
-              const itemsForDay = draftItemsByDay[dayKey] || [];
-
-              // Calculate day number and label
-              const dayNumber = dayIndex + 1;
-              const dayLabel = formatDayChipLabel(dayKey);
-
-              // Calculate map pins for this day
-              const mapPinsForDay: ItineraryMapLocation[] = [];
-              for (const row of itemsForDay) {
-                const coords = coordsFromLocation(row.location);
-                if (coords) {
-                  mapPinsForDay.push({
-                    id: row.id ?? row.location?.id ?? `pin-${dayKey}-${mapPinsForDay.length}`,
-                    latitude: coords.latitude,
-                    longitude: coords.longitude,
-                    title: locationDisplayName(row.location),
-                  });
-                }
-              }
-
-              return (
-                <View key={dayKey} className="mb-6">
-                  {/* Day Header */}
-                  <Text className="text-lg font-bold text-black mb-4">
-                    {dayKey === "_nodate" ? "Chưa phân ngày" : `Ngày ${dayNumber}: ${dayLabel}`}
-                  </Text>
-
-                  {/* Map for this day */}
-                  {mapPinsForDay.length > 0 ? (
-                    <View className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                      <ItineraryRouteMap
-                        locations={mapPinsForDay}
-                        height={220}
-                        mode="DRIVING"
-                      />
-                    </View>
-                  ) : null}
-
-                  {/* Items list */}
-                  {itemsForDay.length > 0 ? (
-                    <View className="pb-2">
-                      {itemsForDay.map((row, index) => {
-                        const imageUrl = getLocationImageUrl(row.location);
-                        return (
-                          <DraggableApiItineraryItemCard
-                            key={row.id ?? `row-${dayKey}-${index}`}
-                            row={row}
-                            index={index}
-                            total={itemsForDay.length}
-                            canInteract={canEditItineraryItems}
-                            imageUrl={imageUrl}
-                            onMove={(from, to) => moveItem(dayKey, from, to)}
-                            onDelete={() => deleteItem(dayKey, row.id, index)}
-                          />
-                        );
-                      })}
-
-                      {/* Add location button */}
-                      {showAddLocationButton ? (
-                        <TouchableOpacity
-                          activeOpacity={0.85}
-                          className="mt-2 flex-row items-center justify-center rounded-lg border border-dashed border-primary bg-[#D1FAE5] py-3"
-                          onPress={openAdjustModal}
-                        >
-                          <Ionicons name="add-circle-outline" size={18} color="#34B27D" />
-                          <Text className="ml-2 text-sm font-semibold text-primary">
-                            Thêm hoặc thay địa điểm bằng AI
-                          </Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                  ) : !loading ? (
-                    <View className="mb-4 items-center rounded-2xl border border-dashed border-gray-200 px-4 py-8">
-                      <Ionicons name="calendar-outline" size={36} color="#9CA3AF" />
-                      <Text className="mt-2 text-center text-sm text-gray-600">
-                        Chưa có hoạt động nào trong ngày này.
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
-
-          {/* Warning about missing place IDs - show once at bottom */}
-          {tripItems.length > 0 &&
-          placesForAiModify.length === 0 &&
-          !detailBlocking &&
-          !isGeneratingItinerary ? (
-            <View className="mx-4 mb-4 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5">
-              <Text className="text-center text-xs leading-5 text-amber-900">
-                Lịch có hoạt động nhưng thiếu mã địa điểm từ máy chủ — không thể dùng AI
-                thay thế điểm đến.
-              </Text>
-            </View>
-          ) : null}
-        </ScrollView>
-
-        {showAiAdjustFab ? (
-          <TouchableOpacity
-            onPress={openAdjustModal}
-            activeOpacity={0.88}
-            className="absolute right-5 flex-row items-center rounded-full bg-primary px-4 py-3.5 shadow-lg"
-            style={{
-              bottom: Math.max(insets.bottom, 12) + 8,
-              elevation: 6,
+          <ScrollView
+            className="flex-1"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingBottom: showAiAdjustFab ? 100 : 28,
             }}
           >
-            <Ionicons name="sparkles" size={22} color="#ffffff" />
-            <Text className="ml-2 text-sm font-semibold text-white">
-              Điều chỉnh AI
-            </Text>
-          </TouchableOpacity>
-        ) : null}
+            {loading && !detail && tripItems.length === 0 ? (
+              <View className="items-center py-16">
+                <ActivityIndicator size="large" color="#2BB673" />
+                <Text className="mt-3 text-sm text-gray-500">
+                  Đang tải lịch trình…
+                </Text>
+              </View>
+            ) : null}
+
+            {isGeneratingItinerary ? (
+              <View className="mx-4 mt-3 flex-row items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                <ActivityIndicator color="#2BB673" />
+                <Text className="ml-3 flex-1 text-sm leading-5 text-emerald-900">
+                  AI đang cập nhật lịch trình. Danh sách sẽ tự làm mới khi xong.
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Thẻ tóm tắt chuyến — giống manual */}
+            <View className="px-4 pt-4">
+              <View className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                {coverUri ? (
+                  <Image
+                    source={{ uri: coverUri }}
+                    style={{ width: "100%", height: 200 }}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View
+                    className="w-full items-center justify-center bg-gray-200"
+                    style={{ height: 200 }}
+                  >
+                    <Ionicons name="image-outline" size={48} color="#9CA3AF" />
+                  </View>
+                )}
+                <View className="border-t border-gray-100 px-4 py-3">
+                  <Text
+                    className="text-base font-bold text-black"
+                    numberOfLines={2}
+                  >
+                    {title}
+                  </Text>
+                  {dateRangeLabel ? (
+                    <Text className="mt-1 text-xs text-gray-500">
+                      {dateRangeLabel}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+
+            {/* Cụm nút hành động */}
+            <View className="px-4 pt-4">
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({
+                    pathname: "/itinerary/expenses",
+                    params: { itineraryId: String(itineraryId) },
+                  })
+                }
+                activeOpacity={0.8}
+                className="flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3"
+              >
+                <Ionicons name="wallet-outline" size={20} color="#047857" />
+                <Text className="ml-2 font-semibold text-emerald-800 text-sm">
+                  Quản lý chi phí
+                </Text>
+              </TouchableOpacity>
+
+              {/* Travel Notebook Button */}
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(`/itinerary/notebook?id=${String(itineraryId)}`)
+                }
+                activeOpacity={0.8}
+                className="mt-3 flex-row items-center justify-center rounded-xl border border-purple-200 bg-purple-50 py-3"
+              >
+                <Ionicons name="book-outline" size={20} color="#7C3AED" />
+                <Text className="ml-2 font-semibold text-purple-800 text-sm">
+                  Hướng dẫn du lịch AI
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Status Banner - show once at top */}
+            {dayKeys.length > 0 && (
+              <View className="px-4 pt-4">
+                <View
+                  className={`rounded-xl border px-3 py-2.5 ${
+                    canEditItineraryItems
+                      ? "border-emerald-200 bg-emerald-50"
+                      : "border-amber-200 bg-amber-50"
+                  }`}
+                >
+                  <Text
+                    className={`text-xs leading-5 ${
+                      canEditItineraryItems
+                        ? "text-emerald-900"
+                        : "text-amber-900"
+                    }`}
+                  >
+                    {statusInteractionMessage}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Error loading items - show once */}
+            {itemsError && !itemsLoading ? (
+              <View className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <Text className="text-sm text-amber-900">
+                  {itemsErr instanceof Error
+                    ? itemsErr.message
+                    : "Không tải được danh sách hoạt động."}
+                </Text>
+                <TouchableOpacity
+                  className="mt-2 self-start"
+                  onPress={() => void refetchItems()}
+                  activeOpacity={0.8}
+                >
+                  <Text className="text-sm font-semibold text-primary">
+                    Thử lại
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {/* Loading items */}
+            {itemsLoading && tripItems.length === 0 ? (
+              <View className="items-center py-10">
+                <ActivityIndicator color="#2BB673" />
+                <Text className="mt-2 text-sm text-gray-500">
+                  Đang tải hoạt động…
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Loop through ALL days */}
+            <View className="px-4 pt-4">
+              {dayKeys.map((dayKey, dayIndex) => {
+                const itemsForDay = draftItemsByDay[dayKey] || [];
+
+                // Calculate day number and label
+                const dayNumber = dayIndex + 1;
+                const dayLabel = formatDayChipLabel(dayKey);
+
+                // Calculate map pins for this day
+                const mapPinsForDay: ItineraryMapLocation[] = [];
+                for (const row of itemsForDay) {
+                  const coords = coordsFromLocation(row.location);
+                  if (coords) {
+                    mapPinsForDay.push({
+                      id:
+                        row.id ??
+                        row.location?.id ??
+                        `pin-${dayKey}-${mapPinsForDay.length}`,
+                      latitude: coords.latitude,
+                      longitude: coords.longitude,
+                      title: locationDisplayName(row.location),
+                    });
+                  }
+                }
+
+                return (
+                  <View key={dayKey} className="mb-6">
+                    {/* Day Header */}
+                    <Text className="text-lg font-bold text-black mb-4">
+                      {dayKey === "_nodate"
+                        ? "Chưa phân ngày"
+                        : `Ngày ${dayNumber}: ${dayLabel}`}
+                    </Text>
+
+                    {/* Map for this day */}
+                    {mapPinsForDay.length > 0 ? (
+                      <View className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                        <ItineraryRouteMap
+                          locations={mapPinsForDay}
+                          height={220}
+                          mode="DRIVING"
+                        />
+                      </View>
+                    ) : null}
+
+                    {/* Items list */}
+                    {itemsForDay.length > 0 ? (
+                      <View className="pb-2">
+                        {itemsForDay.map((row, index) => {
+                          const imageUrl = getLocationImageUrl(row.location);
+                          return (
+                            <DraggableApiItineraryItemCard
+                              key={row.id ?? `row-${dayKey}-${index}`}
+                              row={row}
+                              index={index}
+                              total={itemsForDay.length}
+                              canInteract={canEditItineraryItems}
+                              imageUrl={imageUrl}
+                              onMove={(from, to) => moveItem(dayKey, from, to)}
+                              onDelete={() => deleteItem(dayKey, row.id, index)}
+                            />
+                          );
+                        })}
+
+                        {/* Add location button */}
+                        {showAddLocationButton ? (
+                          <TouchableOpacity
+                            activeOpacity={0.85}
+                            className="mt-2 flex-row items-center justify-center rounded-lg border border-dashed border-primary bg-[#D1FAE5] py-3"
+                            onPress={openAdjustModal}
+                          >
+                            <Ionicons
+                              name="add-circle-outline"
+                              size={18}
+                              color="#34B27D"
+                            />
+                            <Text className="ml-2 text-sm font-semibold text-primary">
+                              Thêm hoặc thay địa điểm bằng AI
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : !loading ? (
+                      <View className="mb-4 items-center rounded-2xl border border-dashed border-gray-200 px-4 py-8">
+                        <Ionicons
+                          name="calendar-outline"
+                          size={36}
+                          color="#9CA3AF"
+                        />
+                        <Text className="mt-2 text-center text-sm text-gray-600">
+                          Chưa có hoạt động nào trong ngày này.
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Warning about missing place IDs - show once at bottom */}
+            {tripItems.length > 0 &&
+            placesForAiModify.length === 0 &&
+            !detailBlocking &&
+            !isGeneratingItinerary ? (
+              <View className="mx-4 mb-4 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5">
+                <Text className="text-center text-xs leading-5 text-amber-900">
+                  Lịch có hoạt động nhưng thiếu mã địa điểm từ máy chủ — không
+                  thể dùng AI thay thế điểm đến.
+                </Text>
+              </View>
+            ) : null}
+          </ScrollView>
+
+          {showAiAdjustFab ? (
+            <TouchableOpacity
+              onPress={openAdjustModal}
+              activeOpacity={0.88}
+              className="absolute right-5 flex-row items-center rounded-full bg-primary px-4 py-3.5 shadow-lg"
+              style={{
+                bottom: Math.max(insets.bottom, 12) + 8,
+                elevation: 6,
+              }}
+            >
+              <Ionicons name="sparkles" size={22} color="#ffffff" />
+              <Text className="ml-2 text-sm font-semibold text-white">
+                Điều chỉnh AI
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
 
@@ -627,8 +707,8 @@ export default function ItineraryDetailScreen() {
           </View>
 
           <Text className="px-4 pt-3 text-sm leading-5 text-gray-600">
-            Chọn các địa điểm bạn không muốn giữ trong lịch. Tripjoy sẽ gọi AI để gợi ý thay
-            thế (có thể mất vài phút).
+            Chọn các địa điểm bạn không muốn giữ trong lịch. Tripjoy sẽ gọi AI
+            để gợi ý thay thế (có thể mất vài phút).
           </Text>
 
           <ScrollView
@@ -649,7 +729,9 @@ export default function ItineraryDetailScreen() {
                     activeOpacity={0.85}
                     onPress={() => toggleUnwantedPlace(p.placeId)}
                     className={`mb-2 flex-row items-center rounded-xl border px-3 py-3 ${
-                      checked ? "border-primary bg-emerald-50" : "border-gray-200 bg-white"
+                      checked
+                        ? "border-primary bg-emerald-50"
+                        : "border-gray-200 bg-white"
                     }`}
                   >
                     <Ionicons
@@ -658,11 +740,16 @@ export default function ItineraryDetailScreen() {
                       color={checked ? "#2BB673" : "#9CA3AF"}
                     />
                     <View className="ml-3 min-w-0 flex-1">
-                      <Text className="text-base font-semibold text-gray-900" numberOfLines={2}>
+                      <Text
+                        className="text-base font-semibold text-gray-900"
+                        numberOfLines={2}
+                      >
                         {p.label}
                       </Text>
                       {p.dayHint ? (
-                        <Text className="mt-0.5 text-xs text-gray-500">{p.dayHint}</Text>
+                        <Text className="mt-0.5 text-xs text-gray-500">
+                          {p.dayHint}
+                        </Text>
                       ) : null}
                     </View>
                   </TouchableOpacity>
