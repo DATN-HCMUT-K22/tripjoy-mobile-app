@@ -1,85 +1,259 @@
 import { CreateGroupModal, GroupCard, GroupListItem } from "@/components/group";
+import { SwipeableGroupCard, SwipeAction } from "@/components/group/SwipeableGroupCard";
 import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
+import { AppBottomSheet } from "@/components/common/AppBottomSheet";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
 import { SocialHeader } from "@/components/social/SocialHeader";
 import { useConversations } from "@/hooks/useConversations";
 import { useGuestMode } from "@/hooks/useGuestMode";
-import { useGroups } from "@/hooks/useGroups";
+import { useGroups, useLeaveGroup } from "@/hooks/useGroups";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useGroupPreferences } from "@/hooks/useGroupPreferences";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useAppSelector } from "@/store/hooks";
+import { Group } from "@/types/group";
+import { getCurrentUserRole, isGroupLeader } from "@/utils/roleUtils";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import * as Haptics from "expo-haptics";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import {
   SafeAreaView,
-  ScrollView,
+  SectionList,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
+  RefreshControl,
 } from "react-native";
 
 type ViewMode = "card" | "list";
 
+interface GroupAction {
+  icon: string;
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+}
+
 export default function GroupsScreen() {
   const router = useRouter();
+  const currentUser = useAppSelector((state) => state.auth.user);
   const { requireAuth, checkAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
   const { isGuest } = useGuestMode();
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const accessToken = useAppSelector((state) => state.auth.accessToken);
   const shouldLoadAuthenticatedData = !isGuest && (isAuthenticated || !!accessToken);
+
   const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
-  const [activeIcon, setActiveIcon] = useState<
-    "notification" | "message" | null
-  >(null);
+  const [activeIcon, setActiveIcon] = useState<"notification" | "message" | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [leaveGroupId, setLeaveGroupId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Debounce search query
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   // Fetch groups từ API
   const { data: groups = [], isLoading, error, refetch } = useGroups({
     enabled: shouldLoadAuthenticatedData,
   });
-  // Danh sách conversation nhóm để tìm conversationId khi nhấn icon mũi tên
-  const { groupConversations, refetch: refetchConversations } =
-    useConversations({ enabled: shouldLoadAuthenticatedData });
 
-  // Reset activeIcon, refetch groups và conversations khi quay lại màn này
+  // Fetch conversations
+  const { groupConversations, refetch: refetchConversations } = useConversations({
+    enabled: shouldLoadAuthenticatedData,
+  });
+
+  // Pin/unpin functionality
+  const { pinnedGroupIds, togglePin, isPinned: checkIsPinned } = useGroupPreferences();
+
+  // Leave group mutation
+  const leaveGroupMutation = useLeaveGroup();
+
+  // Filter groups by search query
+  const filteredGroups = useMemo(() => {
+    if (!debouncedSearch) return groups;
+    const query = debouncedSearch.toLowerCase();
+    return groups.filter(
+      (g) =>
+        g.name.toLowerCase().includes(query) ||
+        g.description?.toLowerCase().includes(query)
+    );
+  }, [groups, debouncedSearch]);
+
+  // Split groups into pinned and regular
+  const { pinnedGroups, regularGroups } = useMemo(() => {
+    const pinned = filteredGroups.filter((g) => pinnedGroupIds.includes(g.id));
+    const regular = filteredGroups.filter((g) => !pinnedGroupIds.includes(g.id));
+    return { pinnedGroups: pinned, regularGroups: regular };
+  }, [filteredGroups, pinnedGroupIds]);
+
+  // Create sections for SectionList
+  const sections = useMemo(() => {
+    const result = [];
+    if (pinnedGroups.length > 0) {
+      result.push({ title: "📌 ĐÃ GHIM", data: pinnedGroups });
+    }
+    if (regularGroups.length > 0) {
+      result.push({
+        title: `📚 NHÓM CỦA TÔI (${regularGroups.length})`,
+        data: regularGroups,
+      });
+    }
+    return result;
+  }, [pinnedGroups, regularGroups]);
+
+  // Reset activeIcon, refetch groups & conversations
   useFocusEffect(
     useCallback(() => {
-      console.log("🔍 [GroupsScreen] useFocusEffect triggered - refetching groups & conversations");
+      console.log("🔍 [GroupsScreen] useFocusEffect triggered");
       setActiveIcon(null);
       void checkAuth();
       if (!shouldLoadAuthenticatedData) return;
-      refetch().then(() => {
-        console.log("✅ [GroupsScreen] Groups refetched successfully");
-      }).catch((err) => {
-        console.error("❌ [GroupsScreen] Failed to refetch groups:", err);
-      });
+      refetch().catch(() => {});
       refetchConversations().catch(() => {});
     }, [checkAuth, refetch, refetchConversations, shouldLoadAuthenticatedData])
   );
 
-  // Log khi component mount hoặc groups thay đổi
-  useEffect(() => {
-    console.log("📊 [GroupsScreen] Groups data:", {
-      count: groups.length,
-      isLoading,
-      hasError: !!error,
-    });
-  }, [groups, isLoading, error]);
+  // Handle pull-to-refresh
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refetch(), refetchConversations()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetch, refetchConversations]);
 
-  // Tính tổng unreadCount từ các conversation nhóm để làm messageCount (badge ở header)
+  // Handle swipe actions
+  const handleSwipeAction = useCallback(
+    (action: SwipeAction, group: Group) => {
+      switch (action) {
+        case "chat": {
+          const conversation = groupConversations.find((c) => c.group_id === group.id);
+          router.push({
+            pathname: `/groups/${group.id}/chat` as any,
+            params: {
+              conversationId: conversation?.id ?? undefined,
+              name: conversation?.name || group.name,
+              avatar: conversation?.avatar ?? group.avatar ?? undefined,
+              memberCount: String(
+                conversation?.members?.length ?? group.members?.length ?? 0
+              ),
+            },
+          } as any);
+          break;
+        }
+        case "info":
+          router.push(`/groups/${group.id}` as any);
+          break;
+        case "leave":
+          setLeaveGroupId(group.id);
+          setShowLeaveConfirm(true);
+          break;
+      }
+    },
+    [router, groupConversations]
+  );
+
+  // Handle long press - show context menu
+  const handleLongPress = useCallback((group: Group) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedGroup(group);
+    setShowContextMenu(true);
+  }, []);
+
+  // Context menu actions
+  const groupActions = useMemo((): GroupAction[] => {
+    if (!selectedGroup || !currentUser) return [];
+
+    const isPinned = checkIsPinned(selectedGroup.id);
+    const userRole = getCurrentUserRole(selectedGroup, currentUser.id);
+    const isLeader = isGroupLeader(selectedGroup, currentUser.id);
+
+    const actions: GroupAction[] = [
+      {
+        icon: isPinned ? "pin" : "pin-outline",
+        label: isPinned ? "Bỏ ghim nhóm" : "Ghim lên đầu",
+        onPress: () => {
+          togglePin(selectedGroup.id, selectedGroup.name);
+          setShowContextMenu(false);
+        },
+      },
+      {
+        icon: "exit",
+        label: "Rời nhóm",
+        onPress: () => {
+          setShowContextMenu(false);
+          setLeaveGroupId(selectedGroup.id);
+          setShowLeaveConfirm(true);
+        },
+        danger: true,
+      },
+    ];
+
+    return actions;
+  }, [selectedGroup, currentUser, checkIsPinned, togglePin]);
+
+  // Handle leave group
+  const handleLeaveGroup = useCallback(async () => {
+    if (!leaveGroupId) return;
+
+    try {
+      await leaveGroupMutation.mutateAsync(leaveGroupId);
+      setShowLeaveConfirm(false);
+      setLeaveGroupId(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error("Failed to leave group:", error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  }, [leaveGroupId, leaveGroupMutation]);
+
+  // Tính tổng unreadCount
   const messageCount = groupConversations.reduce(
     (sum, conv) => sum + (conv.unread_count ?? 0),
     0
   );
 
-  // Badge notification dùng chung với màn Home
   const { unreadCount } = useNotifications({ enabled: shouldLoadAuthenticatedData });
   const notificationUnreadCount = shouldLoadAuthenticatedData ? unreadCount : 0;
 
+  // Render group item based on view mode
+  const renderGroupItem = useCallback(
+    ({ item: group }: { item: Group }) => {
+      const conversation = groupConversations.find((c) => c.group_id === group.id) ?? null;
+      const CardComponent = viewMode === "card" ? GroupCard : GroupListItem;
+
+      return (
+        <SwipeableGroupCard
+          group={group}
+          conversation={conversation}
+          onSwipeAction={(action) => handleSwipeAction(action, group)}
+          isPinned={checkIsPinned(group.id)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onLongPress={() => handleLongPress(group)}
+            delayLongPress={500}
+          >
+            <CardComponent group={group} conversation={conversation} />
+          </TouchableOpacity>
+        </SwipeableGroupCard>
+      );
+    },
+    [viewMode, groupConversations, handleSwipeAction, checkIsPinned, handleLongPress]
+  );
+
   return (
     <SafeAreaView className="flex-1 bg-white">
-      {/* Social Header với notification và chat icons */}
+      {/* Social Header */}
       <SocialHeader
         notificationCount={notificationUnreadCount}
         messageCount={messageCount}
@@ -103,9 +277,9 @@ export default function GroupsScreen() {
         <View className="flex-row items-center justify-between mb-2">
           <Text className="text-2xl font-bold text-black">Nhóm của tôi</Text>
         </View>
-        <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center justify-between mb-3">
           <Text className="text-base font-bold text-gray-600">
-            {isLoading ? "Đang tải..." : `${groups.length} nhóm`}
+            {isLoading ? "Đang tải..." : `${filteredGroups.length} nhóm`}
           </Text>
           <View className="flex-row items-center gap-3">
             {/* View Toggle */}
@@ -145,62 +319,61 @@ export default function GroupsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Search Bar */}
+        <View className="flex-row items-center bg-gray-100 rounded-lg px-4 py-3">
+          <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+          <TextInput
+            className="flex-1 ml-2 text-base"
+            placeholder="Tìm kiếm nhóm..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#9CA3AF"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Content */}
-      <ScrollView
-        className="flex-1"
-        showsVerticalScrollIndicator={false}
-        style={{ backgroundColor: "#E8F5E9" }}
-      >
-        <View className="px-4 py-4" style={{ backgroundColor: "#E8F5E9" }}>
-          {isLoading ? (
-            <View className="items-center justify-center py-20">
-              <Text className="text-gray-500 text-base">
-                Đang tải danh sách nhóm...
-              </Text>
-            </View>
-          ) : error ? (
-            <View className="items-center justify-center py-20">
-              <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
-              <Text className="text-gray-500 text-base mt-4">
-                Có lỗi xảy ra khi tải danh sách nhóm
-              </Text>
-            </View>
-          ) : groups.length === 0 ? (
-            <View className="items-center justify-center py-20">
-              <Ionicons name="people-outline" size={64} color="#ccc" />
-              <Text className="text-gray-500 text-base mt-4">
-                Chưa có nhóm nào
-              </Text>
-            </View>
-          ) : (
-            <>
-              {viewMode === "card" ? (
-                <>
-                  {groups.map((group) => (
-                    <GroupCard
-                      key={group.id}
-                      group={group}
-                      conversation={groupConversations.find((c) => c.group_id === group.id) ?? null}
-                    />
-                  ))}
-                </>
-              ) : (
-                <>
-                  {groups.map((group) => (
-                    <GroupListItem
-                      key={group.id}
-                      group={group}
-                      conversation={groupConversations.find((c) => c.group_id === group.id) ?? null}
-                    />
-                  ))}
-                </>
-              )}
-            </>
-          )}
+      {isLoading ? (
+        <View className="flex-1 items-center justify-center">
+          <Text className="text-gray-500 text-base">Đang tải danh sách nhóm...</Text>
         </View>
-      </ScrollView>
+      ) : error ? (
+        <View className="flex-1 items-center justify-center">
+          <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
+          <Text className="text-gray-500 text-base mt-4">
+            Có lỗi xảy ra khi tải danh sách nhóm
+          </Text>
+        </View>
+      ) : filteredGroups.length === 0 ? (
+        <View className="flex-1 items-center justify-center">
+          <Ionicons name="people-outline" size={64} color="#ccc" />
+          <Text className="text-gray-500 text-base mt-4">
+            {searchQuery ? "Không tìm thấy nhóm nào" : "Chưa có nhóm nào"}
+          </Text>
+        </View>
+      ) : (
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          renderItem={renderGroupItem}
+          renderSectionHeader={({ section }) => (
+            <View className="bg-gray-100 px-4 py-2">
+              <Text className="text-xs font-bold text-gray-600">{section.title}</Text>
+            </View>
+          )}
+          contentContainerStyle={{ backgroundColor: "#E8F5E9", paddingBottom: 16 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+          }
+        />
+      )}
 
       {/* Bottom Navigation */}
       <BottomNavigation />
@@ -210,9 +383,59 @@ export default function GroupsScreen() {
         visible={isCreateModalVisible}
         onClose={() => setIsCreateModalVisible(false)}
       />
+
+      {/* Login Required Modal */}
       <LoginRequiredModal
         visible={showLoginModal}
         onClose={() => setShowLoginModal(false)}
+      />
+
+      {/* Context Menu Bottom Sheet */}
+      <AppBottomSheet
+        visible={showContextMenu}
+        onClose={() => setShowContextMenu(false)}
+        title="Tùy chọn nhóm"
+        snapPoints={["25%", "40%"]}
+      >
+        <View className="pb-4">
+          {groupActions.map((action, index) => (
+            <TouchableOpacity
+              key={index}
+              className={`flex-row items-center px-4 py-4 ${
+                action.danger ? "bg-red-50" : ""
+              }`}
+              onPress={action.onPress}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={action.icon as any}
+                size={24}
+                color={action.danger ? "#EF4444" : "#000"}
+              />
+              <Text
+                className={`ml-3 text-base ${
+                  action.danger ? "text-red-500" : "text-gray-900"
+                }`}
+              >
+                {action.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </AppBottomSheet>
+
+      {/* Leave Group Confirmation */}
+      <AppDialogModal
+        visible={showLeaveConfirm}
+        onRequestClose={() => setShowLeaveConfirm(false)}
+        title="Rời nhóm?"
+        message="Bạn sẽ không còn quyền truy cập vào tin nhắn và nội dung của nhóm này."
+        variant="warning"
+        primaryLabel="Rời nhóm"
+        secondaryLabel="Hủy"
+        onPrimaryPress={handleLeaveGroup}
+        onSecondaryPress={() => setShowLeaveConfirm(false)}
+        primaryDestructive
       />
     </SafeAreaView>
   );

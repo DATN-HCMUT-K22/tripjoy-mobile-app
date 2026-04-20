@@ -16,6 +16,11 @@ export interface GroupMember {
   created_by?: string;           // Optional
   updated_at?: string;           // Optional
   updated_by?: string;           // Optional
+
+  // Extended fields for UI
+  addedBy?: string;              // Username who added this member
+  joinedAt?: string;             // ISO timestamp
+  lastActive?: string;           // ISO timestamp
 }
 
 /**
@@ -36,6 +41,11 @@ export interface Group {
   created_by?: string | null;     // Optional
   updated_at?: string;           // Optional
   updated_by?: string | null;     // Optional
+
+  // Client-side fields for UI state
+  isPinned?: boolean;            // Client-side pinned state
+  unreadCount?: number;          // Unread messages from conversation
+  currentUserRole?: 'LEADER' | 'CO_LEADER' | 'MEMBER';  // Current user's role
 }
 
 // Legacy interface for backward compatibility
