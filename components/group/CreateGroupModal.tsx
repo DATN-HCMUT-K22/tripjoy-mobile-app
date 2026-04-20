@@ -77,10 +77,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
   const currentUser = useAppSelector((state) => state.auth.user);
 
-  const displayUsers = useMemo(
-    () => searchResults.filter((u) => u.id !== currentUser?.id),
-    [searchResults, currentUser?.id]
-  );
+  const displayUsers = useMemo(() => {
+    const list = Array.isArray(searchResults) ? searchResults : [];
+    return list.filter((u) => u.id !== currentUser?.id);
+  }, [searchResults, currentUser?.id]);
 
   useEffect(() => {
     if (visible) {

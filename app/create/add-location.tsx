@@ -1,9 +1,15 @@
+import { EXPO_PUBLIC_MOCK_DATA } from "@/config/env";
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTempLocation } from "@/contexts/TempLocationContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { mockAttractions } from "@/data/mockAttractions";
-import { EXPO_PUBLIC_MOCK_DATA } from "@/config/env";
-import type { ExternalPlaceSnapshot } from "@/types/places";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
+import {
+  isGooglePlacesConfigured,
+  searchNearbyPlacesForTrip,
+  searchTextPlacesNear,
+  type GooglePlaceListItem,
+} from "@/services/googlePlaces";
 import {
   autocompleteLocations,
   isLocationApiSuccess,
@@ -15,18 +21,12 @@ import {
   type LocationAutocompleteSuggestionDto,
   type LocationSearchHitDto,
 } from "@/services/locations";
-import {
-  isGooglePlacesConfigured,
-  searchNearbyPlacesForTrip,
-  searchTextPlacesNear,
-  type GooglePlaceListItem,
-} from "@/services/googlePlaces";
-import { locationSearchHitToExternalSnapshot } from "@/utils/mapLocationDtoToTrip";
+import type { ExternalPlaceSnapshot } from "@/types/places";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import { locationSearchHitToExternalSnapshot } from "@/utils/mapLocationDtoToTrip";
 import { showErrorToast } from "@/utils/toast";
-import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
+import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -446,16 +446,14 @@ export default function AddLocationScreen() {
           <Ionicons name="search-outline" size={20} color="#666" />
           <TextInput
             className="flex-1 ml-2 text-base text-gray-800"
-            placeholder="Lọc theo tên (để trống = xem tất cả)…"
+            placeholder="Lọc theo tên…"
             placeholderTextColor="#999"
             value={searchText}
             onChangeText={setSearchText}
             returnKeyType="search"
           />
         </View>
-        {hintUnderSearch ? (
-          <Text className="text-xs text-gray-500 mt-2">{hintUnderSearch}</Text>
-        ) : null}
+      
         {!useLiveApi && !EXPO_PUBLIC_MOCK_DATA ? (
           <Text className="text-xs text-gray-500 mt-2">
             Điểm đến chưa có tọa độ — đang dùng danh sách mẫu theo tỉnh.
@@ -548,21 +546,7 @@ export default function AddLocationScreen() {
                               : "bg-gray-100"
                         }`}
                       >
-                        <Text
-                          className={`text-[10px] font-semibold ${
-                            row.source === "google"
-                              ? "text-emerald-700"
-                              : row.source === "tripjoy"
-                                ? "text-sky-700"
-                                : "text-gray-600"
-                          }`}
-                        >
-                          {row.source === "google"
-                            ? "Google Places"
-                            : row.source === "tripjoy"
-                              ? row.sourceLabel || "TripJoy Nearby"
-                              : "Dữ liệu mẫu"}
-                        </Text>
+                      
                       </View>
                     </View>
                   </View>

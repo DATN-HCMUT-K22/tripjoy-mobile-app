@@ -5,6 +5,24 @@ export type LocationForMap = {
   longitude: number;
 };
 
+/**
+ * Lấy tọa độ từ URL Google Maps dạng ...?q=lat,lng (hoặc đoạn cuối chuỗi q là tọa độ).
+ */
+export function parseLatLngFromGoogleMapsUrl(
+  url: string | undefined
+): { latitude: number; longitude: number } | null {
+  if (!url || typeof url !== "string") return null;
+  const qMatch = url.match(/[?&]q=([^&]+)/);
+  if (!qMatch) return null;
+  let q = decodeURIComponent(qMatch[1].replace(/\+/g, " "));
+  const coordTail = q.match(/(-?\d+\.?\d*),\s*(-?\d+\.?\d*)\s*$/);
+  if (!coordTail) return null;
+  const latitude = parseFloat(coordTail[1]);
+  const longitude = parseFloat(coordTail[2]);
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
+  return { latitude, longitude };
+}
+
 /** Lọc các `Location` có tọa độ hợp lệ để đưa lên MapView / Static Map. */
 export function tripLocationsToMapPins(locations: Location[]): LocationForMap[] {
   return locations

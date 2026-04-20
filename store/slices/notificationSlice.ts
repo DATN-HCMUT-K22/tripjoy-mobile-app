@@ -114,6 +114,24 @@ const notificationSlice = createSlice({
       }
       state.items = state.items.filter((n) => n.id !== id);
     },
+    addNotification(state, action: PayloadAction<NotificationResponse>) {
+      const notification = action.payload;
+
+      // Tránh trùng ID
+      const existingIndex = state.items.findIndex((n) => n.id === notification.id);
+      if (existingIndex >= 0) {
+        // Update existing notification
+        state.items[existingIndex] = notification;
+      } else {
+        // Add new notification at the beginning (most recent first)
+        state.items.unshift(notification);
+
+        // Increment unread count if notification is unread
+        if (!notification.is_read) {
+          state.unreadCount = state.unreadCount + 1;
+        }
+      }
+    },
     resetNotificationState() {
       return initialState;
     },
@@ -132,6 +150,7 @@ export const {
   markAllAsRead,
   updateArchiveState,
   removeNotification,
+  addNotification,
   resetNotificationState,
 } = notificationSlice.actions;
 

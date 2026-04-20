@@ -13,6 +13,10 @@ export interface ServerToClientEvents {
   notification: (notification: NotificationObject) => void;
   /** Khi được thêm vào hội thoại DIRECT mới */
   new_conversation: (conversation: ConversationResponse) => void;
+  /** Khi có người like post */
+  post_liked: (payload: PostLikedEvent) => void;
+  /** Khi post được update (like/comment count changes) */
+  post_updated: (payload: PostUpdatedEvent) => void;
   error: (error: ErrorResponse) => void;
 }
 
@@ -38,6 +42,22 @@ export interface NotificationObject {
   created_at: string;
 }
 
+export interface PostLikedEvent {
+  postId: string;
+  likerId: string;
+  likerName: string;
+  likerAvatar: string | null;
+  postCreatorId: string;
+  totalLikes: number;
+}
+
+export interface PostUpdatedEvent {
+  postId: string;
+  likes: number;
+  comments: number;
+  shares: number;
+}
+
 // Re-export ChatMessageResponse từ types
 export type { ChatMessageResponse };
 
@@ -59,6 +79,8 @@ class SocketService {
   > = new Set();
   private notificationCallbacks: Set<(notification: NotificationObject) => void> = new Set();
   private newConversationCallbacks: Set<(conversation: ConversationResponse) => void> = new Set();
+  private postLikedCallbacks: Set<(payload: PostLikedEvent) => void> = new Set();
+  private postUpdatedCallbacks: Set<(payload: PostUpdatedEvent) => void> = new Set();
 
   // Flags để đảm bảo chỉ đăng ký socket listener một lần
   private isMessageListenerRegistered = false;
@@ -68,6 +90,8 @@ class SocketService {
   private isPinUpdateListenerRegistered = false;
   private isNotificationListenerRegistered = false;
   private isNewConversationListenerRegistered = false;
+  private isPostLikedListenerRegistered = false;
+  private isPostUpdatedListenerRegistered = false;
 
   /**
    * Kết nối với Socket.IO server
@@ -279,6 +303,8 @@ class SocketService {
       this.pinUpdateCallbacks.clear();
       this.notificationCallbacks.clear();
       this.newConversationCallbacks.clear();
+      this.postLikedCallbacks.clear();
+      this.postUpdatedCallbacks.clear();
       this.isMessageListenerRegistered = false;
       this.isTypingListenerRegistered = false;
       this.isStopTypingListenerRegistered = false;
@@ -286,6 +312,8 @@ class SocketService {
       this.isPinUpdateListenerRegistered = false;
       this.isNotificationListenerRegistered = false;
       this.isNewConversationListenerRegistered = false;
+      this.isPostLikedListenerRegistered = false;
+      this.isPostUpdatedListenerRegistered = false;
     }
   }
 
@@ -800,7 +828,7 @@ class SocketService {
     if (callback) {
       // Remove callback khỏi set
       this.notificationCallbacks.delete(callback);
-      
+
       // Nếu không còn callback nào, remove socket listener
       if (this.notificationCallbacks.size === 0 && this.isNotificationListenerRegistered) {
         this.socket.off("notification");
@@ -812,6 +840,137 @@ class SocketService {
       if (this.isNotificationListenerRegistered) {
         this.socket.off("notification");
         this.isNotificationListenerRegistered = false;
+      }
+    }
+  }
+
+  /**
+   * Listen event: Post Liked
+   * Fired when someone likes a post
+   */
+  onPostLiked(callback: (payload: PostLikedEvent) => void): void {
+    if (!this.socket) {
+      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
+      console.warn("==========================================\n");
+      return;
+    }
+
+    // Thêm callback vào set
+    this.postLikedCallbacks.add(callback);
+
+    // Chỉ đăng ký socket listener một lần
+    if (!this.isPostLikedListenerRegistered) {
+      this.isPostLikedListenerRegistered = true;
+      this.socket.on("post_liked", (payload: PostLikedEvent) => {
+        const timestamp = new Date().toISOString();
+        console.log(`\n❤️ [SOCKET] Post Liked event received [${timestamp}]`);
+        console.log(`Post ID: ${payload.postId}`);
+        console.log(`Liker ID: ${payload.likerId}`);
+        console.log(`Liker Name: ${payload.likerName}`);
+        console.log(`Post Creator ID: ${payload.postCreatorId}`);
+        console.log(`Total Likes: ${payload.totalLikes}`);
+        console.log(`Callbacks count: ${this.postLikedCallbacks.size}`);
+
+        // Gọi tất cả callbacks
+        let callbackIndex = 0;
+        this.postLikedCallbacks.forEach((cb) => {
+          try {
+            callbackIndex++;
+            console.log(`[SOCKET] Calling post_liked callback #${callbackIndex}...`);
+            cb(payload);
+            console.log(`[SOCKET] ✅ Post liked callback #${callbackIndex} completed`);
+          } catch (error) {
+            console.error(`[SOCKET] ❌ Error in post_liked callback #${callbackIndex}:`, error);
+            console.error("Error stack:", (error as Error).stack);
+          }
+        });
+        console.log("==========================================\n");
+      });
+    }
+  }
+
+  /**
+   * Remove listener: post_liked
+   */
+  offPostLiked(callback?: (payload: PostLikedEvent) => void): void {
+    if (!this.socket) return;
+
+    if (callback) {
+      this.postLikedCallbacks.delete(callback);
+      if (this.postLikedCallbacks.size === 0 && this.isPostLikedListenerRegistered) {
+        this.socket.off("post_liked");
+        this.isPostLikedListenerRegistered = false;
+      }
+    } else {
+      this.postLikedCallbacks.clear();
+      if (this.isPostLikedListenerRegistered) {
+        this.socket.off("post_liked");
+        this.isPostLikedListenerRegistered = false;
+      }
+    }
+  }
+
+  /**
+   * Listen event: Post Updated
+   * Fired when post counts (likes/comments/shares) change
+   */
+  onPostUpdated(callback: (payload: PostUpdatedEvent) => void): void {
+    if (!this.socket) {
+      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
+      console.warn("==========================================\n");
+      return;
+    }
+
+    // Thêm callback vào set
+    this.postUpdatedCallbacks.add(callback);
+
+    // Chỉ đăng ký socket listener một lần
+    if (!this.isPostUpdatedListenerRegistered) {
+      this.isPostUpdatedListenerRegistered = true;
+      this.socket.on("post_updated", (payload: PostUpdatedEvent) => {
+        const timestamp = new Date().toISOString();
+        console.log(`\n🔄 [SOCKET] Post Updated event received [${timestamp}]`);
+        console.log(`Post ID: ${payload.postId}`);
+        console.log(`Likes: ${payload.likes}`);
+        console.log(`Comments: ${payload.comments}`);
+        console.log(`Shares: ${payload.shares}`);
+        console.log(`Callbacks count: ${this.postUpdatedCallbacks.size}`);
+
+        // Gọi tất cả callbacks
+        let callbackIndex = 0;
+        this.postUpdatedCallbacks.forEach((cb) => {
+          try {
+            callbackIndex++;
+            console.log(`[SOCKET] Calling post_updated callback #${callbackIndex}...`);
+            cb(payload);
+            console.log(`[SOCKET] ✅ Post updated callback #${callbackIndex} completed`);
+          } catch (error) {
+            console.error(`[SOCKET] ❌ Error in post_updated callback #${callbackIndex}:`, error);
+            console.error("Error stack:", (error as Error).stack);
+          }
+        });
+        console.log("==========================================\n");
+      });
+    }
+  }
+
+  /**
+   * Remove listener: post_updated
+   */
+  offPostUpdated(callback?: (payload: PostUpdatedEvent) => void): void {
+    if (!this.socket) return;
+
+    if (callback) {
+      this.postUpdatedCallbacks.delete(callback);
+      if (this.postUpdatedCallbacks.size === 0 && this.isPostUpdatedListenerRegistered) {
+        this.socket.off("post_updated");
+        this.isPostUpdatedListenerRegistered = false;
+      }
+    } else {
+      this.postUpdatedCallbacks.clear();
+      if (this.isPostUpdatedListenerRegistered) {
+        this.socket.off("post_updated");
+        this.isPostUpdatedListenerRegistered = false;
       }
     }
   }

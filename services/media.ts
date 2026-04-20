@@ -1,5 +1,6 @@
 import { httpClient } from "./http/client";
 import { ApiResponse } from "@/types/user";
+import * as ImageManipulator from 'expo-image-manipulator';
 
 /**
  * Response từ API upload media
@@ -25,6 +26,9 @@ export interface UploadImageOptions {
   fileType?: string; // MIME type (mặc định: image/jpeg)
   folder?: string; // Folder Cloudinary (mặc định: tripjoy/misc)
   timeoutMs?: number; // Timeout upload (mặc định: 60 giây)
+  compress?: boolean; // Compress image before upload (mặc định: true)
+  maxWidth?: number; // Max width for compression (mặc định: 1920)
+  quality?: number; // JPEG quality 0-1 (mặc định: 0.8)
 }
 
 /**
@@ -35,6 +39,38 @@ export interface UploadVideoOptions {
   fileName?: string;
   fileType?: string; // MIME type (mặc định: video/mp4)
   folder?: string;
+}
+
+/**
+ * Compress image before upload to reduce file size
+ * @param fileUri - Local file URI
+ * @param maxWidth - Maximum width (default: 1920px)
+ * @param quality - JPEG quality 0-1 (default: 0.8)
+ * @returns Compressed image URI
+ */
+async function compressImage(
+  fileUri: string,
+  maxWidth: number = 1920,
+  quality: number = 0.8
+): Promise<string> {
+  try {
+    console.log("[compressImage] Compressing image:", { fileUri, maxWidth, quality });
+
+    const result = await ImageManipulator.manipulateAsync(
+      fileUri,
+      [{ resize: { width: maxWidth } }],
+      {
+        compress: quality,
+        format: ImageManipulator.SaveFormat.JPEG,
+      }
+    );
+
+    console.log("[compressImage] Compression complete:", result.uri);
+    return result.uri;
+  } catch (error) {
+    console.warn("[compressImage] Compression failed, using original:", error);
+    return fileUri; // Fallback to original if compression fails
+  }
 }
 
 /**
@@ -51,22 +87,33 @@ export async function uploadImage(
     fileType = "image/jpeg",
     folder,
     timeoutMs = 60000,
+    compress = true,
+    maxWidth = 1920,
+    quality = 0.8,
   } = options;
+
+  // Compress image before upload (if enabled)
+  let uploadUri = fileUri;
+  if (compress) {
+    uploadUri = await compressImage(fileUri, maxWidth, quality);
+  }
 
   // Tạo FormData cho React Native
   // Format cho React Native: { uri, type, name }
   const formData = new FormData();
   formData.append("file", {
-    uri: fileUri,
+    uri: uploadUri,
     type: fileType,
     name: fileName,
   } as any);
-  
+
   console.log("[uploadImage] FormData created:", {
-    fileUri,
+    originalUri: fileUri,
+    uploadUri,
     fileName,
     fileType,
     folder,
+    compressed: compress,
     formDataKeys: formData._parts?.map((p: any) => p[0]) || [],
   });
 
@@ -207,3 +254,52 @@ export async function getUploadSignature(
   return response.data;
 }
 
+/**
+ * Apply Cloudinary transformations to optimize image delivery
+ * @param imageUrl - Original Cloudinary URL
+ * @param transformation - Transformation string (e.g., "c_fill,w_600,h_600")
+ * @returns Transformed URL
+ */
+export function applyCloudinaryTransformation(
+  imageUrl: string,
+  transformation: string
+): string {
+  if (!imageUrl || !imageUrl.includes('cloudinary.com')) {
+    return imageUrl; // Return original if not Cloudinary URL
+  }
+
+  // Insert transformation after /upload/
+  const uploadIndex = imageUrl.indexOf('/upload/');
+  if (uploadIndex === -1) {
+    return imageUrl;
+  }
+
+  const beforeUpload = imageUrl.substring(0, uploadIndex + 8); // Include /upload/
+  const afterUpload = imageUrl.substring(uploadIndex + 8);
+
+  return `${beforeUpload}${transformation}/${afterUpload}`;
+}
+
+/**
+ * Get optimized image URL for feed thumbnail
+ * Uses Cloudinary transformations: c_fill,w_600,h_600,q_80
+ */
+export function getFeedThumbnailUrl(imageUrl: string): string {
+  return applyCloudinaryTransformation(imageUrl, 'c_fill,w_600,h_600,q_80');
+}
+
+/**
+ * Get optimized image URL for full resolution display
+ * Uses Cloudinary transformations: c_limit,w_1920,q_80
+ */
+export function getFullResolutionUrl(imageUrl: string): string {
+  return applyCloudinaryTransformation(imageUrl, 'c_limit,w_1920,q_80');
+}
+
+/**
+ * Get optimized image URL for avatar/profile pictures
+ * Uses Cloudinary transformations: c_fill,w_256,h_256,q_85
+ */
+export function getAvatarUrl(imageUrl: string): string {
+  return applyCloudinaryTransformation(imageUrl, 'c_fill,w_256,h_256,q_85');
+}

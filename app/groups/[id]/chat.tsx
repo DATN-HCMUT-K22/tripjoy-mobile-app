@@ -172,6 +172,35 @@ export default function GroupChatScreen() {
       };
     }
   }, [conversationId, setCurrentChatId, resetUnread]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+    const retryDelays = [300, 800, 1500];
+    const markReadWithRetry = async () => {
+      for (let i = 0; i < retryDelays.length; i++) {
+        try {
+          await conversationService.markConversationRead(conversationId);
+          if (!cancelled) {
+            resetUnread(conversationId);
+          }
+          return;
+        } catch {
+          if (i === retryDelays.length - 1 || cancelled) return;
+          await new Promise((resolve) => setTimeout(resolve, retryDelays[i]));
+        }
+      }
+    };
+
+    const timer = setTimeout(() => {
+      void markReadWithRetry();
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [conversationId, resetUnread]);
   
   // Load conversation info để lấy members và tên nhóm
   const { data: conversation } = useQuery({
@@ -196,6 +225,8 @@ export default function GroupChatScreen() {
       return null;
     },
     enabled: !!conversationId, // Chỉ query nếu có conversationId
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
   });
   
 
@@ -248,6 +279,8 @@ export default function GroupChatScreen() {
       return null;
     },
     enabled: !!groupId, // Load trực tiếp từ groupId
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
   });
 
   // Tính số thành viên — ưu tiên API group/conversation (đúng dữ liệu); params chỉ fallback khi chưa load

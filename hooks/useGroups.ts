@@ -66,9 +66,10 @@ export function useGroup(groupId: string | undefined) {
 /**
  * Hook để tạo group mới
  */
-export function useCreateGroup() {
+export function useCreateGroup(options?: { redirectToGroups?: boolean }) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const shouldRedirectToGroups = options?.redirectToGroups ?? true;
 
   return useMutation({
     mutationFn: async (payload: CreateGroupPayload) => {
@@ -82,8 +83,10 @@ export function useCreateGroup() {
       // Invalidate và refetch groups list
       queryClient.invalidateQueries({ queryKey: ["groups"] });
 
-      // Điều hướng về màn danh sách nhóm
-      router.push("/groups");
+      if (shouldRedirectToGroups) {
+        // Điều hướng về màn danh sách nhóm
+        router.push("/groups");
+      }
     },
     onError: (error: Error) => {
       showErrorToast("Tạo nhóm thất bại", error);

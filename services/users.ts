@@ -1,3 +1,4 @@
+import { UserSimpleResponse } from "@/types/search";
 import { ApiResponse, User } from "@/types/user";
 import { httpClient } from "./http/client";
 
@@ -62,6 +63,16 @@ export const getUsersPage = (params?: {
       page: params?.page ?? 0,
       size: params?.size ?? 20,
     },
+  });
+
+/**
+ * Tìm người dùng (gợi ý thêm thành viên nhóm, tạo nhóm, …)
+ * GET /users/search?q=
+ */
+export const searchUsers = (q: string, signal?: AbortSignal) =>
+  httpClient.get<ApiResponse<UserSimpleResponse[]>>(`/users/search`, {
+    params: { q },
+    signal,
   });
 
 /** @deprecated Dùng getUsersPage thay cho response phân trang mới */

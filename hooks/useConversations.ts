@@ -1,4 +1,5 @@
 import { conversationService } from "@/services/conversations";
+import { useChatStore } from "@/stores/chat.store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
@@ -10,6 +11,8 @@ const isApiSuccess = (code?: number) => code === 0 || code === 1000;
 export function useConversations(options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
   const enabled = options?.enabled ?? true;
+  const reconcileUnreadFromServer = useChatStore((state) => state.reconcileUnreadFromServer);
+  const setUnread = useChatStore((state) => state.setUnread);
 
   // Query để lấy danh sách conversations
   const {
@@ -22,6 +25,11 @@ export function useConversations(options?: { enabled?: boolean }) {
     queryFn: async () => {
       const response = await conversationService.getConversations();
       if (isApiSuccess(response.code) && response.data) {
+        const unreadSnapshot: Record<string, number> = {};
+        for (const conversation of response.data) {
+          unreadSnapshot[conversation.id] = Math.max(0, conversation.unread_count ?? 0);
+        }
+        reconcileUnreadFromServer(unreadSnapshot);
         return response.data;
       }
       throw new Error(response.message || "Failed to load conversations");
@@ -69,6 +77,27 @@ export function useConversations(options?: { enabled?: boolean }) {
     onSuccess: () => {
       // Invalidate và refetch conversations
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+
+  const markConversationReadMutation = useMutation({
+    mutationFn: async (conversationId: string) => {
+      const response = await conversationService.markConversationRead(conversationId);
+      if (isApiSuccess(response.code)) {
+        return { conversationId };
+      }
+      throw new Error(response.message || "Failed to mark conversation as read");
+    },
+    onSuccess: ({ conversationId }) => {
+      setUnread(conversationId, 0);
+      queryClient.setQueryData(["conversations"], (prev: any) => {
+        if (!Array.isArray(prev)) return prev;
+        return prev.map((conversation: any) =>
+          conversation.id === conversationId
+            ? { ...conversation, unread_count: 0 }
+            : conversation
+        );
+      });
     },
   });
 
@@ -120,7 +149,9 @@ export function useConversations(options?: { enabled?: boolean }) {
     refetch,
     createConversation: createConversationMutation.mutateAsync,
     updateConversation: updateConversationMutation.mutateAsync,
+    markConversationRead: markConversationReadMutation.mutateAsync,
     isCreating: createConversationMutation.isPending,
     isUpdating: updateConversationMutation.isPending,
+    isMarkingRead: markConversationReadMutation.isPending,
   };
 }

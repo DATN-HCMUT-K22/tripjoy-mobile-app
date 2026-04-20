@@ -220,4 +220,20 @@ export const conversationService = {
       throw error;
     }
   },
+
+  /**
+   * Đánh dấu conversation đã đọc
+   * PUT /api/v1/conversations/{conversationId}/read
+   */
+  async markConversationRead(conversationId: string): Promise<ApiResponse<null>> {
+    try {
+      const response = await httpClient.put<ApiResponse<null>, Record<string, never>>(
+        `/conversations/${conversationId}/read`,
+        {}
+      );
+      return response;
+    } catch (error: any) {
+      throw error;
+    }
+  },
 };

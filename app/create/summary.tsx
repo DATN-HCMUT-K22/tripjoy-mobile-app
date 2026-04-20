@@ -6,11 +6,14 @@ import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { useGenerateItinerary } from "@/hooks/useItineraries";
 import { tripSetupToAiGenerateRequest } from "@/utils/aiItineraryGenerate";
 import { formatCurrencyVND } from "@/utils/format";
+import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import { fetchPlacePhotoUrl } from "@/utils/googlePlacePhoto";
+import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -72,6 +75,72 @@ export default function TripSummaryScreen() {
   const selectedTripTypes = tripTypeOptions.filter((type) =>
     tripData.tripTypes.includes(type.id),
   );
+  const destinationLocation = tripData.destinationLocation ?? tripData.location;
+
+  // ---------------------------------------------------------------------------
+  // Ảnh điểm đến: ưu tiên ảnh thực từ Google Places API (New),
+  // fallback về Static Maps nếu Places API không trả ảnh / chưa bật.
+  // ---------------------------------------------------------------------------
+  const [destinationImageUri, setDestinationImageUri] = useState<string>("");
+  const [imageLoading, setImageLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDestinationImageUri("");
+
+    const lat = destinationLocation?.latitude;
+    const lon = destinationLocation?.longitude;
+    const hasCoords =
+      typeof lat === "number" &&
+      typeof lon === "number" &&
+      !Number.isNaN(lat) &&
+      !Number.isNaN(lon);
+
+    if (!hasCoords) {
+      // Không có coords: dùng image từ DTO nếu có, không thì trống
+      const fallback = destinationLocation?.image?.trim() ?? "";
+      setDestinationImageUri(fallback);
+      return;
+    }
+
+    setImageLoading(true);
+
+    (async () => {
+      // 1. Thử lấy ảnh thực từ Places API (New) — truyền tên để Text Search tìm đúng địa danh
+      // Dùng typeof guard vì DTO có thể trả name không phải string trong một số trường hợp
+      const rawName = destinationLocation?.name ?? destinationLocation?.nameEn;
+      const locationName = typeof rawName === "string" ? rawName.trim() || undefined : undefined;
+      const photoUrl = await fetchPlacePhotoUrl(lat!, lon!, locationName, 800, 30_000);
+      if (cancelled) return;
+
+      if (photoUrl) {
+        setDestinationImageUri(photoUrl);
+        setImageLoading(false);
+        return;
+      }
+
+      // 2. Fallback: dùng image DTO nếu có
+      const dtoImage = destinationLocation?.image?.trim();
+      if (dtoImage) {
+        setDestinationImageUri(dtoImage);
+        setImageLoading(false);
+        return;
+      }
+
+      // 3. Fallback cuối: Google Static Maps (ảnh bản đồ)
+      const staticMap = buildStaticMapImageUrl(
+        [{ latitude: lat!, longitude: lon! }],
+        { width: 800, height: 512, zoom: 12 },
+      );
+      setDestinationImageUri(staticMap);
+      setImageLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+      setImageLoading(false);
+    };
+  }, [destinationLocation]);
 
   const calculateDays = () => {
     if (!tripData.startDate || !tripData.endDate) return 0;
@@ -139,22 +208,26 @@ export default function TripSummaryScreen() {
 
           {/* Main Card */}
           <View className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
-            {/* Ảnh điểm đến; bản đồ nhiều địa điểm chỉ dùng ở màn thiết lập lịch trình (manual) */}
-            {tripData.location?.image ? (
-              <View className="px-4 pt-4">
+            {/* Ảnh điểm đến: Places API thực → DTO image → Static Maps → placeholder */}
+            <View className="px-4 pt-4">
+              {imageLoading ? (
+                // Skeleton / loading placeholder
+                <View className="w-full h-64 bg-gray-100 items-center justify-center rounded-lg">
+                  <ActivityIndicator color="#2BB673" />
+                  <Text className="mt-2 text-xs text-gray-400">Đang tải ảnh điểm đến…</Text>
+                </View>
+              ) : destinationImageUri ? (
                 <Image
-                  source={{ uri: tripData.location.image }}
+                  source={expoImageSourceForGoogleRaster(destinationImageUri)}
                   style={{ width: "100%", height: 256, borderRadius: 8 }}
                   contentFit="cover"
                 />
-              </View>
-            ) : (
-              <View className="px-4 pt-4">
+              ) : (
                 <View className="w-full h-64 bg-gray-200 items-center justify-center rounded-lg">
                   <Ionicons name="image-outline" size={48} color="#ccc" />
                 </View>
-              </View>
-            )}
+              )}
+            </View>
 
             {/* Summary Details */}
             <View className="px-5 py-4">
@@ -183,7 +256,7 @@ export default function TripSummaryScreen() {
               )}
 
               {/* Destination (Điểm đến) */}
-              {tripData.location && (
+              {destinationLocation && (
                 <>
                   <View className="flex-row items-start gap-3 mb-3">
                     <Text className="text-lg">📍</Text>
@@ -192,12 +265,12 @@ export default function TripSummaryScreen() {
                         Điểm đến
                       </Text>
                       <Text className="text-base text-gray-800 mb-1">
-                        {tripData.location.name}
+                        {destinationLocation.name}
                       </Text>
                       <View className="flex-row items-center gap-1">
                         <Text className="text-base">🍔</Text>
                         <Text className="text-sm text-gray-600">
-                          Đặc sản: {tripData.location.specialty}
+                          Đặc sản: {destinationLocation.specialty}
                         </Text>
                       </View>
                     </View>

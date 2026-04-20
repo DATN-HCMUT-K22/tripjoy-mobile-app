@@ -4,6 +4,7 @@ const ACCESS_TOKEN_KEY = "@tripjoy:accessToken";
 const REFRESH_TOKEN_KEY = "@tripjoy:refreshToken";
 const ONBOARDING_SEEN_KEY = "@tripjoy:onboardingSeen";
 const GUEST_MODE_KEY = "@tripjoy:guestMode";
+const DEFAULT_POST_VISIBILITY_KEY = "@tripjoy:defaultPostVisibility";
 
 export const storage = {
   // Access Token
@@ -74,5 +75,15 @@ export const storage = {
   async isGuestMode(): Promise<boolean> {
     const value = await AsyncStorage.getItem(GUEST_MODE_KEY);
     return value === "true";
+  },
+
+  // Default Post Visibility
+  async setDefaultPostVisibility(visibility: "PUBLIC" | "PRIVATE"): Promise<void> {
+    await AsyncStorage.setItem(DEFAULT_POST_VISIBILITY_KEY, visibility);
+  },
+
+  async getDefaultPostVisibility(): Promise<"PUBLIC" | "PRIVATE"> {
+    const value = await AsyncStorage.getItem(DEFAULT_POST_VISIBILITY_KEY);
+    return value === "PRIVATE" ? "PRIVATE" : "PUBLIC";
   },
 };

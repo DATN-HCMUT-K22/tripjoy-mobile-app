@@ -1,3 +1,4 @@
+import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
 import React, { useEffect, useMemo, useState } from "react";
 import { Modal, Text, TouchableOpacity, View } from "react-native";
 import DatePicker from "react-native-date-picker";
@@ -81,15 +82,20 @@ const TimePickerModal: React.FC<Props> = ({
     [endTime]
   );
 
-  const hasError = useMemo(() => {
-    return startMinutes >= endMinutes;
-  }, [startMinutes, endMinutes]);
+  const startStr = useMemo(() => formatMinutes(startMinutes), [startMinutes]);
+  const endStr = useMemo(() => formatMinutes(endMinutes), [endMinutes]);
+
+  /** Kết thúc phải sau bắt đầu — kiểm tra cả hai chiều (đổi giờ bắt đầu hoặc kết thúc đều bắt lỗi). */
+  const hasError = useMemo(
+    () => isInvalidSameDayTimeRange(startStr, endStr),
+    [startStr, endStr]
+  );
 
   const handleSave = () => {
     if (hasError) return;
     onSave({
-      start: formatMinutes(startMinutes),
-      end: formatMinutes(endMinutes),
+      start: startStr,
+      end: endStr,
     });
     onClose();
   };
@@ -105,16 +111,24 @@ const TimePickerModal: React.FC<Props> = ({
           </View>
 
           <View className="mb-4 flex-row gap-2">
-            <View className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <View
+              className={`flex-1 rounded-xl border bg-emerald-50 px-3 py-2 ${
+                hasError ? "border-red-400" : "border-emerald-200"
+              }`}
+            >
               <Text className="text-xs text-emerald-700">Bắt đầu</Text>
               <Text className="mt-1 text-base font-bold text-emerald-800">
-                {formatMinutes(startMinutes)}
+                {startStr}
               </Text>
             </View>
-            <View className="flex-1 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
+            <View
+              className={`flex-1 rounded-xl border bg-sky-50 px-3 py-2 ${
+                hasError ? "border-red-400 border-2" : "border-sky-200"
+              }`}
+            >
               <Text className="text-xs text-sky-700">Kết thúc</Text>
               <Text className="mt-1 text-base font-bold text-sky-800">
-                {formatMinutes(endMinutes)}
+                {endStr}
               </Text>
             </View>
           </View>
@@ -155,11 +169,11 @@ const TimePickerModal: React.FC<Props> = ({
             </View>
           </View>
 
-          {hasError && (
-            <Text className="mb-3 text-sm text-red-500">
-              Giờ bắt đầu phải nhỏ hơn giờ kết thúc.
+          {hasError ? (
+            <Text className="mb-3 text-sm text-red-600">
+              Giờ kết thúc phải muộn hơn giờ bắt đầu (không được trùng hoặc sớm hơn).
             </Text>
-          )}
+          ) : null}
 
           <View className="flex-row justify-end gap-2">
             <TouchableOpacity

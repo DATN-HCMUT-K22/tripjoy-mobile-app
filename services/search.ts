@@ -1,14 +1,11 @@
-import { MessageSearchResponse, UserSimpleResponse } from "@/types/search";
+import { MessageSearchResponse } from "@/types/search";
 import { ApiResponse } from "@/types/user";
+import { searchUsers } from "./users";
 import { httpClient } from "./http/client";
 
 export const searchService = {
-  searchUsers(q: string, signal?: AbortSignal) {
-    return httpClient.get<ApiResponse<UserSimpleResponse[]>>("/users/search", {
-      params: { q },
-      signal,
-    });
-  },
+  /** GET /users/search?q= — định nghĩa tại services/users.ts */
+  searchUsers,
   searchMessagesGlobal(
     q: string,
     page: number,

@@ -4,6 +4,18 @@ import { useEffect, useRef, useState } from "react";
 
 const DEBOUNCE_MS = 300;
 
+function normalizeUserSearchPayload(data: unknown): UserSimpleResponse[] {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") {
+    const o = data as Record<string, unknown>;
+    for (const key of ["users", "items", "content", "records"] as const) {
+      const v = o[key];
+      if (Array.isArray(v)) return v as UserSimpleResponse[];
+    }
+  }
+  return [];
+}
+
 /**
  * GET /users/search?q= — debounce 300ms, hủy request cũ khi gõ tiếp.
  */
@@ -44,7 +56,7 @@ export function useUserSearchDebounce(
         const res = await searchService.searchUsers(trimmed, controller.signal);
         if (reqId !== requestIdRef.current) return;
         if (res.code === 1000 || res.code === 0) {
-          setResults(res.data || []);
+          setResults(normalizeUserSearchPayload(res.data));
         } else {
           setResults([]);
         }

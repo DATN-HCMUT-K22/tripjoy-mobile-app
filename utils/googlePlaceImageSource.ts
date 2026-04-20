@@ -1,7 +1,13 @@
 import { getGoogleMapsApiKey } from "@/config/env";
 
 /**
- * Ảnh từ Place Photos API hoặc Static Maps: gửi kèm header key (một số môi trường ổn định hơn so với chỉ query).
+ * Ảnh từ Google Places API (New) Photos / Static Maps:
+ * - Places Photos (New):  places.googleapis.com/v1/.../media
+ * - Places Photos (Old):  places.googleapis.com/maps/api/place/photo
+ * - Static Maps:          maps.googleapis.com/maps/api/staticmap
+ *
+ * Gửi kèm header X-Goog-Api-Key để expo-image có thể tải ảnh
+ * từ các endpoint yêu cầu xác thực qua header.
  */
 export function expoImageSourceForGoogleRaster(uri: string) {
   const key = getGoogleMapsApiKey();
@@ -10,7 +16,9 @@ export function expoImageSourceForGoogleRaster(uri: string) {
   if (
     key &&
     (u.includes("places.googleapis.com") ||
-      u.includes("maps.googleapis.com/maps/api/staticmap"))
+      u.includes("maps.googleapis.com/maps/api/staticmap") ||
+      // Places API (New) photo media endpoint
+      u.includes("/media?maxWidthPx="))
   ) {
     return { uri: u, headers: { "X-Goog-Api-Key": key } };
   }

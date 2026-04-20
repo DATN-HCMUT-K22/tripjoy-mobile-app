@@ -231,6 +231,8 @@ export function useIncomingMessage() {
               // Re-register listener sau khi reconnect (socketService.onReceiveMessage sẽ tự check duplicate)
               socketService.onReceiveMessage(callbackRef.current);
             }
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            queryClient.refetchQueries({ queryKey: ["conversations"], type: "active" });
           };
           
           socket.on("connect", reconnectListener);
@@ -260,7 +262,7 @@ export function useIncomingMessage() {
         callbackRef.current = null;
       }
     };
-  }, [addMessage, increaseUnread, getConversationGroupId, setConversationGroupId, setCurrentChatId]);
+  }, [addMessage, increaseUnread, getConversationGroupId, setConversationGroupId, setCurrentChatId, queryClient]);
 
   /** BE: `new_conversation` — làm mới inbox */
   useEffect(() => {

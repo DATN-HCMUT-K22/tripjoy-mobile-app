@@ -6,6 +6,7 @@ import { mockItineraries } from "@/data/mockItineraries";
 import type { Itinerary } from "@/types/group";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
+import { storage } from "@/utils/storage";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -23,6 +24,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AttachedMediaGalleryModal } from "@/components/create-post/AttachedMediaGalleryModal";
@@ -31,8 +33,11 @@ import {
   clearPendingItinerary,
   getPendingItinerary,
 } from "@/utils/pendingItinerarySelection";
+import { useCreatePost } from "@/hooks/usePostManagement";
 
 const ITINERARY_PLACEHOLDER_IMAGE = require("@/assets/images/loading_img.jpg");
+const MAX_CONTENT_LENGTH = 5000;
+const MAX_FILE_SIZE_MB = 10;
 
 type PrivacyType = "public" | "private";
 
@@ -55,6 +60,13 @@ function computeDurationLabel(start: string, end: string): string {
   return nights > 0 ? `${days} ngày ${nights} đêm` : `${days} ngày`;
 }
 
+function extractHashtags(content: string): string[] {
+  // Use Unicode-aware regex to support Vietnamese characters
+  const regex = /#([\p{L}\p{N}_]+)/gu;
+  const matches = content.match(regex) || [];
+  return matches.map(tag => tag.slice(1).toLowerCase());
+}
+
 export default function CreatePostScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ itineraryId?: string }>();
@@ -66,6 +78,7 @@ export default function CreatePostScreen() {
   });
   const { requireAuth, checkAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
   const currentUser = useAppSelector((state) => state.auth.user);
+  const createPostMutation = useCreatePost();
   const [content, setContent] = useState("");
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [hashtagInput, setHashtagInput] = useState("");
@@ -75,6 +88,7 @@ export default function CreatePostScreen() {
   const [selectedItinerary, setSelectedItinerary] = useState<Itinerary | null>(null);
   const [privacyWidth, setPrivacyWidth] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>("");
   const [mediaGalleryVisible, setMediaGalleryVisible] = useState(false);
   const [mediaGalleryIndex, setMediaGalleryIndex] = useState(0);
   const contentInputRef = useRef<TextInput>(null);
@@ -84,6 +98,15 @@ export default function CreatePostScreen() {
       void checkAuth();
     }
   }, [checkAuth, shouldLoadAuthenticatedData]);
+
+  // Load default post visibility preference
+  useEffect(() => {
+    const loadDefaultVisibility = async () => {
+      const defaultVisibility = await storage.getDefaultPostVisibility();
+      setPrivacy(defaultVisibility.toLowerCase() as PrivacyType);
+    };
+    void loadDefaultVisibility();
+  }, []);
 
   const formatItineraryDateRange = (start: string, end: string) => {
     const f = (s: string) => {
@@ -146,33 +169,45 @@ export default function CreatePostScreen() {
       });
 
       if (!result.canceled && result.assets) {
-        const newItems: PickedMedia[] = await Promise.all(
-          result.assets.map(async (asset) => {
-            const isVideo =
-              asset.type === "video" ||
-              (typeof asset.mimeType === "string" &&
-                asset.mimeType.startsWith("video/"));
-            let thumbnailUri: string | undefined;
-            if (isVideo) {
-              try {
-                const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, {
-                  time: 1000,
-                });
-                thumbnailUri = thumb.uri;
-              } catch {
-                thumbnailUri = undefined;
-              }
+        const validItems: PickedMedia[] = [];
+
+        for (const asset of result.assets) {
+          // Check file size (asset.fileSize in bytes)
+          if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE_MB * 1024 * 1024) {
+            showErrorToast(
+              "File quá lớn",
+              `File ${asset.fileName || 'được chọn'} vượt quá giới hạn ${MAX_FILE_SIZE_MB}MB`
+            );
+            continue;
+          }
+
+          const isVideo =
+            asset.type === "video" ||
+            (typeof asset.mimeType === "string" &&
+              asset.mimeType.startsWith("video/"));
+          let thumbnailUri: string | undefined;
+          if (isVideo) {
+            try {
+              const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, {
+                time: 1000,
+              });
+              thumbnailUri = thumb.uri;
+            } catch {
+              thumbnailUri = undefined;
             }
-            return {
-              uri: asset.uri,
-              kind: isVideo ? "video" : "image",
-              mimeType: asset.mimeType ?? undefined,
-              fileName: asset.fileName ?? undefined,
-              thumbnailUri,
-            };
-          })
-        );
-        setSelectedMedia((prev) => [...prev, ...newItems]);
+          }
+          validItems.push({
+            uri: asset.uri,
+            kind: isVideo ? "video" : "image",
+            mimeType: asset.mimeType ?? undefined,
+            fileName: asset.fileName ?? undefined,
+            thumbnailUri,
+          });
+        }
+
+        if (validItems.length > 0) {
+          setSelectedMedia((prev) => [...prev, ...validItems]);
+        }
       }
     } catch (error) {
       showErrorToast("Không chọn được file", "Không thể chọn ảnh/video. Vui lòng thử lại.");
@@ -196,72 +231,91 @@ export default function CreatePostScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!content.trim() && selectedMedia.length === 0) {
-      showErrorToast("Thiếu nội dung", "Vui lòng nhập nội dung hoặc chọn ảnh/video");
+    // Validate content is not empty
+    if (content.trim().length === 0) {
+      showErrorToast("Lỗi", "Nội dung không được để trống");
+      return;
+    }
+
+    // Validate content max length
+    if (content.length > MAX_CONTENT_LENGTH) {
+      showErrorToast("Lỗi", `Nội dung tối đa ${MAX_CONTENT_LENGTH} ký tự`);
+      return;
+    }
+
+    if (selectedMedia.length > 5) {
+      showErrorToast("Quá nhiều media", "Chỉ được chọn tối đa 5 ảnh/video");
       return;
     }
 
     await requireAuth(async () => {
       setIsSubmitting(true);
       try {
-        if (selectedMedia.length === 0) {
-          showErrorToast("Chưa có media", "Chọn ít nhất một ảnh hoặc video để upload.");
-          return;
+        const uploadedUrls: string[] = [];
+        const uploadedPublicIds: string[] = []; // Track for potential cleanup
+
+        if (selectedMedia.length > 0) {
+          const folder = currentUser?.id ? `tripjoy/posts/${currentUser.id}` : "tripjoy/posts";
+
+          for (let i = 0; i < selectedMedia.length; i++) {
+            const item = selectedMedia[i];
+            setUploadProgress(`Đang tải ${i + 1}/${selectedMedia.length}...`);
+
+            try {
+              let result: MediaUploadResponse;
+              if (item.kind === "video") {
+                result = await uploadVideo({
+                  fileUri: item.uri,
+                  fileName: item.fileName || `post-video-${i}.mp4`,
+                  fileType: item.mimeType || "video/mp4",
+                  folder,
+                });
+              } else {
+                result = await uploadImage({
+                  fileUri: item.uri,
+                  fileName: item.fileName || `post-image-${i}.jpg`,
+                  fileType: item.mimeType || "image/jpeg",
+                  folder,
+                });
+              }
+              uploadedUrls.push(result.secure_url);
+              uploadedPublicIds.push(result.public_id); // For cleanup tracking
+            } catch (uploadError) {
+              console.error(`Upload failed for media ${i + 1}:`, uploadError);
+
+              // NOTE: Cloudinary cleanup requires admin API key (backend should handle this)
+              // For now, just report the error and stop the process
+
+              showErrorToast(
+                "Lỗi tải ảnh",
+                `Không thể tải file ${i + 1}/${selectedMedia.length}. Vui lòng thử lại.`
+              );
+              return; // Stop the upload process
+            }
+          }
         }
 
-        const folder = currentUser?.id ? `tripjoy/posts/${currentUser.id}` : "tripjoy/posts";
+        const extractedHashtags = extractHashtags(content);
+        const allHashtags = Array.from(new Set([...hashtags, ...extractedHashtags]));
 
-        const uploadPromises = selectedMedia.map((item, index) => {
-          if (item.kind === "video") {
-            return uploadVideo({
-              fileUri: item.uri,
-              fileName: item.fileName || `post-video-${index}.mp4`,
-              fileType: item.mimeType || "video/mp4",
-              folder,
-            });
-          }
-          return uploadImage({
-            fileUri: item.uri,
-            fileName: item.fileName || `post-image-${index}.jpg`,
-            fileType: item.mimeType || "image/jpeg",
-            folder,
-          });
+        setUploadProgress("Đang đăng bài...");
+
+        await createPostMutation.mutateAsync({
+          content: content.trim(),
+          media_urls: uploadedUrls,
+          hashtags: allHashtags,
+          visibility: privacy.toUpperCase() as 'PUBLIC' | 'PRIVATE',
+          itinerary_id: selectedItinerary?.id,
         });
-
-        const uploadResults: MediaUploadResponse[] = await Promise.all(uploadPromises);
-
-        const logPayload = {
-          uploadedCount: uploadResults.length,
-          secureUrls: uploadResults.map((r) => r.secure_url),
-          details: uploadResults.map((r, i) => ({
-            index: i,
-            kind: selectedMedia[i]?.kind,
-            resource_type: r.resource_type,
-            secure_url: r.secure_url,
-            public_id: r.public_id,
-            format: r.format,
-            bytes: r.bytes,
-            width: r.width,
-            height: r.height,
-            duration: r.duration,
-          })),
-        };
-
-        console.log("[CreatePost] Promise.all upload xong — chưa tạo post:", logPayload);
-        console.log("[CreatePost] JSON (copy):", JSON.stringify(logPayload, null, 2));
-
-        showSuccessToast(
-          "Đã upload media",
-          `${uploadResults.length} file — xem log Metro/console (chưa tạo bài viết).`
-        );
-      } catch (uploadError: unknown) {
+      } catch (error: unknown) {
         const msg =
-          uploadError instanceof Error
-            ? uploadError.message
-            : "Không thể tải file lên. Vui lòng thử lại.";
-        showErrorToast("Upload thất bại", msg);
+          error instanceof Error
+            ? error.message
+            : "Không thể đăng bài. Vui lòng thử lại.";
+        showErrorToast("Đăng bài thất bại", msg);
       } finally {
         setIsSubmitting(false);
+        setUploadProgress("");
       }
     });
   };
@@ -300,6 +354,14 @@ export default function CreatePostScreen() {
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Upload Progress Indicator */}
+          {isSubmitting && uploadProgress && (
+            <View style={styles.uploadProgressContainer}>
+              <ActivityIndicator size="small" color="#34B27D" />
+              <Text style={styles.uploadProgressText}>{uploadProgress}</Text>
+            </View>
+          )}
+
           {/* User Profile and Privacy */}
           <View style={styles.userSection}>
             <Image
@@ -393,6 +455,19 @@ export default function CreatePostScreen() {
               </View>
             </View>
           </View>
+
+          {/* Privacy Guidance - Show when PRIVATE selected */}
+          {privacy === "private" && (
+            <View style={styles.privacyGuidance}>
+              <View style={styles.privacyGuidanceHeader}>
+                <Ionicons name="information-circle" size={20} color="#16A34A" />
+                <Text style={styles.privacyGuidanceTitle}>Bài viết riêng tư</Text>
+              </View>
+              <Text style={styles.privacyGuidanceText}>
+                Bài viết chỉ bạn và thành viên nhóm (nếu có liên kết hành trình) có thể xem.
+              </Text>
+            </View>
+          )}
 
           {/* Nội dung + Hashtag trong cùng block với nền xanh */}
           <View style={styles.contentBlock}>
@@ -649,6 +724,22 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  uploadProgressContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#F0FDF4",
+    borderBottomWidth: 1,
+    borderBottomColor: "#BBF7D0",
+    gap: 12,
+  },
+  uploadProgressText: {
+    fontSize: 14,
+    color: "#16A34A",
+    fontWeight: "600",
   },
   userSection: {
     flexDirection: "row",
@@ -962,5 +1053,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#111827",
+  },
+  privacyGuidance: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  privacyGuidanceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  privacyGuidanceTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  privacyGuidanceText: {
+    fontSize: 14,
+    color: '#4B5563',
+    lineHeight: 20,
   },
 });

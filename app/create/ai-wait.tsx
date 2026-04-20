@@ -3,6 +3,8 @@ import { useTripSetup } from "@/contexts/TripSetupContext";
 import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
 import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
+import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
+import { DraggableApiItineraryItemCard } from "@/components/itinerary/DraggableApiItineraryItemCard";
 import {
   useItineraryDetail,
   useItineraryTripItems,
@@ -10,6 +12,10 @@ import {
 import { ITINERARY_STATUS } from "@/services/itineraries";
 import { formatCurrencyVND } from "@/utils/format";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import { getLocationImageUrl } from "@/utils/locationImages";
+import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
+import type { TripItemResponse } from "@/services/itineraries";
+import type { ItineraryItem } from "@/types/itinerary";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -21,21 +27,41 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 
-function formatTripItemStart(iso?: string): string {
-  if (!iso?.trim()) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("vi-VN", {
+function dayKeyFromItem(row: TripItemResponse): string {
+  const raw = (row.start_time || "").trim();
+  if (!raw) return "_nodate";
+  return parseItineraryDateToDayOnly(raw) || "_nodate";
+}
+
+function formatDayChipLabel(dayKey: string): string {
+  if (dayKey === "_nodate") return "Chưa rõ ngày";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return dayKey;
+  const d = new Date(`${dayKey}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dayKey;
+  return d.toLocaleDateString("vi-VN", {
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
   });
+}
+
+function coordsFromTripItem(row: TripItemResponse): { latitude: number; longitude: number } | null {
+  const loc = row.location;
+  const lat = loc?.routable_lat ?? loc?.lat;
+  const lng = loc?.routable_lng ?? loc?.lng;
+  if (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    !Number.isNaN(lat) &&
+    !Number.isNaN(lng)
+  ) {
+    return { latitude: lat, longitude: lng };
+  }
+  return null;
 }
 
 const WAIT_TIPS = [
@@ -64,10 +90,11 @@ function PlaceItemSkeleton() {
 
 export default function AiItineraryWaitScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { exitToHome } = useCreateTripExitToHome();
-  const { tripData, resetTripData } = useTripSetup();
-  const { resetItinerary } = useItinerary();
+  const { tripData } = useTripSetup();
+  const { resetItinerary, addLocationsToDay, addItineraryItemsToDay } = useItinerary();
   const params = useLocalSearchParams<{ itineraryId?: string }>();
   const itineraryId =
     typeof params.itineraryId === "string" ? params.itineraryId : undefined;
@@ -88,7 +115,6 @@ export default function AiItineraryWaitScreen() {
     enabled: !!itineraryId,
   });
 
-  const isDraft = data?.status === ITINERARY_STATUS.DRAFT;
   const {
     data: tripItems = [],
     isLoading: itemsLoading,
@@ -96,7 +122,8 @@ export default function AiItineraryWaitScreen() {
     error: itemsErr,
     refetch: refetchItems,
   } = useItineraryTripItems(itineraryId, {
-    enabled: !!itineraryId && isDraft,
+    enabled: !!itineraryId,
+    itineraryStatus: data?.status,
   });
 
   const lastSyncLabel = useMemo(() => {
@@ -148,23 +175,14 @@ export default function AiItineraryWaitScreen() {
     }
     if (s !== ITINERARY_STATUS.GENERATING) {
       completedRef.current = true;
-      showSuccessToast("Đã tạo xong lịch trình", "Xem trong mục Lịch trình (Khám phá).");
-      resetItinerary();
-      resetTripData();
+      showSuccessToast("Đã tạo xong lịch trình", "Đã hiển thị kết quả ngay trên màn hình này.");
       queryClient.invalidateQueries({ queryKey: ["itineraries"] });
-      router.replace("/(tabs)/explore" as any);
     }
-  }, [data?.status, resetItinerary, resetTripData, router, queryClient]);
-
-  const goExploreAfterDraft = () => {
-    resetItinerary();
-    resetTripData();
-    queryClient.invalidateQueries({ queryKey: ["itineraries"] });
-    router.replace("/(tabs)/explore" as any);
-  };
+  }, [data?.status, queryClient]);
 
   const isGenerating = data?.status === ITINERARY_STATUS.GENERATING;
   const isAiFailed = data?.status === ITINERARY_STATUS.FAILED;
+  const canShowGeneratedResult = !!data && !isGenerating && !isAiFailed;
   const initialLoadError = isError && !data && !isLoading;
   const draftTitle = data?.title?.trim() || "Lịch trình bản nháp";
   const destinationImage =
@@ -196,12 +214,112 @@ export default function AiItineraryWaitScreen() {
         )}/người`
       : selectedBudgetOption?.title || "Chưa chọn";
 
+  const itemsByDay = useMemo(() => {
+    const map: Record<string, TripItemResponse[]> = {};
+    for (const row of tripItems) {
+      const k = dayKeyFromItem(row);
+      if (!map[k]) map[k] = [];
+      map[k].push(row);
+    }
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) => {
+        const ta = Date.parse(a.start_time || "") || 0;
+        const tb = Date.parse(b.start_time || "") || 0;
+        return ta - tb;
+      });
+    }
+    return map;
+  }, [tripItems]);
+
+  const dayKeys = useMemo(() => {
+    const keys = Object.keys(itemsByDay);
+    keys.sort((a, b) => {
+      if (a === "_nodate") return 1;
+      if (b === "_nodate") return -1;
+      return a.localeCompare(b);
+    });
+    return keys;
+  }, [itemsByDay]);
+
+  const firstDayKey = useMemo(
+    () => dayKeys.find((k) => k !== "_nodate") || dayKeys[0],
+    [dayKeys]
+  );
+
+  useEffect(() => {
+    if (!canShowGeneratedResult || tripItems.length === 0) return;
+
+    const toHHmm = (iso?: string) => {
+      if (!iso) return "08:00";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "08:00";
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    };
+
+    const addMinutes = (hhmm: string, deltaMin: number) => {
+      const [hRaw = "8", mRaw = "0"] = hhmm.split(":");
+      const h = Number(hRaw) || 8;
+      const m = Number(mRaw) || 0;
+      const total = h * 60 + m + Math.max(0, deltaMin);
+      const hh = String(Math.floor((total % (24 * 60)) / 60)).padStart(2, "0");
+      const mm = String(total % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    };
+
+    resetItinerary();
+    for (const dayKey of dayKeys) {
+      const rows = itemsByDay[dayKey] || [];
+      const locationIds = rows
+        .map((row) => row.location_id || row.location?.id || "")
+        .filter((id): id is string => id.trim().length > 0);
+      const contextItems: ItineraryItem[] = rows.map((row, idx) => {
+        const start = toHHmm(row.start_time);
+        const duration = typeof row.duration === "number" && row.duration > 0 ? row.duration : 90;
+        const name =
+          row.location?.name?.trim() ||
+          row.location?.place_formatted?.trim() ||
+          row.location?.full_address?.trim() ||
+          row.note?.trim() ||
+          "Địa điểm";
+        const locationId = row.location_id || row.location?.id || `${dayKey}-${idx}`;
+        return {
+          id: row.id || `${locationId}-${idx}`,
+          locationId,
+          name,
+          image: getLocationImageUrl(row.location),
+          timeRange: {
+            start,
+            end: addMinutes(start, duration),
+          },
+          price: "0 VND",
+          category: "activity",
+          transportation: {},
+          timelineIcon: "location",
+        };
+      });
+      addLocationsToDay(dayKey, locationIds);
+      addItineraryItemsToDay(dayKey, contextItems);
+    }
+  }, [
+    addItineraryItemsToDay,
+    addLocationsToDay,
+    canShowGeneratedResult,
+    dayKeys,
+    itemsByDay,
+    resetItinerary,
+    tripItems.length,
+  ]);
+
   const formatElapsed = (sec: number) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
     if (m <= 0) return `${s}s`;
     return `${m} phút ${s}s`;
   };
+  const bottomInset = Math.max(16, insets.bottom);
+  const footerBarHeight = 16 + 56 + bottomInset;
 
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
@@ -219,7 +337,7 @@ export default function AiItineraryWaitScreen() {
             className="text-center text-xl font-bold text-black"
             numberOfLines={1}
           >
-            {isDraft ? "Lịch trình của bạn" : "Đang tạo lịch trình"}
+            {canShowGeneratedResult ? "Lịch trình của bạn" : "Đang tạo lịch trình"}
           </Text>
         </View>
         <TouchableOpacity
@@ -249,16 +367,8 @@ export default function AiItineraryWaitScreen() {
             <Text className="text-base font-semibold text-white">Thử lại</Text>
           </TouchableOpacity>
         </View>
-      ) : isDraft ? (
+      ) : canShowGeneratedResult ? (
         <View className="flex-1">
-          <View className="border-b border-gray-100 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900" numberOfLines={2}>
-              {draftTitle}
-            </Text>
-            <Text className="mt-1 text-sm text-gray-500">
-              Bản nháp — bạn có thể xem lại trong mục Lịch trình (Khám phá) bất cứ lúc nào.
-            </Text>
-          </View>
           {itemsLoading ? (
             <View className="flex-1 items-center justify-center py-16">
               <ActivityIndicator size="large" color="#2BB673" />
@@ -282,67 +392,125 @@ export default function AiItineraryWaitScreen() {
             </View>
           ) : (
             <ScrollView
-              className="flex-1 px-4 pt-3"
-              contentContainerStyle={{ paddingBottom: 24 }}
+              className="flex-1"
               showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: footerBarHeight + 8 }}
             >
-              {tripItems.length === 0 ? (
-                <Text className="py-8 text-center text-sm text-gray-500">
-                  Chưa có hoạt động nào trong lịch. Bạn vẫn có thể xem lịch trong Khám phá để cập nhật sau.
+              <View className="px-4 py-4">
+                <Text className="mb-4 text-lg font-bold text-black" numberOfLines={2}>
+                  {draftTitle}
                 </Text>
-              ) : (
-                tripItems.map((row, idx) => {
-                  const loc = row.location;
-                  const name =
-                    loc?.name?.trim() ||
-                    loc?.place_formatted?.trim() ||
-                    loc?.full_address?.trim() ||
-                    "Địa điểm";
-                  const addr =
-                    loc?.full_address?.trim() ||
-                    loc?.place_formatted?.trim() ||
-                    "";
-                  return (
-                    <View
-                      key={row.id ?? `item-${idx}`}
-                      className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
-                    >
-                      <Text className="text-base font-semibold text-gray-900">{name}</Text>
-                      {addr ? (
-                        <Text className="mt-1 text-sm text-gray-600" numberOfLines={2}>
-                          {addr}
+                {dayKeys.length === 0 ? (
+                  <Text className="py-8 text-center text-sm text-gray-500">
+                    Chưa có hoạt động nào trong lịch.
+                  </Text>
+                ) : (
+                  dayKeys.map((dayKey, dayIndex) => {
+                    const itemsForDay = itemsByDay[dayKey] || [];
+                    const mapPinsForDay: ItineraryMapLocation[] = [];
+                    for (const row of itemsForDay) {
+                      const coords = coordsFromTripItem(row);
+                      if (coords) {
+                        mapPinsForDay.push({
+                          id: row.id ?? row.location?.id ?? `pin-${dayKey}-${mapPinsForDay.length}`,
+                          latitude: coords.latitude,
+                          longitude: coords.longitude,
+                          title:
+                            row.location?.name?.trim() ||
+                            row.location?.place_formatted?.trim() ||
+                            "Địa điểm",
+                        });
+                      }
+                    }
+                    return (
+                      <View key={dayKey} className="mb-6">
+                        <Text className="mb-4 text-lg font-bold text-black">
+                          {dayKey === "_nodate"
+                            ? "Chưa phân ngày"
+                            : `Ngày ${dayIndex + 1}: ${formatDayChipLabel(dayKey)}`}
                         </Text>
-                      ) : null}
-                      <View className="mt-2 flex-row flex-wrap gap-x-3 gap-y-1">
-                        <Text className="text-sm text-gray-700">
-                          <Text className="font-medium text-gray-800">Bắt đầu: </Text>
-                          {formatTripItemStart(row.start_time)}
-                        </Text>
-                        {typeof row.duration === "number" && !Number.isNaN(row.duration) ? (
-                          <Text className="text-sm text-gray-700">
-                            <Text className="font-medium text-gray-800">Thời lượng: </Text>
-                            {row.duration} phút
-                          </Text>
+                        {mapPinsForDay.length > 0 ? (
+                          <View className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                            <ItineraryRouteMap
+                              locations={mapPinsForDay}
+                              height={220}
+                              mode="DRIVING"
+                            />
+                          </View>
                         ) : null}
+                        <View className="mb-3">
+                          {itemsForDay.map((row, index) => (
+                            <DraggableApiItineraryItemCard
+                              key={row.id ?? `row-${dayKey}-${index}`}
+                              row={row}
+                              index={index}
+                              total={itemsForDay.length}
+                              canInteract={false}
+                              imageUrl={getLocationImageUrl(row.location)}
+                              onMove={() => {}}
+                              onDelete={() => {}}
+                            />
+                          ))}
+                        </View>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          className="flex-row items-center justify-center rounded-lg border border-dashed border-primary bg-[#D1FAE5] py-3"
+                          onPress={() => {
+                            router.push({
+                              pathname: "/create/add-location",
+                              params: {
+                                dayKey,
+                                fromScreen: "adjust",
+                              },
+                            } as any);
+                          }}
+                        >
+                          <View
+                            style={{
+                              position: "relative",
+                              width: 20,
+                              height: 20,
+                              marginRight: 8,
+                            }}
+                          >
+                            <Ionicons
+                              name="location-outline"
+                              size={20}
+                              color="#34B27D"
+                              style={{ position: "absolute" }}
+                            />
+                            <Ionicons
+                              name="add"
+                              size={8}
+                              color="#34B27D"
+                              style={{
+                                position: "absolute",
+                                top: -2,
+                                right: -2,
+                              }}
+                            />
+                          </View>
+                          <Text className="text-sm font-semibold text-primary">Thêm địa điểm</Text>
+                        </TouchableOpacity>
                       </View>
-                      {row.note?.trim() ? (
-                        <Text className="mt-2 text-sm leading-5 text-gray-600">{row.note.trim()}</Text>
-                      ) : null}
-                    </View>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </View>
             </ScrollView>
           )}
-          <View className="border-t border-gray-200 px-4 py-3">
+          <View
+            className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-4 pt-4"
+            style={{ paddingBottom: bottomInset }}
+          >
             <TouchableOpacity
-              className="rounded-full bg-[#2BB673] py-3"
-              onPress={goExploreAfterDraft}
-              activeOpacity={0.85}
+              activeOpacity={0.8}
+              className="items-center justify-center rounded-full bg-primary py-4"
+              onPress={() => {
+                router.push("/create/select-group" as any);
+              }}
             >
-              <Text className="text-center text-base font-semibold text-white">
-                Xem trong Lịch trình (Khám phá)
-              </Text>
+              <Text className="text-base font-semibold text-white">Chọn nhóm du lịch</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -1,9 +1,12 @@
 import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
 import { PostCard } from "@/components/social/PostCard";
+import { PostCardSkeletonList } from "@/components/social/PostCardSkeleton";
 import { SearchBar } from "@/components/social/SearchBar";
+import { ShareModal } from "@/components/social/ShareModal";
 import { SocialHeader } from "@/components/social/SocialHeader";
 import { TabMenu } from "@/components/social/TabMenu";
+import { CommentModal } from "@/components/social/CommentModal";
 import { useAuthLogger } from "@/hooks/useAuthLogger";
 import { useConversations } from "@/hooks/useConversations";
 import { useGuestMode } from "@/hooks/useGuestMode";
@@ -12,15 +15,26 @@ import { useNotifications } from "@/hooks/useNotifications";
 import {
   useBookmarkPost,
   useCommentPost,
+  useFilteredPosts,
   useLikePost,
+  usePostRealtimeUpdates,
   usePosts,
   useSharePost,
 } from "@/hooks/useSocial";
-import { TabType } from "@/types/social";
+import { TabType, type Post } from "@/types/social";
 import { useAppSelector } from "@/store/hooks";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, SafeAreaView, ScrollView, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  ListRenderItem,
+  RefreshControl,
+  SafeAreaView,
+  View
+} from "react-native";
+import { trackEvent, trackPostView } from "@/utils/analytics";
+import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -31,19 +45,25 @@ export default function HomeScreen() {
   /** Chỉ gọi API cần đăng nhập khi thật sự có phiên (không chỉ "không phải guest" — tránh 401 ở màn login / trước khi đăng nhập). */
   const shouldLoadAuthenticatedData =
     isGuest === false && (isAuthenticated || !!accessToken);
-  const { data: allPosts = [], isLoading: postsLoading } = usePosts();
+  const { data: allPosts = [], isLoading: postsLoading, refetch } = usePosts();
+  const filteredPosts = useFilteredPosts(allPosts);
   const likePostMutation = useLikePost();
   const bookmarkPostMutation = useBookmarkPost();
   const commentPostMutation = useCommentPost();
   const sharePostMutation = useSharePost();
 
   useAuthLogger("HomeScreen");
+
+  // Subscribe to real-time post updates
+  usePostRealtimeUpdates();
+
   const [activeTab, setActiveTab] = useState<TabType>("popular");
+  const [refreshing, setRefreshing] = useState(false);
 
   // Sắp xếp posts: Phổ biến (theo likes) và Gần đây (theo thời gian)
   const posts = useMemo(() => {
     if (activeTab === "popular") {
-      return [...allPosts].sort((a, b) => b.likes - a.likes);
+      return [...filteredPosts].sort((a, b) => b.likes - a.likes);
     }
     const parseTimeAgo = (timeAgo: string): number => {
       if (timeAgo.includes("phút")) return parseInt(timeAgo) || 0;
@@ -51,15 +71,24 @@ export default function HomeScreen() {
       if (timeAgo.includes("ngày")) return (parseInt(timeAgo) || 0) * 60 * 24;
       return 0;
     };
-    return [...allPosts].sort((a, b) => {
+    return [...filteredPosts].sort((a, b) => {
       const timeA = parseTimeAgo(a.timeAgo);
       const timeB = parseTimeAgo(b.timeAgo);
       return timeA - timeB;
     });
-  }, [activeTab, allPosts]);
+  }, [activeTab, filteredPosts]);
   const [activeIcon, setActiveIcon] = useState<
     "notification" | "message" | null
   >(null);
+
+  // Comment modal state
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [selectedPostForComment, setSelectedPostForComment] = useState<string | null>(null);
+
+  // Share modal state
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [selectedPostForShare, setSelectedPostForShare] = useState<string | null>(null);
+  const [selectedPostTitle, setSelectedPostTitle] = useState<string>("");
 
   // Lấy conversations để tính unread count
   const { conversations } = useConversations({
@@ -98,14 +127,22 @@ export default function HomeScreen() {
 
   const handleComment = async (postId: string) => {
     await requireAuth(async () => {
-      // API đã gắn: commentPostMutation.mutateAsync({ postId, content }). Cần modal nhập nội dung.
-      console.log("Comment post:", postId);
+      setSelectedPostForComment(postId);
+      setCommentModalVisible(true);
     });
+  };
+
+  const handleCloseCommentModal = () => {
+    setCommentModalVisible(false);
+    setSelectedPostForComment(null);
   };
 
   const handleShare = async (postId: string) => {
     await requireAuth(async () => {
-      await sharePostMutation.mutateAsync(postId);
+      const post = posts.find((p) => p.id === postId);
+      setSelectedPostForShare(postId);
+      setSelectedPostTitle(post?.caption || "");
+      setShareModalVisible(true);
     });
   };
 
@@ -129,9 +166,65 @@ export default function HomeScreen() {
     await requireAuth(async () => {
       // TODO: Call API report post
       console.log("Report post:", postId);
+      trackEvent('post_reported', { postId });
       // await reportPost(postId);
     });
   };
+
+  const handleDownloadPost = async (postId: string) => {
+    await requireAuth(async () => {
+      // TODO: Call API download post
+      console.log("Download post:", postId);
+      trackEvent('post_downloaded', { postId });
+      // await downloadPost(postId);
+    });
+  };
+
+  // Pull to refresh handler
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    // Haptic feedback on pull
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
+
+  // FlatList render item
+  const renderPost: ListRenderItem<Post> = useCallback(({ item: post }) => {
+    return (
+      <PostCard
+        post={post}
+        onLike={handleLike}
+        onComment={handleComment}
+        onShare={handleShare}
+        onBookmark={handleBookmark}
+        onDownload={handleDownloadPost}
+        onReport={handleReport}
+      />
+    );
+  }, []);
+
+  // FlatList key extractor
+  const keyExtractor = useCallback((item: Post) => item.id, []);
+
+  // Loading footer for pagination
+  const renderFooter = useCallback(() => {
+    // For now, no pagination footer since we're using mock data
+    // Will be useful when implementing real infinite scroll
+    return null;
+  }, []);
+
+  // Empty component
+  const renderEmpty = useCallback(() => {
+    if (postsLoading) {
+      return <PostCardSkeletonList count={3} />;
+    }
+    return null;
+  }, [postsLoading]);
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -154,33 +247,36 @@ export default function HomeScreen() {
           }}
         />
 
-        <SearchBar onSearch={handleSearch} />
+        {/* Search disabled on home screen - use explore tab for search */}
 
         <TabMenu
           activeTab={activeTab}
           onTabChange={setActiveTab}
         />
 
-        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-          <View className="pb-4">
-            {postsLoading ? (
-              <ActivityIndicator size="large" style={{ paddingVertical: 32 }} />
-            ) : (
-              posts.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  onLike={handleLike}
-                  onComment={handleComment}
-                  onShare={handleShare}
-                  onBookmark={handleBookmark}
-                  onDownload={handleDownload}
-                  onReport={handleReport}
-                />
-              ))
-            )}
-          </View>
-        </ScrollView>
+        <FlatList
+          data={posts}
+          renderItem={renderPost}
+          keyExtractor={keyExtractor}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 16 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#34B27D"
+              colors={['#34B27D']}
+            />
+          }
+          ListEmptyComponent={renderEmpty}
+          ListFooterComponent={renderFooter}
+          // Future: Add infinite scroll
+          // onEndReached={loadMore}
+          // onEndReachedThreshold={0.5}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+        />
 
         <BottomNavigation
           onExplorePress={async () => {
@@ -210,6 +306,24 @@ export default function HomeScreen() {
         visible={showLoginModal}
         onClose={() => setShowLoginModal(false)}
       />
+
+      {selectedPostForComment && (
+        <CommentModal
+          postId={selectedPostForComment}
+          visible={commentModalVisible}
+          onClose={handleCloseCommentModal}
+          commentCount={posts.find((p) => p.id === selectedPostForComment)?.comments || 0}
+        />
+      )}
+
+      {selectedPostForShare && (
+        <ShareModal
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          postId={selectedPostForShare}
+          postTitle={selectedPostTitle}
+        />
+      )}
     </SafeAreaView>
   );
 }

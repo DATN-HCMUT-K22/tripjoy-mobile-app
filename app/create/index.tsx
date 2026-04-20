@@ -105,6 +105,8 @@ export default function CreateTripScreen() {
     useState<Location | null>(null);
   const [departureSearchText, setDepartureSearchText] = useState("");
   const [destinationSearchText, setDestinationSearchText] = useState("");
+  const [debouncedDepartureSearchText, setDebouncedDepartureSearchText] = useState("");
+  const [debouncedDestinationSearchText, setDebouncedDestinationSearchText] = useState("");
   const [isDepartureExpanded, setIsDepartureExpanded] = useState(true);
   const [isDestinationExpanded, setIsDestinationExpanded] = useState(true);
   const [isPeopleExpanded, setIsPeopleExpanded] = useState(true);
@@ -172,6 +174,20 @@ export default function CreateTripScreen() {
     }
     if (!isProvincesError) provincesErrorToastShownRef.current = false;
   }, [isProvincesError, provincesError]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedDepartureSearchText(departureSearchText);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [departureSearchText]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedDestinationSearchText(destinationSearchText);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [destinationSearchText]);
 
   const handleDepartureLocationSelect = (location: Location) => {
     setDepartureLocationState(location);
@@ -261,26 +277,26 @@ export default function CreateTripScreen() {
   };
 
   const filteredDepartureLocations = useMemo(() => {
-    if (!departureSearchText.trim()) return locations;
-    const searchLower = departureSearchText.toLowerCase();
+    if (!debouncedDepartureSearchText.trim()) return locations;
+    const searchLower = debouncedDepartureSearchText.toLowerCase();
     return locations.filter(
       (loc) =>
         (loc.name?.toLowerCase() || "").includes(searchLower) ||
         (loc.subtitle?.toLowerCase() || "").includes(searchLower) ||
         (loc.specialty?.toLowerCase() || "").includes(searchLower)
     );
-  }, [locations, departureSearchText]);
+  }, [locations, debouncedDepartureSearchText]);
 
   const filteredDestinationLocations = useMemo(() => {
-    if (!destinationSearchText.trim()) return locations;
-    const searchLower = destinationSearchText.toLowerCase();
+    if (!debouncedDestinationSearchText.trim()) return locations;
+    const searchLower = debouncedDestinationSearchText.toLowerCase();
     return locations.filter(
       (loc) =>
         (loc.name?.toLowerCase() || "").includes(searchLower) ||
         (loc.subtitle?.toLowerCase() || "").includes(searchLower) ||
         (loc.specialty?.toLowerCase() || "").includes(searchLower)
     );
-  }, [locations, destinationSearchText]);
+  }, [locations, debouncedDestinationSearchText]);
 
   const renderLocationList = (
     filtered: Location[],

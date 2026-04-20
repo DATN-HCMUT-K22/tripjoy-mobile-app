@@ -16,6 +16,7 @@ import debounce from "lodash.debounce";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   Text,
@@ -299,10 +300,11 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
   };
   const lastMessageSubtitle = getLastMessageSubtitle();
   // Get unread count from chat store (managed by useIncomingMessage)
-  const { getUnreadCount } = useChatStore();
-  const storeUnreadCount = getUnreadCount(conversation.id);
-  // Prefer store unread count if available, fallback to API unread_count
-  const unreadCount = storeUnreadCount > 0 ? storeUnreadCount : (conversation.unread_count ?? 0);
+  const unreadMap = useChatStore((state) => state.unreadCount);
+  const hasLocalUnread = Object.prototype.hasOwnProperty.call(unreadMap, conversation.id);
+  const unreadCount = hasLocalUnread
+    ? Math.max(0, unreadMap[conversation.id] ?? 0)
+    : Math.max(0, conversation.unread_count ?? 0);
   const isPinned = conversation.is_pinned ?? false;
 
   return (

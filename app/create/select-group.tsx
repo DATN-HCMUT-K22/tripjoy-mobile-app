@@ -5,14 +5,14 @@ import { BUDGET_CUSTOM_ID } from "@/data/budgetOptions";
 import { useGroups } from "@/hooks/useGroups";
 import { useCreateItinerary } from "@/hooks/useItineraries";
 import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
-import { ItineraryRequest } from "@/services/itineraries";
+import { itineraryService, ItineraryRequest } from "@/services/itineraries";
 import { tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { tripTypeIdsToItineraryThemes } from "@/utils/itineraryThemes";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -64,6 +64,10 @@ function SelectGroupScreenHeader({
 
 export default function SelectGroupScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    createdGroupId?: string;
+    autoSelect?: string;
+  }>();
   const { exitToHome } = useCreateTripExitToHome();
   const insets = useSafeAreaInsets();
   const { tripData, resetTripData } = useTripSetup();
@@ -72,6 +76,16 @@ export default function SelectGroupScreen() {
   const createItineraryMutation = useCreateItinerary();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+
+  useEffect(() => {
+    const createdGroupId =
+      typeof params.createdGroupId === "string" ? params.createdGroupId : "";
+    const shouldAutoSelect = params.autoSelect === "1";
+    if (!shouldAutoSelect || !createdGroupId || groups.length === 0) return;
+    const existsInList = groups.some((g) => g.id === createdGroupId);
+    if (!existsInList) return;
+    setSelectedGroupId(createdGroupId);
+  }, [groups, params.autoSelect, params.createdGroupId]);
 
   const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -123,17 +137,9 @@ export default function SelectGroupScreen() {
     );
     const themeList = tripTypeIdsToItineraryThemes(tripData.tripTypes);
     const itineraryName = destination ? `Khám phá ${destination}` : "Lịch trình mới";
-    const dayKeys = Object.keys(itineraryItemsByDay).sort();
-    const tripItems = dayKeys.flatMap((dayKey) => {
-      const items = itineraryItemsByDay[dayKey] || [];
-      return items.map((item) => ({
-        duration: computeDurationMinutes(item.timeRange.start, item.timeRange.end),
-        note: item.name,
-        start_time: mapDayAndTimeToLocalDateTime(dayKey, item.timeRange.start),
-        location_id: item.locationId,
-      }));
-    });
 
+    // Không gửi trip_items / expenses trong create — BE không xử lý cascade.
+    // Sau khi tạo xong itinerary sẽ POST từng item riêng qua /itineraries/{id}/items.
     return {
       name: itineraryName,
       description: destination
@@ -147,9 +153,22 @@ export default function SelectGroupScreen() {
       destination: destination || undefined,
       themes: themeList.length > 0 ? themeList : undefined,
       group_id: groupId,
-      trip_items: tripItems,
-      expenses: [],
     };
+  };
+
+  const buildTripItems = () => {
+    const dayKeys = Object.keys(itineraryItemsByDay).sort();
+    return dayKeys.flatMap((dayKey) => {
+      const items = itineraryItemsByDay[dayKey] || [];
+      return items
+        .filter((item) => !!item.locationId) // chỉ gửi item có location_id hợp lệ
+        .map((item) => ({
+          duration: computeDurationMinutes(item.timeRange.start, item.timeRange.end),
+          note: item.name,
+          start_time: mapDayAndTimeToLocalDateTime(dayKey, item.timeRange.start),
+          location_id: item.locationId,
+        }));
+    });
   };
 
   const handleApply = async () => {
@@ -161,7 +180,29 @@ export default function SelectGroupScreen() {
       try {
         const payload = buildItineraryPayload(selectedGroupId);
         console.log("[CreateItinerary][MappedPayload]", JSON.stringify(payload, null, 2));
-        await createItineraryMutation.mutateAsync(payload);
+        const created = await createItineraryMutation.mutateAsync(payload);
+        console.log("[CreateItinerary][Response]", JSON.stringify(created, null, 2));
+
+        // POST từng trip item riêng sau khi có itinerary id
+        const itineraryId = (created as any)?.id;
+        console.log("[CreateItinerary][ItineraryId]", itineraryId);
+        if (itineraryId) {
+          const tripItems = buildTripItems();
+          console.log("[CreateItinerary][TripItems] count:", tripItems.length, JSON.stringify(tripItems, null, 2));
+          for (let i = 0; i < tripItems.length; i++) {
+            const item = tripItems[i];
+            try {
+              console.log(`[CreateItinerary][AddTripItem][${i + 1}/${tripItems.length}]`, JSON.stringify(item, null, 2));
+              const itemRes = await itineraryService.addTripItem(itineraryId, item);
+              console.log(`[CreateItinerary][AddTripItem][${i + 1}] ✅ Response:`, JSON.stringify(itemRes, null, 2));
+            } catch (itemErr: any) {
+              console.error(`[CreateItinerary][AddTripItem][${i + 1}] ❌ Failed:`, itemErr?.message, JSON.stringify(item, null, 2));
+            }
+          }
+        } else {
+          console.warn("[CreateItinerary] ⚠️ No itinerary id returned — skipping addTripItem");
+        }
+
         resetItinerary();
         resetTripData();
         router.push(`/groups/${selectedGroupId}/chat` as any);
@@ -177,10 +218,14 @@ export default function SelectGroupScreen() {
   if (isLoading) {
     return (
       <SafeAreaView
-        className="flex-1 bg-white items-center justify-center"
-        edges={["top", "left", "right", "bottom"]}
+        className="flex-1 bg-white"
+        edges={["top", "left", "right"]}
       >
-        <ActivityIndicator size="large" />
+        <SelectGroupScreenHeader onBack={() => router.back()} onHome={exitToHome} />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#34B27D" />
+          <Text className="mt-4 text-gray-500 font-medium">Đang tải danh sách nhóm...</Text>
+        </View>
       </SafeAreaView>
     );
   }
@@ -223,7 +268,13 @@ export default function SelectGroupScreen() {
             activeOpacity={0.8}
             className="px-6 py-3 rounded-full border-2 border-primary bg-white flex-row items-center"
             onPress={() => {
-              setIsCreateModalVisible(true);
+              router.push({
+                pathname: "/groups/create",
+                params: {
+                  returnTo: "/create/select-group",
+                  autoSelect: "1",
+                },
+              } as any);
             }}
           >
             <Text className="text-primary text-base font-semibold mr-2">

@@ -1,13 +1,9 @@
-import { itineraryService, type ItineraryResponse } from "@/services/itineraries";
-import { formatCurrencyVND } from "@/utils/format";
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
-import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useState, useEffect } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
+  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,93 +11,206 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
-
-type ViewMode = "card" | "list";
-
-type ExploreItinerary = {
-  id: string;
-  name: string;
-  image: string;
-  startDate: string;
-  endDate: string;
-  duration: string;
-  memberCount: number;
-  budget: number;
-};
-
-/** Lấy tên địa điểm từ name (phần trước " - ") hoặc trả về name */
-function getLocationLabel(name: string): string {
-  const idx = name.indexOf(" - ");
-  const place = idx >= 0 ? name.slice(0, idx).trim() : name;
-  return place ? `${place}, Việt Nam` : "Việt Nam";
-}
-
-/** Chuỗi in hoa để overlay lên ảnh (vd: PHÚ QUỐC) */
-function getLocationOverlayText(name: string): string {
-  const idx = name.indexOf(" - ");
-  const place = idx >= 0 ? name.slice(0, idx).trim() : name;
-  return place ? place.toUpperCase() : "";
-}
-
-function formatApiDate(dateStr?: string): string {
-  if (!dateStr) return "--/--/----";
-  const raw = dateStr.split("T")[0];
-  const [y, m, d] = raw.split("-");
-  if (!y || !m || !d) return "--/--/----";
-  return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
-}
-
-function formatApiDateRange(startDate?: string, endDate?: string): string {
-  return `${formatApiDate(startDate)} - ${formatApiDate(endDate || startDate)}`;
-}
-
-function mapApiItineraryToExploreItem(api: ItineraryResponse): ExploreItinerary {
-  const start = api.start_date || "";
-  const end = api.end_date || start;
-  const startTs = Date.parse(`${start}T00:00:00`);
-  const endTs = Date.parse(`${end}T00:00:00`);
-  const days =
-    Number.isNaN(startTs) || Number.isNaN(endTs)
-      ? 1
-      : Math.max(1, Math.ceil((endTs - startTs) / 86400000));
-  return {
-    id: api.id ?? "",
-    name: api.title?.trim() || "Lịch trình chưa đặt tên",
-    image: "",
-    startDate: start,
-    endDate: end,
-    duration: `${days} ngày`,
-    memberCount: 0,
-    budget: 0,
-  };
-}
+import { SearchBar } from "@/components/social/SearchBar";
+import { PostCard } from "@/components/social/PostCard";
+import { FilterModal } from "@/components/social/filters/FilterModal";
+import { usePosts, useLikePost, useCommentPost, useSharePost, useBookmarkPost } from "@/hooks/useSocial";
+import type { GetPostsParams } from "@/services/social";
+import type { Post } from "@/types/social";
 
 export default function ExploreScreen() {
   const router = useRouter();
-  const { data: itineraries = [], isLoading } = useQuery({
-    queryKey: ["itineraries", "me", "explore"],
-    queryFn: async (): Promise<ExploreItinerary[]> => {
-      const res = await itineraryService.getMyItineraries();
-      if (res?.code !== 0 && res?.code !== 1000) {
-        throw new Error(res?.message || "Không tải được danh sách lịch trình");
-      }
-      const list = Array.isArray(res?.data) ? res.data : [];
-      return list.map(mapApiItineraryToExploreItem);
-    },
-    staleTime: 60 * 1000,
-  });
-  const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const params = useLocalSearchParams();
 
-  const count = itineraries.length;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filters, setFilters] = useState<GetPostsParams>({});
+  const [showFilterModal, setShowFilterModal] = useState(false);
+
+  // Read hashtag from URL params (when user clicks hashtag in a post)
+  useEffect(() => {
+    if (params.hashtag && typeof params.hashtag === "string") {
+      setFilters({ hashtag: params.hashtag });
+    }
+  }, [params.hashtag]);
+
+  // Fetch posts with search/filter params
+  const { data: posts = [], isLoading } = usePosts({
+    q: searchQuery,
+    ...filters,
+    sort: "relevance",
+  });
+
+  // Post interaction hooks
+  const likeMutation = useLikePost();
+  const commentMutation = useCommentPost();
+  const shareMutation = useSharePost();
+  const bookmarkMutation = useBookmarkPost();
+
+  const handleLike = (postId: string) => {
+    likeMutation.mutate(postId);
+  };
+
+  const handleComment = (postId: string) => {
+    // TODO: Open comment modal (Phase 4)
+    console.log("Comment on post:", postId);
+  };
+
+  const handleShare = (postId: string) => {
+    shareMutation.mutate(postId);
+  };
+
+  const handleBookmark = (postId: string) => {
+    bookmarkMutation.mutate(postId);
+  };
+
+  const handlePostPress = (post: Post) => {
+    router.push(`/post/${post.id}` as any);
+  };
+
+  const handleUserPress = (userId: string) => {
+    router.push(`/profile/${userId}` as any);
+  };
+
+  // Clear a specific filter
+  const clearFilter = (key: keyof GetPostsParams) => {
+    setFilters((prev) => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setFilters({});
+    setSearchQuery("");
+  };
+
+  // Count active filters
+  const activeFilterCount = Object.keys(filters).filter(
+    (key) => filters[key as keyof GetPostsParams] !== undefined
+  ).length;
+
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <Ionicons name="search-outline" size={64} color="#D1D5DB" />
+      <Text style={styles.emptyTitle}>Không tìm thấy bài viết</Text>
+      <Text style={styles.emptyText}>
+        {searchQuery || activeFilterCount > 0
+          ? "Thử thay đổi từ khóa tìm kiếm hoặc bộ lọc"
+          : "Bắt đầu tìm kiếm bài viết du lịch"}
+      </Text>
+      {(searchQuery || activeFilterCount > 0) && (
+        <TouchableOpacity
+          style={styles.clearButton}
+          onPress={clearAllFilters}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.clearButtonText}>Xóa bộ lọc</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  const renderActiveFilters = () => {
+    if (activeFilterCount === 0) return null;
+
+    return (
+      <View style={styles.filtersContainer}>
+        <View style={styles.filtersHeader}>
+          <Text style={styles.filtersTitle}>
+            Bộ lọc ({activeFilterCount})
+          </Text>
+          <TouchableOpacity onPress={clearAllFilters}>
+            <Text style={styles.clearAllText}>Xóa tất cả</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.filtersChips}>
+          {filters.hashtag && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>#{filters.hashtag}</Text>
+              <TouchableOpacity onPress={() => clearFilter("hashtag")}>
+                <Ionicons name="close-circle" size={18} color="#0369A1" />
+              </TouchableOpacity>
+            </View>
+          )}
+          {(filters.min_budget || filters.max_budget) && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>
+                Ngân sách: {filters.min_budget || 0}đ - {filters.max_budget || "∞"}đ
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  clearFilter("min_budget");
+                  clearFilter("max_budget");
+                }}
+              >
+                <Ionicons name="close-circle" size={18} color="#0369A1" />
+              </TouchableOpacity>
+            </View>
+          )}
+          {(filters.start_date || filters.end_date) && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>
+                Thời gian: {filters.start_date || "?"} - {filters.end_date || "?"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  clearFilter("start_date");
+                  clearFilter("end_date");
+                }}
+              >
+                <Ionicons name="close-circle" size={18} color="#0369A1" />
+              </TouchableOpacity>
+            </View>
+          )}
+          {(filters.min_days || filters.max_days) && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>
+                Thời lượng: {filters.min_days || 0} - {filters.max_days || "∞"} ngày
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  clearFilter("min_days");
+                  clearFilter("max_days");
+                }}
+              >
+                <Ionicons name="close-circle" size={18} color="#0369A1" />
+              </TouchableOpacity>
+            </View>
+          )}
+          {(filters.min_people || filters.max_people) && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>
+                Số người: {filters.min_people || 0} - {filters.max_people || "∞"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  clearFilter("min_people");
+                  clearFilter("max_people");
+                }}
+              >
+                <Ionicons name="close-circle" size={18} color="#0369A1" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
 
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Lịch trình</Text>
-          <Text style={styles.headerCount}>0 lịch trình</Text>
+          <Text style={styles.headerTitle}>Khám phá</Text>
         </View>
-        <View style={styles.loadingWrap}>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onFilterPress={() => setShowFilterModal(true)}
+        />
+        <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#16A34A" />
         </View>
         <BottomNavigation />
@@ -111,184 +220,49 @@ export default function ExploreScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      {/* Header: Lịch trình + count + toggle icon */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Lịch trình</Text>
-          <Text style={styles.headerCount}>{count} lịch trình</Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => setViewMode((m) => (m === "card" ? "list" : "card"))}
-          style={styles.toggleBtn}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={viewMode === "card" ? "list" : "grid"}
-            size={24}
-            color="#16A34A"
-          />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Khám phá</Text>
+        <Text style={styles.headerSubtitle}>
+          {posts.length} bài viết
+        </Text>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {viewMode === "card" ? (
-          itineraries.map((it) => (
-            <ItineraryCard
-              key={it.id}
-              itinerary={it}
-              onPress={() => {
-                if (!it.id) return;
-                router.push(`/itinerary/${it.id}` as any);
-              }}
-            />
-          ))
-        ) : (
-          itineraries.map((it) => (
-            <ItineraryListItem
-              key={it.id}
-              itinerary={it}
-              onPress={() => {
-                if (!it.id) return;
-                router.push(`/itinerary/${it.id}` as any);
-              }}
-            />
-          ))
+      <SearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        onFilterPress={() => setShowFilterModal(true)}
+      />
+
+      {renderActiveFilters()}
+
+      <FlatList
+        data={posts}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <PostCard
+            post={item}
+            onLike={handleLike}
+            onComment={handleComment}
+            onShare={handleShare}
+            onBookmark={handleBookmark}
+            onPostPress={handlePostPress}
+            onUserPress={handleUserPress}
+          />
         )}
-      </ScrollView>
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={renderEmptyState()}
+        showsVerticalScrollIndicator={false}
+      />
 
       <BottomNavigation />
-    </SafeAreaView>
-  );
-}
 
-function ItineraryCard({
-  itinerary,
-  onPress,
-}: {
-  itinerary: ExploreItinerary;
-  onPress: () => void;
-}) {
-  const locationLabel = getLocationLabel(itinerary.name);
-  const overlayText = getLocationOverlayText(itinerary.name);
-  const dateRange = formatApiDateRange(itinerary.startDate, itinerary.endDate);
-  const budgetStr = formatCurrencyVND(itinerary.budget);
-
-  return (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.88}
-      onPress={onPress}
-    >
-      <View style={styles.cardImageWrap}>
-        <Image
-          source={
-            itinerary.image
-              ? { uri: itinerary.image }
-              : require("@/assets/images/loading_img.jpg")
-          }
-          style={styles.cardImage}
-          contentFit="cover"
-        />
-        {overlayText ? (
-          <View style={styles.cardImageOverlay}>
-            <Text style={styles.cardImageOverlayText}>{overlayText}</Text>
-          </View>
-        ) : null}
-        <View style={styles.ratingOverlay}>
-          <Ionicons name="star" size={14} color="#FBBF24" />
-          <Text style={styles.ratingText}>4.9</Text>
-        </View>
-      </View>
-
-      <View style={styles.cardBody}>
-        <Text style={styles.cardTitle}>{itinerary.name}</Text>
-
-        <View style={styles.cardRow}>
-          <Ionicons name="location" size={16} color="#DC2626" />
-          <Text style={styles.cardLabel}>{locationLabel}</Text>
-          <Text style={styles.flag}>🇻🇳</Text>
-        </View>
-
-        <View style={styles.cardRowBetween}>
-          <View style={styles.cardRow}>
-            <Ionicons name="calendar-outline" size={16} color="#374151" />
-            <Text style={styles.cardLabel}>Thời gian:</Text>
-          </View>
-          <Text style={styles.cardValue}>{dateRange}</Text>
-        </View>
-
-        <View style={styles.cardRowBetween}>
-          <View style={styles.cardRow}>
-            <Ionicons name="time-outline" size={16} color="#374151" />
-            <Text style={styles.cardLabel}>Thời lượng:</Text>
-          </View>
-          <Text style={styles.cardValue}>{itinerary.duration}</Text>
-        </View>
-
-        <View style={styles.cardRowBetween}>
-          <View style={styles.cardRow}>
-            <Ionicons name="people-outline" size={16} color="#374151" />
-            <Text style={styles.cardLabel}>Số người:</Text>
-          </View>
-          <Text style={styles.cardValue}>{itinerary.memberCount} người</Text>
-        </View>
-
-        <View style={styles.cardRowBetween}>
-          <Text style={styles.cardLabel}>Ngân sách:</Text>
-          <Text style={styles.cardBudget}>{budgetStr}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-function ItineraryListItem({
-  itinerary,
-  onPress,
-}: {
-  itinerary: ExploreItinerary;
-  onPress: () => void;
-}) {
-  const dateRange = formatApiDateRange(itinerary.startDate, itinerary.endDate);
-  const budgetStr = formatCurrencyVND(itinerary.budget);
-
-  return (
-    <TouchableOpacity
-      style={styles.listItem}
-      activeOpacity={0.88}
-      onPress={onPress}
-    >
-      <Image
-        source={itinerary.image ? { uri: itinerary.image } : require("@/assets/images/loading_img.jpg")}
-        style={styles.listItemImage}
-        contentFit="cover"
+      <FilterModal
+        visible={showFilterModal}
+        filters={filters}
+        onApply={setFilters}
+        onClose={() => setShowFilterModal(false)}
       />
-      <View style={styles.listItemBody}>
-        <Text style={styles.listItemTitle} numberOfLines={1}>
-          {itinerary.name}
-        </Text>
-        <View style={styles.listItemRow}>
-          <Text style={styles.listItemIcon}>📆</Text>
-          <Text style={styles.listItemText}>
-            Thời gian: {dateRange}
-          </Text>
-        </View>
-        <View style={styles.listItemRow}>
-          <Ionicons name="people-outline" size={14} color="#374151" />
-          <Text style={styles.listItemText}>
-            Số người: {itinerary.memberCount} thành viên
-          </Text>
-        </View>
-        <View style={styles.listItemRow}>
-          <Text style={styles.listItemLabel}>Ngân sách: </Text>
-          <Text style={styles.listItemBudget}>{budgetStr}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
+    </SafeAreaView>
   );
 }
 
@@ -298,9 +272,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 16,
@@ -312,167 +283,91 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
   },
-  headerCount: {
+  headerSubtitle: {
     fontSize: 14,
     color: "#6B7280",
     marginTop: 2,
   },
-  toggleBtn: {
-    padding: 8,
-  },
-  loadingWrap: {
+  loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  scroll: {
+  listContent: {
+    paddingBottom: 20,
+  },
+  emptyContainer: {
     flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+    paddingTop: 100,
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  // --- Card view ---
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    overflow: "hidden",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  cardImageWrap: {
-    position: "relative",
-    width: "100%",
-    aspectRatio: 16 / 10,
-  },
-  cardImage: {
-    width: "100%",
-    height: "100%",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  cardImageOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
-    padding: 12,
-  },
-  cardImageOverlayText: {
-    fontSize: 20,
+  emptyTitle: {
+    fontSize: 18,
     fontWeight: "700",
-    color: "#fff",
-    textShadowColor: "rgba(0,0,0,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    color: "#374151",
+    marginTop: 16,
+    marginBottom: 8,
   },
-  ratingOverlay: {
-    position: "absolute",
-    top: 12,
-    right: 12,
+  emptyText: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  clearButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: "#16A34A",
+    borderRadius: 8,
+  },
+  clearButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  filtersContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#F9FAFB",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  filtersHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  filtersTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+  },
+  clearAllText: {
+    fontSize: 13,
+    color: "#16A34A",
+    fontWeight: "600",
+  },
+  filtersChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  filterChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 20,
+    gap: 6,
+    backgroundColor: "#E0F2FE",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  ratingText: {
+  filterChipText: {
+    color: "#0369A1",
     fontSize: 13,
     fontWeight: "600",
-    color: "#fff",
-  },
-  cardBody: {
-    padding: 16,
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 10,
-  },
-  cardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  cardRowBetween: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
-  cardLabel: {
-    fontSize: 14,
-    color: "#374151",
-    fontWeight: "500",
-  },
-  cardValue: {
-    fontSize: 14,
-    color: "#374151",
-    fontWeight: "500",
-  },
-  cardBudget: {
-    fontSize: 14,
-    color: "#16A34A",
-    fontWeight: "700",
-  },
-  flag: {
-    fontSize: 12,
-    marginLeft: 4,
-  },
-  // --- List view ---
-  listItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
-  },
-  listItemImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 10,
-  },
-  listItemBody: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  listItemTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 6,
-  },
-  listItemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 2,
-  },
-  listItemIcon: {
-    fontSize: 14,
-  },
-  listItemText: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  listItemLabel: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  listItemBudget: {
-    fontSize: 13,
-    color: "#16A34A",
-    fontWeight: "700",
   },
 });

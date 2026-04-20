@@ -10,24 +10,14 @@ export function formatLatLngForDisplay(lat: number, lon: number): string {
   return `${Math.abs(lat).toFixed(4)}°${ns}, ${Math.abs(lon).toFixed(4)}°${ew}`;
 }
 
-const PLACEHOLDER_IMAGES = [
-  "https://images.unsplash.com/photo-1528127269322-539801943592?w=400&q=80",
-  "https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&q=80",
-  "https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400&q=80",
-  "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=80",
-];
-
-function hashIndex(id: string, len: number) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h % len;
-}
+/** Chỉ dùng khi DTO không có tọa độ — tránh gán ảnh stock không khớp tên tỉnh. */
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1524661135-423995f22d0b?w=400&q=80";
 
 /**
  * Map API LocationDto (tỉnh/thành, địa điểm) sang Location dùng trong TripSetup / LocationItem.
  */
 export function mapLocationDtoToTripLocation(dto: LocationDto): Location {
-  const idx = hashIndex(dto.id || dto.name, PLACEHOLDER_IMAGES.length);
   const lat = dto.latitude ?? dto.lat;
   const lon = dto.longitude ?? dto.lng;
   const hasCoords =
@@ -41,12 +31,37 @@ export function mapLocationDtoToTripLocation(dto: LocationDto): Location {
     dto.address ||
     dto.full_address ||
     dto.place_formatted ||
-    (coordLine ? "Tọa độ" : "") ||
+    dto.name_en ||
     "";
 
+  // Lấy và dịch loại địa chính (location_type)
+  const locType = dto.location_type?.toUpperCase() || "";
+  const typeMap: Record<string, string> = {
+    PROVINCE: "Tỉnh",
+    CITY: "Thành phố",
+    COUNTRY: "Quốc gia",
+    DISTRICT: "Quận / Huyện",
+    WARD: "Phường / Xã",
+    REGION: "Khu vực / Vùng",
+  };
+  const typeText = locType ? (typeMap[locType] || dto.location_type) : "";
+
+  // Hiển thị độ phổ biến nếu Backend trả về usage_count > 0
+  const usageText = 
+    dto.usage_count && dto.usage_count > 0 
+      ? `🔥 ${dto.usage_count.toLocaleString("vi-VN")} chuyến đi`
+      : "";
+
   const subtitle =
-    [baseLabel.trim(), coordLine].filter(Boolean).join(" · ") ||
-    "Tỉnh / thành phố Việt Nam";
+    [typeText, usageText, baseLabel.trim()].filter(Boolean).join(" · ") || "Địa danh Việt Nam";
+
+  /** Ảnh preview khớp địa lý: bản đồ tĩnh tại tâm tỉnh (không dùng ảnh stock xoay vòng — dễ lệch cảnh như Hạ Long). */
+  const image = hasCoords
+    ? buildStaticMapImageUrl(
+        [{ latitude: lat, longitude: lon }],
+        { width: 800, height: 512, zoom: 10 }
+      )
+    : FALLBACK_IMAGE;
 
   return {
     id: dto.id,
@@ -54,7 +69,7 @@ export function mapLocationDtoToTripLocation(dto: LocationDto): Location {
     ...(dto.name_en ? { nameEn: dto.name_en } : {}),
     subtitle,
     hashtag: "#KhámPháViệtNam",
-    image: PLACEHOLDER_IMAGES[idx],
+    image,
     rating: 0,
     priceRange: { min: 0, max: 0 },
     specialty: subtitle,

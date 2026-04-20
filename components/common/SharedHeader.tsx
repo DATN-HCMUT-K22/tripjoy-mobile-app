@@ -77,8 +77,7 @@ const DefaultRightIcons: React.FC<{
       <Ionicons
         name="notifications-outline"
         size={28}
-        // Luôn hiển thị icon chuông màu xanh (màu primary)
-        color={activeColor}
+        color={iconColor}
       />
       {notificationCount > 0 && (
         <View style={styles.badge}>

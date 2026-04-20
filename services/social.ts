@@ -1,21 +1,9 @@
 import { ApiResponse } from "@/types/user";
+import { CreatePostRequest, Post } from "@/types/social";
 import { httpClient } from "./http/client";
 
-// Types cho Post
-export interface Post {
-  id: string;
-  userId: string;
-  username: string;
-  avatar?: string;
-  content: string;
-  images?: string[];
-  likes: number;
-  comments: number;
-  shares: number;
-  isLiked?: boolean;
-  isBookmarked?: boolean;
-  createdAt: string;
-}
+// Re-export Post type for backward compatibility
+export type { Post };
 
 export interface GetPostsResponse {
   code: number;
@@ -116,6 +104,18 @@ export const getGroupByIdPublic = (id: string) =>
     skipAuth: false, // Optional auth
   });
 
+/**
+ * Lấy danh sách hashtag phổ biến (public - không cần auth)
+ */
+export const getPopularHashtags = (limit = 20) =>
+  httpClient.get<ApiResponse<{ name: string; count: number }[]>>(
+    "/posts/hashtags/popular",
+    {
+      params: { limit },
+      skipAuth: false, // Optional auth
+    }
+  );
+
 // ========== PRIVATE APIs (Bắt buộc cần auth) ==========
 // Các API này BẮT BUỘC phải có token
 
@@ -166,10 +166,35 @@ export const bookmarkPost = (postId: string) =>
   );
 
 /**
+ * Lấy danh sách saved posts (private - cần auth)
+ */
+export const getSavedPosts = (params?: { page?: number; size?: number }) =>
+  httpClient.get<GetPostsResponse>("/posts/saves", {
+    params,
+    skipAuth: false, // Bắt buộc auth
+  });
+
+/**
  * Tạo post mới (private - cần auth)
  */
-export const createPost = (payload: { content: string; images?: string[] }) =>
+export const createPost = (payload: CreatePostRequest) =>
   httpClient.post<ApiResponse<Post>>("/posts", payload, {
+    skipAuth: false, // Bắt buộc auth
+  });
+
+/**
+ * Cập nhật post (private - cần auth)
+ */
+export const updatePost = (postId: string, payload: Partial<CreatePostRequest>) =>
+  httpClient.put<ApiResponse<Post>>(`/posts/${postId}`, payload, {
+    skipAuth: false, // Bắt buộc auth
+  });
+
+/**
+ * Xóa post (soft delete) (private - cần auth)
+ */
+export const deletePost = (postId: string) =>
+  httpClient.delete<ApiResponse<void>>(`/posts/${postId}`, {
     skipAuth: false, // Bắt buộc auth
   });
 

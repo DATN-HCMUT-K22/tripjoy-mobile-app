@@ -3,11 +3,17 @@ import { useTempLocation } from "@/contexts/TempLocationContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { mockAttractions } from "@/data/mockAttractions";
 import { mockItineraryItems } from "@/data/mockItineraryItems";
-import InteractiveMap from "@/components/InteractiveMap";
+import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
 import { ItineraryItem } from "@/types/itinerary";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
-import type { LocationForMap } from "@/utils/mapLocations";
+import {
+  type LocationForMap,
+  parseLatLngFromGoogleMapsUrl,
+} from "@/utils/mapLocations";
 import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
+import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
+import { showErrorToast } from "@/utils/toast";
+import TimePickerModal from "@/components/TimePickerModal";
 import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -43,12 +49,16 @@ function AdjustableItem({
   onDelete,
   onMove,
   totalItems,
+  dayKey,
+  onEditTime,
 }: {
   item: ItineraryItem;
   index: number;
   onDelete: (id: string) => void;
   onMove: (from: number, to: number) => void;
   totalItems: number;
+  dayKey: string;
+  onEditTime: (dayKey: string, item: ItineraryItem) => void;
 }) {
   const { externalPlacesById } = useItinerary();
   const translateY = useSharedValue(0);
@@ -138,6 +148,23 @@ function AdjustableItem({
                 {item.name}
               </Text>
               <Text className="text-sm text-gray-600">{subtitle}</Text>
+              <View className="mt-1.5 flex-row items-center">
+                <Ionicons name="time-outline" size={14} color="#666" />
+                <Text className="ml-1 text-sm text-gray-600">
+                  {item.timeRange.start} - {item.timeRange.end}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => onEditTime(dayKey, item)}
+                  className="ml-2 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1"
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={14}
+                    color="#34B27D"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </GestureDetector>
@@ -215,6 +242,41 @@ export default function AdjustItineraryScreen() {
     selectedLocationsByDay: Record<string, string[]>;
   } | null>(null);
   const isInitializedRef = useRef(false);
+
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [editingTimeSlot, setEditingTimeSlot] = useState<{
+    dayKey: string;
+    item: ItineraryItem;
+  } | null>(null);
+
+  const openTimePicker = (dayKey: string, item: ItineraryItem) => {
+    setEditingTimeSlot({ dayKey, item });
+    setTimePickerVisible(true);
+  };
+
+  const handleSaveTimeFromAdjust = (timeRange: {
+    start: string;
+    end: string;
+  }) => {
+    if (!editingTimeSlot) return;
+    if (isInvalidSameDayTimeRange(timeRange.start, timeRange.end)) {
+      showErrorToast(
+        "Khung giờ không hợp lệ",
+        "Giờ kết thúc phải muộn hơn giờ bắt đầu."
+      );
+      return;
+    }
+    const { dayKey, item } = editingTimeSlot;
+    setDraftItemsByDay((prev) => {
+      const dayItems = [...(prev[dayKey] || [])];
+      const i = dayItems.findIndex((x) => x.id === item.id);
+      if (i < 0) return prev;
+      dayItems[i] = { ...dayItems[i], timeRange };
+      return { ...prev, [dayKey]: dayItems };
+    });
+    setTimePickerVisible(false);
+    setEditingTimeSlot(null);
+  };
 
   // Cập nhật ref khi itineraryItemsByDay thay đổi (nhưng không trigger re-render)
   useEffect(() => {
@@ -608,21 +670,27 @@ export default function AdjustItineraryScreen() {
   const sectionPositions = useRef<Record<string, number>>({});
 
   const mapPinsByDay = useMemo(() => {
-    const out: Record<string, LocationForMap[]> = {};
+    const out: Record<string, ItineraryMapLocation[]> = {};
     Object.entries(draftItemsByDay).forEach(([dayKey, items]) => {
-      const pins: LocationForMap[] = [];
-      items.forEach((item) => {
+      const pins: ItineraryMapLocation[] = [];
+      items.forEach((item, idx) => {
         const ext = externalPlacesById[item.locationId];
         const mock = mockAttractions.find((attr) => attr.id === item.locationId);
-        const lat = ext?.latitude ?? mock?.latitude;
-        const lng = ext?.longitude ?? mock?.longitude;
+        const fromUrl = parseLatLngFromGoogleMapsUrl(item.googleMapsUrl);
+        const lat = ext?.latitude ?? mock?.latitude ?? fromUrl?.latitude;
+        const lng = ext?.longitude ?? mock?.longitude ?? fromUrl?.longitude;
         if (
           typeof lat === "number" &&
           typeof lng === "number" &&
           !Number.isNaN(lat) &&
           !Number.isNaN(lng)
         ) {
-          pins.push({ latitude: lat, longitude: lng });
+          pins.push({
+            id: item.locationId || `pin-${dayKey}-${idx}`,
+            latitude: lat,
+            longitude: lng,
+            title: item.name || ext?.name || mock?.name || "Địa điểm",
+          });
         }
       });
       out[dayKey] = pins;
@@ -698,7 +766,11 @@ export default function AdjustItineraryScreen() {
 
                   {dayMapPins.length > 0 ? (
                     <View className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                      <InteractiveMap locations={dayMapPins} height={220} />
+                      <ItineraryRouteMap
+                        locations={dayMapPins}
+                        height={220}
+                        mode="DRIVING"
+                      />
                     </View>
                   ) : null}
 
@@ -709,6 +781,8 @@ export default function AdjustItineraryScreen() {
                         <AdjustableItem
                           key={`${day.key}-${item.id}`}
                           item={item}
+                          dayKey={day.key}
+                          onEditTime={openTimePicker}
                           index={index}
                           onDelete={(id) => {
                             try {
@@ -805,6 +879,18 @@ export default function AdjustItineraryScreen() {
             <Text className="text-white text-base font-semibold">Lưu</Text>
           </TouchableOpacity>
         </View>
+
+        <TimePickerModal
+          key={editingTimeSlot?.item?.id ?? "time-picker"}
+          visible={timePickerVisible}
+          initialStartTime={editingTimeSlot?.item.timeRange.start ?? "08:00"}
+          initialEndTime={editingTimeSlot?.item.timeRange.end ?? "10:00"}
+          onClose={() => {
+            setTimePickerVisible(false);
+            setEditingTimeSlot(null);
+          }}
+          onSave={handleSaveTimeFromAdjust}
+        />
       </SafeAreaView>
     </GestureHandlerRootView>
   );

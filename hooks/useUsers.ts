@@ -1,4 +1,5 @@
-import { getUsersPage } from "@/services/users";
+import type { User } from "@/types/user";
+import { getUsersPage, searchUsers } from "@/services/users";
 import { useAppSelector } from "@/store/hooks";
 import { useQuery } from "@tanstack/react-query";
 
@@ -21,6 +22,32 @@ export function useUsers(
     queryKey: ["users", params?.q ?? "", params?.page ?? 0, params?.size ?? 20],
     queryFn: async () => {
       try {
+        const q = params?.q?.trim();
+        if (q) {
+          const response = await searchUsers(q);
+          if (response.code === 1000 || response.code === 0) {
+            const raw = response.data;
+            const list = Array.isArray(raw) ? raw : [];
+            return {
+              content: list as unknown as User[],
+              totalElements: list.length,
+              totalPages: 1,
+              size: list.length,
+              number: params?.page ?? 0,
+            };
+          }
+          if (response.code === 2002) {
+            return {
+              content: [],
+              totalElements: 0,
+              totalPages: 0,
+              size: params?.size ?? 20,
+              number: params?.page ?? 0,
+            };
+          }
+          throw new Error(response.message || "Failed to search users");
+        }
+
         const response = await getUsersPage(params);
         if (response.code === 1000) {
           return response.data;

@@ -13,6 +13,7 @@ import "../global.css";
 
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { MessageNotificationProvider } from "@/components/chat/MessageNotificationProvider";
+import { PostNotificationProvider } from "@/components/social/PostNotificationProvider";
 import { SimpleLogoLoading } from "@/components/loading";
 import { Onboarding } from "@/components/onboarding";
 import { ItineraryProvider } from "@/contexts/ItineraryContext";
@@ -468,6 +469,7 @@ export default function RootLayout() {
                   )}
                   <NotificationInitializer />
                   <MessageNotificationProvider />
+                  <PostNotificationProvider />
                   <IncomingMessageHandler />
                   <IncomingNotificationHandler />
                   <StatusBar style="auto" />

@@ -117,6 +117,35 @@ export default function ChatScreen() {
     }
   }, [conversationId, setCurrentChatId, resetUnread]);
 
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+    const retryDelays = [300, 800, 1500];
+    const markReadWithRetry = async () => {
+      for (let i = 0; i < retryDelays.length; i++) {
+        try {
+          await conversationService.markConversationRead(conversationId);
+          if (!cancelled) {
+            resetUnread(conversationId);
+          }
+          return;
+        } catch {
+          if (i === retryDelays.length - 1 || cancelled) return;
+          await new Promise((resolve) => setTimeout(resolve, retryDelays[i]));
+        }
+      }
+    };
+
+    const timer = setTimeout(() => {
+      void markReadWithRetry();
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [conversationId, resetUnread]);
+
   // Đảm bảo header bị tắt
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -154,6 +183,8 @@ export default function ChatScreen() {
       return null;
     },
     enabled: !!conversationId,
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
   });
 
   // Sử dụng useMessages hook

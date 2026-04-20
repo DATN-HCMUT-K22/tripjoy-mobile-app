@@ -1,16 +1,62 @@
 import { Post } from "@/types/social";
 
-export const mockPosts: Post[] = [
-  {
-    id: "1",
-    user: {
-      id: "user1",
-      name: "Nguyễn Văn A",
-      avatar: "https://i.pravatar.cc/150?img=1",
+// Helper to create mock post with all required fields
+const createMockPost = (legacy: {
+  id: string;
+  user: { id: string; name: string; avatar: string };
+  image: string;
+  caption: string;
+  hashtags: string[];
+  likes: number;
+  comments: number;
+  shares: number;
+  timestamp: string;
+  timeAgo: string;
+  isBookmarked: boolean;
+}): Post => {
+  // Extract hashtags without # prefix
+  const cleanHashtags = legacy.hashtags.map(tag => tag.replace(/^#/, ''));
+  
+  return {
+    id: legacy.id,
+    content: legacy.caption,
+    media_urls: [legacy.image],
+    visibility: 'PUBLIC' as const,
+    share_quantity: legacy.shares,
+    creator_id: legacy.user.id,
+    creator: {
+      id: legacy.user.id,
+      username: legacy.user.id,
+      full_name: legacy.user.name,
+      avatar: legacy.user.avatar,
     },
+    hashtags: cleanHashtags,
+    like_count: legacy.likes,
+    comment_count: legacy.comments,
+    is_liked: false,
+    is_saved: legacy.isBookmarked,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    is_deleted: false,
+    // Legacy fields for backward compatibility
+    user: legacy.user,
+    image: legacy.image,
+    caption: legacy.caption,
+    likes: legacy.likes,
+    comments: legacy.comments,
+    shares: legacy.shares,
+    timestamp: legacy.timestamp,
+    timeAgo: legacy.timeAgo,
+    isBookmarked: legacy.isBookmarked,
+  };
+};
+
+export const mockPosts: Post[] = [
+  createMockPost({
+    id: "1",
+    user: { id: "user1", name: "Nguyễn Văn A", avatar: "https://i.pravatar.cc/150?img=1" },
     image: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
-    caption:
-      "#thagiangloop\nHà Giang mùa nước xanh\nTuyệt phẩm thiên nhiên ban tặng 🌿",
+    caption: "#thagiangloop\nHà Giang mùa nước xanh\nTuyệt phẩm thiên nhiên ban tặng 🌿",
     hashtags: ["#thagiangloop", "#hagiang", "#travel", "#vietnam"],
     likes: 125000,
     comments: 12000,
@@ -18,17 +64,12 @@ export const mockPosts: Post[] = [
     timestamp: "20/11/2025",
     timeAgo: "30 phút trước",
     isBookmarked: false,
-  },
-  {
+  }),
+  createMockPost({
     id: "2",
-    user: {
-      id: "user2",
-      name: "Trần Thị B",
-      avatar: "https://i.pravatar.cc/150?img=2",
-    },
+    user: { id: "user2", name: "Trần Thị B", avatar: "https://i.pravatar.cc/150?img=2" },
     image: "https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=800",
-    caption:
-      "#sapa #vietnam\nSapa vào mùa lúa chín vàng\nRuộng bậc thang đẹp như tranh vẽ 🎨",
+    caption: "#sapa #vietnam\nSapa vào mùa lúa chín vàng\nRuộng bậc thang đẹp như tranh vẽ 🎨",
     hashtags: ["#sapa", "#vietnam", "#rice", "#terraced"],
     likes: 98000,
     comments: 9500,
@@ -36,17 +77,12 @@ export const mockPosts: Post[] = [
     timestamp: "20/11/2025",
     timeAgo: "1 giờ trước",
     isBookmarked: true,
-  },
-  {
+  }),
+  createMockPost({
     id: "3",
-    user: {
-      id: "user3",
-      name: "Lê Văn C",
-      avatar: "https://i.pravatar.cc/150?img=3",
-    },
+    user: { id: "user3", name: "Lê Văn C", avatar: "https://i.pravatar.cc/150?img=3" },
     image: "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800",
-    caption:
-      "#dalat #flowers\nĐà Lạt mùa hoa dã quỳ\nThiên đường vàng rực rỡ 🌼",
+    caption: "#dalat #flowers\nĐà Lạt mùa hoa dã quỳ\nThiên đường vàng rực rỡ 🌼",
     hashtags: ["#dalat", "#flowers", "#nature", "#sunflower"],
     likes: 156000,
     comments: 14500,
@@ -54,17 +90,12 @@ export const mockPosts: Post[] = [
     timestamp: "20/11/2025",
     timeAgo: "2 giờ trước",
     isBookmarked: false,
-  },
-  {
+  }),
+  createMockPost({
     id: "4",
-    user: {
-      id: "user4",
-      name: "Phạm Thị D",
-      avatar: "https://i.pravatar.cc/150?img=4",
-    },
+    user: { id: "user4", name: "Phạm Thị D", avatar: "https://i.pravatar.cc/150?img=4" },
     image: "https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800",
-    caption:
-      "#phuquoc #beach\nPhú Quốc - Thiên đường biển đảo\nNước trong xanh như pha lê 💎",
+    caption: "#phuquoc #beach\nPhú Quốc - Thiên đường biển đảo\nNước trong xanh như pha lê 💎",
     hashtags: ["#phuquoc", "#beach", "#island", "#paradise"],
     likes: 189000,
     comments: 16800,
@@ -72,17 +103,12 @@ export const mockPosts: Post[] = [
     timestamp: "20/11/2025",
     timeAgo: "3 giờ trước",
     isBookmarked: true,
-  },
-  {
+  }),
+  createMockPost({
     id: "5",
-    user: {
-      id: "user5",
-      name: "Hoàng Văn E",
-      avatar: "https://i.pravatar.cc/150?img=5",
-    },
+    user: { id: "user5", name: "Hoàng Văn E", avatar: "https://i.pravatar.cc/150?img=5" },
     image: "https://images.unsplash.com/photo-1511497584788-876760111969?w=800",
-    caption:
-      "#hoian #ancienttown\nHội An - Phố cổ lung linh đèn lồng\nĐêm phố cổ đẹp như mơ 🏮",
+    caption: "#hoian #ancienttown\nHội An - Phố cổ lung linh đèn lồng\nĐêm phố cổ đẹp như mơ 🏮",
     hashtags: ["#hoian", "#ancienttown", "#lantern", "#heritage"],
     likes: 142000,
     comments: 13800,
@@ -90,17 +116,12 @@ export const mockPosts: Post[] = [
     timestamp: "20/11/2025",
     timeAgo: "4 giờ trước",
     isBookmarked: false,
-  },
-  {
+  }),
+  createMockPost({
     id: "6",
-    user: {
-      id: "user6",
-      name: "Vũ Thị F",
-      avatar: "https://i.pravatar.cc/150?img=6",
-    },
+    user: { id: "user6", name: "Vũ Thị F", avatar: "https://i.pravatar.cc/150?img=6" },
     image: "https://images.unsplash.com/photo-1505142468610-359e7d316be0?w=800",
-    caption:
-      "#halongbay #unesco\nVịnh Hạ Long - Kỳ quan thiên nhiên\nĐá vôi nhô lên từ biển xanh 🏔️",
+    caption: "#halongbay #unesco\nVịnh Hạ Long - Kỳ quan thiên nhiên\nĐá vôi nhô lên từ biển xanh 🏔️",
     hashtags: ["#halongbay", "#unesco", "#limestone", "#wonder"],
     likes: 203000,
     comments: 19200,
@@ -108,17 +129,12 @@ export const mockPosts: Post[] = [
     timestamp: "19/11/2025",
     timeAgo: "5 giờ trước",
     isBookmarked: true,
-  },
-  {
+  }),
+  createMockPost({
     id: "7",
-    user: {
-      id: "user7",
-      name: "Đỗ Văn G",
-      avatar: "https://i.pravatar.cc/150?img=7",
-    },
+    user: { id: "user7", name: "Đỗ Văn G", avatar: "https://i.pravatar.cc/150?img=7" },
     image: "https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=800",
-    caption:
-      "#nhatrang #beachlife\nNha Trang - Biển xanh cát trắng\nNắng vàng biển xanh tuyệt đẹp ☀️",
+    caption: "#nhatrang #beachlife\nNha Trang - Biển xanh cát trắng\nNắng vàng biển xanh tuyệt đẹp ☀️",
     hashtags: ["#nhatrang", "#beachlife", "#summer", "#vacation"],
     likes: 112000,
     comments: 10800,
@@ -126,17 +142,12 @@ export const mockPosts: Post[] = [
     timestamp: "19/11/2025",
     timeAgo: "6 giờ trước",
     isBookmarked: false,
-  },
-  {
+  }),
+  createMockPost({
     id: "8",
-    user: {
-      id: "user8",
-      name: "Bùi Thị H",
-      avatar: "https://i.pravatar.cc/150?img=8",
-    },
+    user: { id: "user8", name: "Bùi Thị H", avatar: "https://i.pravatar.cc/150?img=8" },
     image: "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800",
-    caption:
-      "#mucangchai #ricefield\nMù Cang Chải - Ruộng bậc thang vàng óng\nMùa lúa chín đẹp nhất năm 🌾",
+    caption: "#mucangchai #ricefield\nMù Cang Chải - Ruộng bậc thang vàng óng\nMùa lúa chín đẹp nhất năm 🌾",
     hashtags: ["#mucangchai", "#ricefield", "#harvest", "#mountain"],
     likes: 178000,
     comments: 16500,
@@ -144,17 +155,12 @@ export const mockPosts: Post[] = [
     timestamp: "19/11/2025",
     timeAgo: "8 giờ trước",
     isBookmarked: true,
-  },
-  {
+  }),
+  createMockPost({
     id: "9",
-    user: {
-      id: "user9",
-      name: "Ngô Văn I",
-      avatar: "https://i.pravatar.cc/150?img=9",
-    },
+    user: { id: "user9", name: "Ngô Văn I", avatar: "https://i.pravatar.cc/150?img=9" },
     image: "https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800",
-    caption:
-      "#mekong #river\nĐồng bằng sông Cửu Long\nChợ nổi sông nước độc đáo 🚤",
+    caption: "#mekong #river\nĐồng bằng sông Cửu Long\nChợ nổi sông nước độc đáo 🚤",
     hashtags: ["#mekong", "#river", "#floatingmarket", "#delta"],
     likes: 95000,
     comments: 9200,
@@ -162,17 +168,12 @@ export const mockPosts: Post[] = [
     timestamp: "19/11/2025",
     timeAgo: "10 giờ trước",
     isBookmarked: false,
-  },
-  {
+  }),
+  createMockPost({
     id: "10",
-    user: {
-      id: "user10",
-      name: "Lý Thị K",
-      avatar: "https://i.pravatar.cc/150?img=10",
-    },
+    user: { id: "user10", name: "Lý Thị K", avatar: "https://i.pravatar.cc/150?img=10" },
     image: "https://images.unsplash.com/photo-1511497584788-876760111969?w=800",
-    caption:
-      "#hue #imperialcity\nHuế - Cố đô xưa cũ\nKiến trúc cổ kính đầy hoài niệm 🏛️",
+    caption: "#hue #imperialcity\nHuế - Cố đô xưa cũ\nKiến trúc cổ kính đầy hoài niệm 🏛️",
     hashtags: ["#hue", "#imperialcity", "#heritage", "#history"],
     likes: 134000,
     comments: 12800,
@@ -180,17 +181,12 @@ export const mockPosts: Post[] = [
     timestamp: "19/11/2025",
     timeAgo: "12 giờ trước",
     isBookmarked: false,
-  },
-  {
+  }),
+  createMockPost({
     id: "11",
-    user: {
-      id: "user11",
-      name: "Trương Văn L",
-      avatar: "https://i.pravatar.cc/150?img=11",
-    },
+    user: { id: "user11", name: "Trương Văn L", avatar: "https://i.pravatar.cc/150?img=11" },
     image: "https://images.unsplash.com/photo-1505142468610-359e7d316be0?w=800",
-    caption:
-      "#catba #nationalpark\nCát Bà - Đảo ngọc xanh\nRừng nguyên sinh và biển xanh 🏝️",
+    caption: "#catba #nationalpark\nCát Bà - Đảo ngọc xanh\nRừng nguyên sinh và biển xanh 🏝️",
     hashtags: ["#catba", "#nationalpark", "#island", "#nature"],
     likes: 108000,
     comments: 10200,
@@ -198,17 +194,12 @@ export const mockPosts: Post[] = [
     timestamp: "18/11/2025",
     timeAgo: "1 ngày trước",
     isBookmarked: true,
-  },
-  {
+  }),
+  createMockPost({
     id: "12",
-    user: {
-      id: "user12",
-      name: "Phan Thị M",
-      avatar: "https://i.pravatar.cc/150?img=12",
-    },
+    user: { id: "user12", name: "Phan Thị M", avatar: "https://i.pravatar.cc/150?img=12" },
     image: "https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=800",
-    caption:
-      "#tamdao #mountain\nTam Đảo - Núi rừng mây phủ\nKhí hậu mát mẻ quanh năm ☁️",
+    caption: "#tamdao #mountain\nTam Đảo - Núi rừng mây phủ\nKhí hậu mát mẻ quanh năm ☁️",
     hashtags: ["#tamdao", "#mountain", "#cloud", "#cool"],
     likes: 89000,
     comments: 8600,
@@ -216,5 +207,5 @@ export const mockPosts: Post[] = [
     timestamp: "18/11/2025",
     timeAgo: "1 ngày trước",
     isBookmarked: false,
-  },
+  }),
 ];

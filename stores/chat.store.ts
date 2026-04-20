@@ -21,6 +21,10 @@ interface ChatActions {
   increaseUnread: (chatId: string) => void;
   // Reset unread count for a conversation
   resetUnread: (chatId: string) => void;
+  // Set unread count explicitly
+  setUnread: (chatId: string, count: number) => void;
+  // Replace unread counts from server snapshot
+  reconcileUnreadFromServer: (unreadByChatId: Record<string, number>) => void;
   // Get unread count for a conversation
   getUnreadCount: (chatId: string) => number;
   // Get messages for a conversation
@@ -74,11 +78,27 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   },
 
   resetUnread: (chatId) => {
-    set((state) => {
-      const newUnreadCount = { ...state.unreadCount };
-      delete newUnreadCount[chatId];
-      return { unreadCount: newUnreadCount };
-    });
+    set((state) => ({
+      unreadCount: {
+        ...state.unreadCount,
+        [chatId]: 0,
+      },
+    }));
+  },
+
+  setUnread: (chatId, count) => {
+    set((state) => ({
+      unreadCount: {
+        ...state.unreadCount,
+        [chatId]: Math.max(0, count),
+      },
+    }));
+  },
+
+  reconcileUnreadFromServer: (unreadByChatId) => {
+    set(() => ({
+      unreadCount: { ...unreadByChatId },
+    }));
   },
 
   getUnreadCount: (chatId) => {

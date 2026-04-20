@@ -7,7 +7,7 @@ import { showSuccessToast } from "@/utils/toast";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
@@ -23,6 +23,10 @@ import {
 
 export default function CreateGroupScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    returnTo?: string;
+    autoSelect?: string;
+  }>();
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [searchText, setSearchText] = useState("");
@@ -45,13 +49,13 @@ export default function CreateGroupScreen() {
 
   const currentUser = useAppSelector((state) => state.auth.user);
 
-  const displayUsers = useMemo(
-    () => searchResults.filter((u) => u.id !== currentUser?.id),
-    [searchResults, currentUser?.id]
-  );
+  const displayUsers = useMemo(() => {
+    const list = Array.isArray(searchResults) ? searchResults : [];
+    return list.filter((u) => u.id !== currentUser?.id);
+  }, [searchResults, currentUser?.id]);
 
   // Create group mutation
-  const createGroupMutation = useCreateGroup();
+  const createGroupMutation = useCreateGroup({ redirectToGroups: false });
 
   useEffect(() => {
     // Slide up animation
@@ -112,7 +116,7 @@ export default function CreateGroupScreen() {
     }
 
     try {
-      await createGroupMutation.mutateAsync({
+      const createdGroup = await createGroupMutation.mutateAsync({
         name: groupName.trim(),
         description: groupDescription.trim() || undefined,
         theme_color: "#34B27D", // Màu mặc định
@@ -120,6 +124,17 @@ export default function CreateGroupScreen() {
       });
 
       showSuccessToast("Tạo nhóm thành công!");
+      if (params.returnTo === "/create/select-group") {
+        router.replace({
+          pathname: "/create/select-group",
+          params: {
+            createdGroupId: createdGroup.id,
+            autoSelect: params.autoSelect === "1" ? "1" : "0",
+          },
+        } as any);
+        return;
+      }
+      router.replace("/groups" as any);
     } catch {
       // Lỗi đã xử lý trong mutation onError (toast)
     }

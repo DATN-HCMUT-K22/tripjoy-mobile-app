@@ -10,6 +10,8 @@ type Props = {
   /** Giữ API khớp bản native; web chỉ dùng ảnh tĩnh (không tô màu từng pin). */
   selectedIndex?: number | null;
   getMarkerColor?: (index: number) => string;
+  /** Web luôn static; prop chỉ để khớp API với native. */
+  preferStaticMap?: boolean;
 };
 
 /**

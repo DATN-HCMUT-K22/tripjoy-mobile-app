@@ -74,12 +74,15 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
   const typingTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const messagesRef = useRef<ChatMessageResponse[]>([]);
   const conversationIdRef = useRef<string>(conversationId);
+  const beforeCursorRef = useRef<string | null>(null);
+  const isFetchingRef = useRef(false);
 
   // Update refs
   useEffect(() => {
     messagesRef.current = messages;
     conversationIdRef.current = conversationId;
-  }, [messages, conversationId]);
+    beforeCursorRef.current = beforeCursor;
+  }, [messages, conversationId, beforeCursor]);
 
   /**
    * Load messages từ API
@@ -88,17 +91,22 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
   const loadMessages = useCallback(
     async (page: number = 0, useCursor: boolean = false) => {
       if (!conversationId) return;
+      if (isFetchingRef.current) return;
 
       try {
-        setLoading(true);
+        isFetchingRef.current = true;
+        const isInitialLoad = page === 0 && !useCursor;
+        if (isInitialLoad) {
+          setLoading(true);
+        }
         setError(null);
 
         // Sử dụng cursor-based pagination nếu được yêu cầu và có cursor
         let response;
-        if (useCursor && beforeCursor && page === 0) {
+        if (useCursor && beforeCursorRef.current && page === 0) {
           // Load messages cũ hơn (scroll up) - chỉ khi có beforeCursor
           response = await messageService.getMessages(conversationId, {
-            before: beforeCursor,
+            before: beforeCursorRef.current,
             limit: pageSize,
           });
         } else {
@@ -218,10 +226,11 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
           setAfterCursor(null);
         }
       } finally {
+        isFetchingRef.current = false;
         setLoading(false);
       }
     },
-    [conversationId, pageSize, beforeCursor]
+    [conversationId, pageSize]
   );
 
   /**
@@ -229,10 +238,10 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
    * Hỗ trợ cả cursor-based và page-based
    */
   const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return;
+    if (isFetchingRef.current || !hasMore) return;
     
     // Ưu tiên sử dụng cursor-based nếu có cursor
-    if (beforeCursor) {
+    if (beforeCursorRef.current) {
       await loadMessages(0, true); // useCursor = true
     } else {
       // Fallback về page-based
@@ -240,7 +249,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
       await loadMessages(nextPage, false);
       setCurrentPage(nextPage);
     }
-  }, [loading, hasMore, currentPage, beforeCursor, loadMessages]);
+  }, [hasMore, currentPage, loadMessages]);
 
   /**
    * Refresh messages (load lại từ đầu)

@@ -28,6 +28,8 @@ export function usePinnedMessages(conversationId: string | null) {
       throw new Error(response.message || "Failed to load pinned messages");
     },
     enabled: !!conversationId,
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
   });
 
   // Realtime: khi có update_pin trong room hiện tại thì refetch pinned list

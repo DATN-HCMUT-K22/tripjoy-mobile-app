@@ -1,4 +1,4 @@
-import InteractiveMap from "@/components/InteractiveMap";
+import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
 import TimePickerModal from "@/components/TimePickerModal";
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
@@ -10,11 +10,14 @@ import { tripTypeOptions } from "@/data/tripTypeOptions";
 import { ItineraryItem } from "@/types/itinerary";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
 import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
+import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import { fetchPlacePhotoUrl } from "@/utils/googlePlacePhoto";
+import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -358,6 +361,13 @@ export default function ManualItineraryScreen() {
 
   const handleSaveTime = (timeRange: { start: string; end: string }) => {
     if (!selectedDay || !editingItem) return;
+    if (isInvalidSameDayTimeRange(timeRange.start, timeRange.end)) {
+      showErrorToast(
+        "Khung giờ không hợp lệ",
+        "Giờ kết thúc phải muộn hơn giờ bắt đầu."
+      );
+      return;
+    }
     const updated = (itineraryItemsByDay[selectedDay.key] || []).map((it) =>
       it.id === editingItem.id ? { ...it, timeRange } : it
     );
@@ -370,20 +380,77 @@ export default function ManualItineraryScreen() {
     if (!selectedDay || selectedLocationIdsForDay.length === 0) {
       return [];
     }
-    const pins: { latitude: number; longitude: number }[] = [];
+    const pins: ItineraryMapLocation[] = [];
     for (const id of selectedLocationIdsForDay) {
       const attr = mockAttractions.find((a) => a.id === id);
       if (attr?.latitude != null && attr?.longitude != null) {
-        pins.push({ latitude: attr.latitude, longitude: attr.longitude });
+        pins.push({
+          id,
+          latitude: attr.latitude,
+          longitude: attr.longitude,
+          title: attr.name || "Địa điểm",
+        });
         continue;
       }
       const ext = externalPlacesById[id];
       if (ext?.latitude != null && ext?.longitude != null) {
-        pins.push({ latitude: ext.latitude, longitude: ext.longitude });
+        pins.push({
+          id,
+          latitude: ext.latitude,
+          longitude: ext.longitude,
+          title: ext.name || "Địa điểm",
+        });
       }
     }
     return pins;
   }, [selectedDay, selectedLocationIdsForDay, externalPlacesById]);
+
+  // -------------------------------------------------------------------------
+  // Ảnh điểm đến: Places API (Text Search) → Static Maps fallback
+  // -------------------------------------------------------------------------
+  const destinationLocation = tripData.destinationLocation ?? tripData.location;
+  const [destinationImageUri, setDestinationImageUri] = useState<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setDestinationImageUri("");
+
+    const lat = destinationLocation?.latitude;
+    const lon = destinationLocation?.longitude;
+    const hasCoords =
+      typeof lat === "number" &&
+      typeof lon === "number" &&
+      !Number.isNaN(lat) &&
+      !Number.isNaN(lon);
+
+    if (!hasCoords) {
+      const fallback = destinationLocation?.image?.trim() ?? "";
+      setDestinationImageUri(fallback);
+      return;
+    }
+
+    (async () => {
+      const rawName = destinationLocation?.name ?? destinationLocation?.nameEn;
+      const locationName =
+        typeof rawName === "string" ? rawName.trim() || undefined : undefined;
+      const photoUrl = await fetchPlacePhotoUrl(lat!, lon!, locationName, 800, 30_000);
+      if (cancelled) return;
+
+      if (photoUrl) {
+        setDestinationImageUri(photoUrl);
+        return;
+      }
+
+      // Fallback: Static Maps
+      const staticMap = buildStaticMapImageUrl(
+        [{ latitude: lat!, longitude: lon! }],
+        { width: 800, height: 512, zoom: 12 }
+      );
+      setDestinationImageUri(staticMap ?? "");
+    })();
+
+    return () => { cancelled = true; };
+  }, [destinationLocation]);
 
   // Khi quay lại từ add-location, tạo itinerary items từ selected locations
   useFocusEffect(
@@ -494,11 +561,20 @@ export default function ManualItineraryScreen() {
         {tripData.location && (
           <View className="px-4 pt-2 pb-4">
             <View className="rounded-2xl overflow-hidden bg-white border border-gray-200">
-              <Image
-                source={{ uri: tripData.location.image }}
-                style={{ width: "100%", height: 200 }}
-                contentFit="cover"
-              />
+              {destinationImageUri ? (
+                <Image
+                  source={expoImageSourceForGoogleRaster(destinationImageUri)}
+                  style={{ width: "100%", height: 200 }}
+                  contentFit="cover"
+                />
+              ) : (
+                <View
+                  className="w-full bg-gray-100 items-center justify-center"
+                  style={{ height: 200 }}
+                >
+                  <Ionicons name="image-outline" size={48} color="#ccc" />
+                </View>
+              )}
               <View className="px-4 py-3 border-t border-gray-100">
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-base font-bold text-black">
@@ -602,9 +678,10 @@ export default function ManualItineraryScreen() {
           {/* Big map card: hiển thị tất cả marker của các địa điểm trong ngày */}
           {locationsForSelectedDay.length > 0 && (
             <View className="mb-4 rounded-2xl overflow-hidden bg-white border border-gray-200">
-              <InteractiveMap
+              <ItineraryRouteMap
                 locations={locationsForSelectedDay}
                 height={256}
+                mode="DRIVING"
               />
             </View>
           )}

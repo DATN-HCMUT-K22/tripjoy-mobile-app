@@ -4,7 +4,7 @@ import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
 import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
@@ -15,6 +15,11 @@ type Props = {
   selectedIndex?: number | null;
   /** Tùy chỉnh màu từng marker; nếu có thì bỏ qua `selectedIndex`. */
   getMarkerColor?: (index: number) => string;
+  /**
+   * Bắt buộc dùng ảnh Static/OSM thay vì MapView native.
+   * Nên bật khi map nằm trong ScrollView hoặc khi SDK hiển thị nền trống (tiles không tải).
+   */
+  preferStaticMap?: boolean;
 };
 
 const DEFAULT_PIN = "#EF4444";
@@ -25,13 +30,18 @@ const InteractiveMap: React.FC<Props> = ({
   height = 256,
   selectedIndex = null,
   getMarkerColor,
+  preferStaticMap = false,
 }) => {
   const mapRef = useRef<MapView>(null);
   const googleKey = getGoogleMapsApiKey();
   const useNativeGoogleMap =
+    !preferStaticMap &&
     googleKey.length > 0 &&
     Platform.OS !== "web" &&
     shouldUseNativeGoogleMapView(Platform.OS);
+
+  // Giữ tracksViewChanges={true} luôn bật để tránh lỗi marker vô hình trên Android.
+  const tracksViewChanges = true;
 
   const center = useMemo(() => {
     if (!locations.length) return null;
@@ -118,10 +128,11 @@ const InteractiveMap: React.FC<Props> = ({
                 latitude: loc.latitude,
                 longitude: loc.longitude,
               }}
-              tracksViewChanges={false}
+              tracksViewChanges={tracksViewChanges}
               anchor={{ x: 0.5, y: 1 }}
             >
-              <View className="items-center">
+              {/* Explicit size so the native bridge doesn't collapse the view to 0 */}
+              <View style={{ width: 36, height: 38, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="location-sharp" size={32} color={color} />
               </View>
             </Marker>

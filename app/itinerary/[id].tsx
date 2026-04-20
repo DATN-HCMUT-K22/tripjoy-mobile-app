@@ -1,4 +1,4 @@
-import InteractiveMap from "@/components/InteractiveMap";
+import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
 import { DraggableApiItineraryItemCard } from "@/components/itinerary/DraggableApiItineraryItemCard";
 import {
   ITINERARY_STATUS,
@@ -9,7 +9,6 @@ import {
 import type { LocationResponse, TripItemResponse } from "@/services/itineraries";
 import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
 import { getLocationImageUrl } from "@/utils/locationImages";
-import type { LocationForMap } from "@/utils/mapLocations";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -422,6 +421,18 @@ export default function ItineraryDetailScreen() {
             </View>
           </View>
 
+          {/* Cụm nút hành động */}
+          <View className="px-4 pt-4">
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/itinerary/expenses', params: { itineraryId: String(itineraryId) } })}
+              activeOpacity={0.8}
+              className="flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3"
+            >
+              <Ionicons name="wallet-outline" size={20} color="#047857" />
+              <Text className="ml-2 font-semibold text-emerald-800 text-sm">Quản lý chi phí</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Status Banner - show once at top */}
           {dayKeys.length > 0 && (
             <View className="px-4 pt-4">
@@ -479,10 +490,17 @@ export default function ItineraryDetailScreen() {
               const dayLabel = formatDayChipLabel(dayKey);
 
               // Calculate map pins for this day
-              const mapPinsForDay: LocationForMap[] = [];
+              const mapPinsForDay: ItineraryMapLocation[] = [];
               for (const row of itemsForDay) {
                 const coords = coordsFromLocation(row.location);
-                if (coords) mapPinsForDay.push(coords);
+                if (coords) {
+                  mapPinsForDay.push({
+                    id: row.id ?? row.location?.id ?? `pin-${dayKey}-${mapPinsForDay.length}`,
+                    latitude: coords.latitude,
+                    longitude: coords.longitude,
+                    title: locationDisplayName(row.location),
+                  });
+                }
               }
 
               return (
@@ -495,7 +513,11 @@ export default function ItineraryDetailScreen() {
                   {/* Map for this day */}
                   {mapPinsForDay.length > 0 ? (
                     <View className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                      <InteractiveMap locations={mapPinsForDay} height={220} />
+                      <ItineraryRouteMap
+                        locations={mapPinsForDay}
+                        height={220}
+                        mode="DRIVING"
+                      />
                     </View>
                   ) : null}
 
