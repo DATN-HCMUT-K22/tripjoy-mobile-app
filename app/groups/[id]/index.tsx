@@ -1,10 +1,10 @@
-import { ItineraryCard, ItineraryListItem } from "@/components/group";
-import { BottomNavigation } from "@/components/social/BottomNavigation";
-import { mockItineraries } from "@/data/mockItineraries";
+import { GroupHeader } from "@/components/group/GroupHeader";
+import { QuickAccessCard } from "@/components/group/QuickAccessCard";
+import { ItineraryCard } from "@/components/group";
 import { groupService, isGroupApiSuccess } from "@/services/groups";
+import { useAppSelector } from "@/store/hooks";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -12,22 +12,25 @@ import {
   Text,
   TouchableOpacity,
   View,
+  RefreshControl,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-type ViewMode = "card" | "list";
+type TabType = "overview" | "members" | "chat";
 
 export default function GroupDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [viewMode, setViewMode] = useState<ViewMode>("card");
-  const insets = useSafeAreaInsets();
+  const currentUser = useAppSelector((state) => state.auth.user);
+  const [activeTab, setActiveTab] = useState<TabType>("overview");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Lấy chi tiết group từ API theo groupId
+  // Fetch group detail
   const {
     data: group,
     isLoading,
     error,
+    refetch,
   } = useQuery({
     queryKey: ["group", id],
     queryFn: async () => {
@@ -41,7 +44,14 @@ export default function GroupDetailScreen() {
     enabled: !!id,
   });
 
-  const itineraries = mockItineraries.filter((it) => it.groupId === id);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -67,167 +77,169 @@ export default function GroupDetailScreen() {
     );
   }
 
-  const memberCount = group.members?.length ?? 0;
-  const itineraryCount = (group as any).itineraryCount ?? 0;
-  const initial = group.name?.charAt(0)?.toUpperCase() || "?";
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Header */}
-      <LinearGradient
-        colors={["#0D9488", "#047857"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={{
-          minHeight: 140,
-        }}
-        className="pt-4 pb-6"
-      >
+      <GroupHeader group={group} currentUserId={currentUser?.id} />
+
+      {/* Tabs */}
+      <View className="flex-row bg-white border-b border-gray-200">
         <TouchableOpacity
-          onPress={() => router.back()}
-          className="absolute left-4 top-4 z-10"
+          onPress={() => setActiveTab("overview")}
+          className={`flex-1 py-4 ${
+            activeTab === "overview" ? "border-b-2 border-primary" : ""
+          }`}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <View className="flex-row items-start gap-3 mt-16 px-4">
-          <View
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 30,
-              backgroundColor: "#14B8A6",
-              borderWidth: 3,
-              borderColor: "#fff",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+          <Text
+            className={`text-center font-semibold ${
+              activeTab === "overview" ? "text-primary" : "text-gray-500"
+            }`}
           >
-            <Text className="text-white font-bold text-2xl">
-              {initial}
-            </Text>
-          </View>
-          <View className="flex-1">
-            <Text className="text-xl font-bold text-white mb-2">
-              {group.name}
-            </Text>
-            <View className="flex-row items-end gap-4">
-              <View className="flex-row items-center gap-1">
-                <Ionicons name="people" size={16} color="#86EFAC" />
-                <Text className="text-white text-sm">
-                  {memberCount} thành viên
-                </Text>
-              </View>
-              <View className="flex-row items-center gap-1">
-                <Ionicons name="location" size={16} color="#86EFAC" />
-                <Text className="text-white text-sm">
-                  {itineraryCount} lịch trình
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-      </LinearGradient>
+            Tổng quan
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setActiveTab("members")}
+          className={`flex-1 py-4 ${
+            activeTab === "members" ? "border-b-2 border-primary" : ""
+          }`}
+          activeOpacity={0.7}
+        >
+          <Text
+            className={`text-center font-semibold ${
+              activeTab === "members" ? "text-primary" : "text-gray-500"
+            }`}
+          >
+            Thành viên
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setActiveTab("chat")}
+          className={`flex-1 py-4 ${
+            activeTab === "chat" ? "border-b-2 border-primary" : ""
+          }`}
+          activeOpacity={0.7}
+        >
+          <Text
+            className={`text-center font-semibold ${
+              activeTab === "chat" ? "text-primary" : "text-gray-500"
+            }`}
+          >
+            Chat
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Group Description */}
-        <View className="bg-gray-100 px-4 py-3 mt-4">
-          <Text className="text-sm text-gray-700">{group.description}</Text>
-        </View>
+      {/* Tab Content */}
+      <ScrollView
+        className="flex-1"
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }
+      >
+        {activeTab === "overview" && (
+          <View className="p-4">
+            <Text className="text-xs font-bold text-gray-600 mb-3">
+              TRUY CẬP NHANH
+            </Text>
 
-        {/* Itineraries Section */}
-        <View className="px-4 py-4">
-          <View className="flex-row items-center justify-between mb-4">
-            <Text className="text-lg font-bold text-black">Lịch trình</Text>
-            <View className="flex-row items-center gap-3">
-              {itineraries.length > 0 && (
-                <View className="flex-row bg-gray-100 rounded-lg p-1">
-                  <TouchableOpacity
-                    onPress={() => setViewMode("card")}
-                    activeOpacity={0.7}
-                    className={`px-3 py-1 rounded ${
-                      viewMode === "card" ? "bg-primary" : "bg-transparent"
-                    }`}
-                  >
-                    <Ionicons
-                      name="grid-outline"
-                      size={18}
-                      color={viewMode === "card" ? "#fff" : "#666"}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setViewMode("list")}
-                    activeOpacity={0.7}
-                    className={`px-3 py-1 rounded ${
-                      viewMode === "list" ? "bg-primary" : "bg-transparent"
-                    }`}
-                  >
-                    <Ionicons
-                      name="list-outline"
-                      size={18}
-                      color={viewMode === "list" ? "#fff" : "#666"}
-                    />
-                  </TouchableOpacity>
+            <QuickAccessCard
+              icon="chatbubbles"
+              title="Chat nhóm"
+              subtitle="Trò chuyện với mọi người"
+              onPress={() => router.push(`/groups/${id}/chat` as any)}
+            />
+
+            <QuickAccessCard
+              icon="location"
+              title="Địa điểm gợi ý"
+              subtitle="Lên kế hoạch điểm đến"
+              action="Xem tất cả →"
+              onPress={() => {
+                // TODO: Navigate to locations
+              }}
+            />
+
+            <QuickAccessCard
+              icon="calendar"
+              title="Lịch trình du lịch"
+              subtitle="Xem và tạo chuyến đi"
+              action="Xem tất cả →"
+              onPress={() => {
+                // TODO: Navigate to itineraries
+              }}
+            />
+
+            {/* Group Info Section */}
+            {group.description && (
+              <View className="bg-white rounded-xl p-4 mt-4">
+                <Text className="text-xs font-bold text-gray-600 mb-2">
+                  MÔ TẢ
+                </Text>
+                <Text className="text-gray-700">{group.description}</Text>
+              </View>
+            )}
+
+            {/* Group Stats */}
+            <View className="bg-white rounded-xl p-4 mt-3">
+              <Text className="text-xs font-bold text-gray-600 mb-3">
+                THÔNG TIN NHÓM
+              </Text>
+              <View className="space-y-2">
+                <View className="flex-row items-center">
+                  <Ionicons name="people" size={16} color="#9CA3AF" />
+                  <Text className="ml-2 text-gray-700">
+                    {group.members?.length || 0} thành viên
+                  </Text>
                 </View>
-              )}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                className="px-4 py-2 bg-primary rounded-lg"
-                onPress={() => router.push("/create" as any)}
-              >
-                <Text className="text-white font-semibold text-sm">+ Thêm</Text>
-              </TouchableOpacity>
+                {group.is_pro && (
+                  <View className="flex-row items-center">
+                    <Ionicons name="star" size={16} color="#F59E0B" />
+                    <Text className="ml-2 text-gray-700">Nhóm Pro</Text>
+                  </View>
+                )}
+                {group.created_at && (
+                  <View className="flex-row items-center">
+                    <Ionicons name="calendar" size={16} color="#9CA3AF" />
+                    <Text className="ml-2 text-gray-700">
+                      Tạo {new Date(group.created_at).toLocaleDateString("vi-VN")}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
+        )}
 
-          {/* Empty State */}
-          {itineraries.length === 0 ? (
-            <View className="bg-gray-100 rounded-xl py-16 items-center">
-              <View
-                style={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: 40,
-                  backgroundColor: "#E5E5E5",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="location-outline" size={48} color="#34B27D" />
-              </View>
-              <Text className="text-lg font-bold text-black mt-4 mb-2">
-                Chưa có lịch trình
-              </Text>
-              <Text className="text-sm text-gray-600 text-center px-4">
-                Thêm lịch trình cho nhóm này
-              </Text>
-            </View>
-          ) : (
-            /* Itineraries List */
-            <>
-              {viewMode === "card" ? (
-                <>
-                  {itineraries.map((itinerary) => (
-                    <ItineraryCard key={itinerary.id} itinerary={itinerary} />
-                  ))}
-                </>
-              ) : (
-                <>
-                  {itineraries.map((itinerary) => (
-                    <ItineraryListItem
-                      key={itinerary.id}
-                      itinerary={itinerary}
-                    />
-                  ))}
-                </>
-              )}
-            </>
-          )}
-        </View>
+        {activeTab === "members" && (
+          <View className="flex-1 items-center justify-center py-20">
+            <Ionicons name="people-outline" size={64} color="#ccc" />
+            <Text className="text-gray-500 mt-4 mb-2">
+              Chuyển sang màn Thành viên
+            </Text>
+            <TouchableOpacity
+              onPress={() => router.push(`/groups/${id}/members` as any)}
+              className="px-6 py-3 bg-primary rounded-lg"
+            >
+              <Text className="text-white font-semibold">Xem thành viên</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {activeTab === "chat" && (
+          <View className="flex-1 items-center justify-center py-20">
+            <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+            <Text className="text-gray-500 mt-4 mb-2">Mở chat nhóm</Text>
+            <TouchableOpacity
+              onPress={() => router.push(`/groups/${id}/chat` as any)}
+              className="px-6 py-3 bg-primary rounded-lg"
+            >
+              <Text className="text-white font-semibold">Mở Chat</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
-
-      {/* Bottom Navigation */}
-      <BottomNavigation />
     </SafeAreaView>
   );
 }
