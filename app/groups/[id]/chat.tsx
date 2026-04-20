@@ -3,6 +3,8 @@ import { DateSeparator } from "@/components/chat/DateSeparator";
 import { MessageActionSheet } from "@/components/chat/MessageActionSheet";
 import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
 import { PinnedMessageBar, PINNED_BAR_HEIGHT } from "@/components/chat/PinnedMessageBar";
+import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
+import { TypingIndicatorBubble } from "@/components/chat/TypingIndicatorBubble";
 import { mockItineraries } from "@/data/mockItineraries";
 import { useMessages } from "@/hooks/useMessages";
 import { usePinnedMessages } from "@/hooks/usePinnedMessages";
@@ -11,6 +13,8 @@ import { uploadImage, uploadVideo } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
+import { setActiveConversation, resetUnread as resetUnreadRedux, selectTypingUsersForConversation } from "@/store/slices/conversationSlice";
+import { useSocketTyping } from "@/hooks/useSocketTyping";
 import { useChatStore } from "@/stores/chat.store";
 import {
   ChatMessageResponse,
@@ -28,7 +32,6 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   StyleSheet,
   Text,
   TextInput,
@@ -36,6 +39,8 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import type { FlashListProps } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
@@ -106,7 +111,7 @@ export default function GroupChatScreen() {
   const [input, setInput] = useState("");
   const [selectedMedia, setSelectedMedia] = useState<PickedMedia | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
+  const flashListRef = useRef<FlashList<any> | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -167,11 +172,15 @@ export default function GroupChatScreen() {
     if (conversationId) {
       setCurrentChatId(conversationId);
       resetUnread(conversationId);
+      // 🔥 Redux: Set active conversation to prevent unread increment
+      dispatch(setActiveConversation(conversationId));
       return () => {
         setCurrentChatId(null);
+        // 🔥 Redux: Clear active conversation
+        dispatch(setActiveConversation(null));
       };
     }
-  }, [conversationId, setCurrentChatId, resetUnread]);
+  }, [conversationId, setCurrentChatId, resetUnread, dispatch]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -182,7 +191,10 @@ export default function GroupChatScreen() {
         try {
           await conversationService.markConversationRead(conversationId);
           if (!cancelled) {
+            // Zustand update
             resetUnread(conversationId);
+            // 🔥 Redux: Reset unread count
+            dispatch(resetUnreadRedux({ conversationId }));
           }
           return;
         } catch {
@@ -200,7 +212,7 @@ export default function GroupChatScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [conversationId, resetUnread]);
+  }, [conversationId, resetUnread, dispatch]);
   
   // Load conversation info để lấy members và tên nhóm
   const { data: conversation } = useQuery({
@@ -527,6 +539,12 @@ export default function GroupChatScreen() {
     return { listData: list, messageIdToIndex: map };
   }, [messages]);
 
+  // 🔥 Typing indicators
+  const { emitTyping, emitStopTyping } = useSocketTyping(conversationId);
+  const typingUsersRedux = useAppSelector(state =>
+    conversationId ? selectTypingUsersForConversation(state, conversationId) : []
+  );
+
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
@@ -562,7 +580,7 @@ export default function GroupChatScreen() {
         hasScrolledToBottomRef.current = true;
         const delay = scrollToEndParam === "1" ? 300 : 100;
         const t = setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
+          flashListRef.current?.scrollToEnd({ animated: true });
         }, delay);
         return () => clearTimeout(t);
       }
@@ -585,7 +603,7 @@ export default function GroupChatScreen() {
     if (idx === undefined) {
       if (!loading && messages.length > 0) {
         const t = setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
+          flashListRef.current?.scrollToEnd({ animated: true });
           const last = messages[messages.length - 1];
           if (last) {
             lastMessageIdRef.current = last.id;
@@ -598,7 +616,7 @@ export default function GroupChatScreen() {
       return;
     }
     const t = setTimeout(() => {
-      flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+      flashListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
       setHighlightMessageId(messageIdFromParams);
       setTimeout(() => setHighlightMessageId(null), 1500);
       const lastMessage = messages[messages.length - 1];
@@ -615,7 +633,7 @@ export default function GroupChatScreen() {
   useEffect(() => {
     if (typingUsers.length > 0) {
       const t = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        flashListRef.current?.scrollToEnd({ animated: true });
       }, 100);
       return () => clearTimeout(t);
     }
@@ -668,7 +686,7 @@ export default function GroupChatScreen() {
     const msg = pinnedMessages[currentPinnedIndex];
     const idx = messageIdToIndex.get(msg.id);
     if (idx !== undefined) {
-      flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+      flashListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
       setHighlightMessageId(msg.id);
       setTimeout(() => setHighlightMessageId(null), 1500);
     }
@@ -678,7 +696,7 @@ export default function GroupChatScreen() {
 
   const onScrollToIndexFailed = useCallback((info: { index: number }) => {
     setTimeout(() => {
-      flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+      flashListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
     }, 150);
   }, []);
 
@@ -748,10 +766,13 @@ export default function GroupChatScreen() {
   }, [conversationId, messages, queryClient, router]);
 
   return (
-    <SafeAreaView 
-      style={[styles.container, { backgroundColor: isDark ? "#000000" : "#FFFFFF" }]} 
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: isDark ? "#000000" : "#FFFFFF" }]}
       edges={["top"]}
     >
+      {/* 🔥 Connection Status Banner */}
+      <ConnectionBanner />
+
       {/* Header */}
       <View style={[styles.header, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderBottomColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
         <View className="flex-row items-center">
@@ -854,17 +875,16 @@ export default function GroupChatScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Messages: FlatList + PinnedMessageBar (absolute, không chiếm flow) */}
+      {/* Messages: FlashList + PinnedMessageBar (absolute, không chiếm flow) */}
       <View style={styles.messagesWrapper}>
-        <FlatList
-          ref={flatListRef}
+        <FlashList
+          ref={flashListRef}
           data={listData}
           keyExtractor={(i) => i.key}
           renderItem={renderListItem}
-          style={styles.messagesContainer}
+          estimatedItemSize={80 as any}
           contentContainerStyle={[
             styles.messagesContent,
-            listData.length === 0 && { flex: 1 },
             pinnedMessages.length > 0 && { paddingTop: PINNED_BAR_HEIGHT },
           ]}
         showsVerticalScrollIndicator={false}
@@ -896,17 +916,14 @@ export default function GroupChatScreen() {
         }
         ListFooterComponent={
           <>
-            {typingUsers.length > 0 && (
-              <View style={styles.typingWrapper}>
-                <View style={styles.typingRow}>
-                  <View style={styles.typingAvatar}>
-                    <ActivityIndicator size="small" color="#9CA3AF" />
-                  </View>
-                  <Text className="text-gray-500 text-sm font-medium">
-                    {typingUsers.length === 1 ? "Đang gõ..." : `${typingUsers.length} người đang gõ...`}
-                  </Text>
-                </View>
-              </View>
+            {(typingUsers.length > 0 || typingUsersRedux.length > 0) && (
+              <TypingIndicatorBubble
+                usernames={
+                  typingUsersRedux.length > 0
+                    ? typingUsersRedux.map(u => u.username)
+                    : typingUsers.map(u => u.username || u)
+                }
+              />
             )}
             {loading && messages.length > 0 && (
               <View className="py-4 items-center">
@@ -975,7 +992,14 @@ export default function GroupChatScreen() {
         <View className="flex-1">
           <TextInput
             value={input}
-            onChangeText={setInput}
+            onChangeText={(text) => {
+              setInput(text);
+              if (text.length > 0) {
+                emitTyping();
+              } else {
+                emitStopTyping();
+              }
+            }}
             placeholder="Nhắn tin..."
             className="bg-gray-100 rounded-full px-4 py-3 text-sm"
             placeholderTextColor="#9CA3AF"

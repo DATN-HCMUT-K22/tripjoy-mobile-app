@@ -1,8 +1,13 @@
 import { ConversationListSkeleton } from "@/components/conversation/ConversationSkeleton";
 import { SharedHeader } from "@/components/common/SharedHeader";
 import { useConversations } from "@/hooks/useConversations";
+import { SwipeableConversationItem } from "@/components/conversation/SwipeableConversationItem";
+import { ConversationAvatar } from "@/components/conversation/ConversationAvatar";
+import { UnreadBadge } from "@/components/conversation/UnreadBadge";
 import { searchService } from "@/services/search";
-import { useAppSelector } from "@/store/hooks";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { togglePin, deleteConversation } from "@/store/slices/conversationSlice";
+import { formatRelativeTime } from "@/utils/timeFormat";
 import { useChatStore } from "@/stores/chat.store";
 import { ConversationResponse } from "@/types/message";
 import { MessageSearchResponse, UserSimpleResponse } from "@/types/search";
@@ -27,6 +32,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 type TabType = "personal" | "group";
 
@@ -231,6 +237,8 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
   onLongPress,
   currentUserId,
 }) => {
+  const dispatch = useAppDispatch();
+  const { updateConversation, markConversationRead } = useConversations();
   // Load group info nếu là GROUP và không có name
   const { data: groupInfo } = useQuery({
     queryKey: ["group", conversation.group_id],
@@ -307,59 +315,98 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     : Math.max(0, conversation.unread_count ?? 0);
   const isPinned = conversation.is_pinned ?? false;
 
-  return (
-    <TouchableOpacity
-      activeOpacity={0.7}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white"
-    >
-      {/* Avatar */}
-      <View className="relative">
-        <Image
-          source={{
-            uri: resolveUserAvatarUri(avatar, displayName),
-          }}
-          style={{ width: 56, height: 56, borderRadius: 28 }}
-          contentFit="cover"
-        />
-        {/* Pin indicator */}
-        {isPinned && (
-          <View
-            className="absolute -top-1 -right-1 bg-primary rounded-full"
-            style={{ padding: 2 }}
-          >
-            <Ionicons name="pin" size={12} color="#fff" />
-          </View>
-        )}
-      </View>
+  // 🔥 Swipe action handlers
+  const handlePin = async () => {
+    try {
+      await updateConversation({
+        conversationId: conversation.id,
+        payload: { is_pinned: !isPinned },
+      });
+      dispatch(togglePin({ conversationId: conversation.id }));
+    } catch (error) {
+      console.error('Failed to toggle pin:', error);
+    }
+  };
 
-      {/* Content */}
-      <View className="flex-1 ml-3">
-        <View className="flex-row items-center justify-between mb-1">
-          <Text className="text-base font-bold text-black flex-1" numberOfLines={1}>
-            {displayName}
-          </Text>
-          {displayTime ? (
-            <Text className="text-xs text-gray-500 ml-2">
-              {formatTime(displayTime)}
-            </Text>
-          ) : null}
-        </View>
-        <View className="flex-row items-center">
-          <Text className="text-sm text-gray-600 flex-1" numberOfLines={1}>
-            {lastMessageSubtitle}
-          </Text>
-          {unreadCount > 0 && (
-            <View className="ml-2 bg-primary rounded-full min-w-[20px] h-5 items-center justify-center px-1.5">
-              <Text className="text-xs text-white font-bold">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </Text>
+  const handleDelete = () => {
+    Alert.alert(
+      'Xóa cuộc trò chuyện',
+      'Bạn có chắc muốn xóa cuộc trò chuyện này?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: () => {
+            dispatch(deleteConversation({ conversationId: conversation.id }));
+          },
+        },
+      ]
+    );
+  };
+
+  const handleMarkUnread = async () => {
+    // Mark as unread by setting unread count to 1
+    useChatStore.getState().setUnread(conversation.id, 1);
+  };
+
+  return (
+    <SwipeableConversationItem
+      conversationId={conversation.id}
+      isPinned={isPinned}
+      onPin={handlePin}
+      onDelete={handleDelete}
+      onMarkUnread={handleMarkUnread}
+    >
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white"
+      >
+        {/* 🔥 Enhanced Avatar with online status */}
+        <View className="relative">
+          <ConversationAvatar
+            uri={resolveUserAvatarUri(avatar, displayName)}
+            size={56}
+            isOnline={conversation.type === "DIRECT"}
+            showOnlineStatus={false}
+          />
+          {/* Pin indicator */}
+          {isPinned && (
+            <View
+              className="absolute -top-1 -right-1 bg-primary rounded-full"
+              style={{ padding: 2 }}
+            >
+              <Ionicons name="pin" size={12} color="#fff" />
             </View>
           )}
         </View>
-      </View>
-    </TouchableOpacity>
+
+        {/* Content */}
+        <View className="flex-1 ml-3">
+          <View className="flex-row items-center justify-between mb-1">
+            <Text className="text-base font-bold text-black flex-1" numberOfLines={1}>
+              {displayName}
+            </Text>
+            {displayTime ? (
+              <Text className="text-xs text-gray-500 ml-2">
+                {formatRelativeTime(displayTime)}
+              </Text>
+            ) : null}
+          </View>
+          <View className="flex-row items-center">
+            <Text className="text-sm text-gray-600 flex-1" numberOfLines={1}>
+              {lastMessageSubtitle}
+            </Text>
+            {/* 🔥 Gradient Unread Badge */}
+            <View className="ml-2">
+              <UnreadBadge count={unreadCount} size="medium" />
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </SwipeableConversationItem>
   );
 };
 
@@ -707,8 +754,9 @@ export default function MessagesScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={["bottom"]}>
-      <SharedHeader
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView className="flex-1 bg-white" edges={["bottom"]}>
+        <SharedHeader
         withMenuDrawer={false}
         leftElement={
           <TouchableOpacity
@@ -1017,6 +1065,7 @@ export default function MessagesScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
