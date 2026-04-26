@@ -211,6 +211,21 @@ export function useItineraryDetail(
     queryKey: ["itineraries", "detail", itineraryId],
     queryFn: async (): Promise<ItineraryResponse | null> => {
       if (!itineraryId) return null;
+      if (EXPO_PUBLIC_MOCK_DATA) {
+        await new Promise((r) => setTimeout(r, 200));
+        const mock = mockItineraries.find((it) => it.id === itineraryId);
+        if (mock) {
+          return {
+            id: mock.id,
+            title: mock.name,
+            status: ITINERARY_STATUS.DRAFT,
+            start_date: mock.startDate,
+            end_date: mock.endDate,
+            people_quantity: mock.memberCount,
+            budget_estimate: mock.budget,
+          };
+        }
+      }
       const res = await itineraryService.getItineraryById(itineraryId);
       const code = res?.code;
       if (code !== 0 && code !== 1000) {
@@ -257,7 +272,35 @@ export function useItineraryTripItems(
       if (!itineraryId) return [];
       if (EXPO_PUBLIC_MOCK_DATA) {
         await new Promise((r) => setTimeout(r, 150));
-        return [];
+        // Return some dummy items for the mocked itinerary
+        return [
+          {
+            id: "m1",
+            location_id: "loc1",
+            start_time: "2025-08-16T08:00:00Z",
+            duration: 60,
+            location: {
+              id: "loc1",
+              name: "Điểm tham quan mẫu 1",
+              full_address: "Địa chỉ mẫu 1, Nha Trang",
+              lat: 12.245,
+              lng: 109.194,
+            },
+          },
+          {
+            id: "m2",
+            location_id: "loc2",
+            start_time: "2025-08-16T10:00:00Z",
+            duration: 120,
+            location: {
+              id: "loc2",
+              name: "Điểm tham quan mẫu 2",
+              full_address: "Địa chỉ mẫu 2, Nha Trang",
+              lat: 12.255,
+              lng: 109.204,
+            },
+          },
+        ];
       }
       const res = await itineraryService.getTripItems(itineraryId);
       const code = res?.code;

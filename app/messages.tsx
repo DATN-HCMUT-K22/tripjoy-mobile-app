@@ -1,20 +1,21 @@
-import { ConversationListSkeleton } from "@/components/conversation/ConversationSkeleton";
 import { SharedHeader } from "@/components/common/SharedHeader";
-import { useConversations } from "@/hooks/useConversations";
-import { SwipeableConversationItem } from "@/components/conversation/SwipeableConversationItem";
 import { ConversationAvatar } from "@/components/conversation/ConversationAvatar";
+import { ConversationListSkeleton } from "@/components/conversation/ConversationSkeleton";
+import { SwipeableConversationItem } from "@/components/conversation/SwipeableConversationItem";
 import { UnreadBadge } from "@/components/conversation/UnreadBadge";
+import { useConversations } from "@/hooks/useConversations";
 import { searchService } from "@/services/search";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { togglePin, deleteConversation } from "@/store/slices/conversationSlice";
-import { formatRelativeTime } from "@/utils/timeFormat";
+import { deleteConversation, togglePin } from "@/store/slices/conversationSlice";
 import { useChatStore } from "@/stores/chat.store";
 import { ConversationResponse } from "@/types/message";
 import { MessageSearchResponse, UserSimpleResponse } from "@/types/search";
 import { getDirectPeerAvatarUrl } from "@/utils/conversationDisplay";
+import { formatRelativeTime } from "@/utils/timeFormat";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import debounce from "lodash.debounce";
@@ -30,9 +31,8 @@ import {
   View,
   useColorScheme,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useQuery } from "@tanstack/react-query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type TabType = "personal" | "group";
 
@@ -445,6 +445,7 @@ export default function MessagesScreen() {
 
   const conversations =
     activeTab === "personal" ? directConversations : groupConversations;
+  const debouncedSearch = useMemo(() => debounce((value: string) => void runSearch(value), 300), []);
 
   /** Map conversationId -> conversation (nhóm + cá nhân) để mở đúng màn từ kết quả search tin nhắn */
   const conversationById = useMemo(() => {
@@ -522,19 +523,23 @@ export default function MessagesScreen() {
 
   /** Đổi tab: reset ô tìm kiếm và kết quả về trạng thái ban đầu */
   useEffect(() => {
-    userSearchAbortRef.current?.abort();
-    messageSearchAbortRef.current?.abort();
-    debouncedSearch.cancel();
-    setSearchKeyword("");
-    setSearchUsers([]);
-    setSearchMessages([]);
-    setSearchPage(0);
-    setHasMoreSearchMessages(false);
-    setSearchError(null);
-    setSearchLoading(false);
-    setSearchLoadingMore(false);
-    setSearchInputFocused(false);
-  }, [activeTab, debouncedSearch]);
+    // Không tự ý xóa searchKeyword và kết quả khi đổi tab nếu đang gõ tìm kiếm
+    // để kết quả search toàn cục (người dùng, tin nhắn) được giữ nguyên.
+    if (!trimmedKeyword) {
+      userSearchAbortRef.current?.abort();
+      messageSearchAbortRef.current?.abort();
+      debouncedSearch.cancel();
+      setSearchKeyword("");
+      setSearchUsers([]);
+      setSearchMessages([]);
+      setSearchPage(0);
+      setHasMoreSearchMessages(false);
+      setSearchError(null);
+      setSearchLoading(false);
+      setSearchLoadingMore(false);
+      setSearchInputFocused(false);
+    }
+  }, [activeTab, debouncedSearch, trimmedKeyword]);
 
   const runSearch = async (keyword: string) => {
     const q = keyword.trim();
@@ -563,19 +568,34 @@ export default function MessagesScreen() {
     setSearchPage(0);
 
     try {
-      const [usersRes, messagesRes] = await Promise.all([
+      const results = await Promise.allSettled([
         searchService.searchUsers(q, userController.signal),
         searchService.searchMessagesGlobal(q, 0, SEARCH_PAGE_SIZE, messageController.signal),
       ]);
+
       if (latestSearchRequestRef.current !== requestId) return;
-      setSearchUsers(usersRes.code === 1000 ? usersRes.data || [] : []);
-      const nextMessages = messagesRes.code === 1000 ? messagesRes.data || [] : [];
-      setSearchMessages(nextMessages);
-      setHasMoreSearchMessages(nextMessages.length >= SEARCH_PAGE_SIZE);
-      // Không lưu "gần đây" chỉ vì gõ tìm — tránh lưu khi user chỉ mở tin nhắn từ kết quả
+
+      // Xử lý kết quả search users
+      const usersRes = results[0];
+      if (usersRes.status === "fulfilled") {
+        setSearchUsers(usersRes.value.code === 1000 ? usersRes.value.data || [] : []);
+      } else if (usersRes.reason?.name !== "AbortError") {
+        console.error("User search failed:", usersRes.reason);
+      }
+
+      // Xử lý kết quả search messages
+      const messagesRes = results[1];
+      if (messagesRes.status === "fulfilled") {
+        const nextMessages = messagesRes.value.code === 1000 ? messagesRes.value.data || [] : [];
+        setSearchMessages(nextMessages);
+        setHasMoreSearchMessages(nextMessages.length >= SEARCH_PAGE_SIZE);
+      } else if (messagesRes.reason?.name !== "AbortError") {
+        console.error("Message search failed:", messagesRes.reason);
+        setSearchError(messagesRes.reason?.message || "Không thể tìm kiếm tin nhắn.");
+      }
     } catch (error: any) {
       if (error?.name === "AbortError") return;
-      setSearchError(error?.message || "Không thể tìm kiếm, vui lòng thử lại.");
+      setSearchError(error?.message || "Lỗi hệ thống khi tìm kiếm.");
     } finally {
       if (latestSearchRequestRef.current === requestId) {
         setSearchLoading(false);
@@ -583,7 +603,6 @@ export default function MessagesScreen() {
     }
   };
 
-  const debouncedSearch = useMemo(() => debounce((value: string) => void runSearch(value), 300), []);
 
   useEffect(() => {
     debouncedSearch(searchKeyword);
@@ -933,9 +952,15 @@ export default function MessagesScreen() {
                 <Text className="text-gray-500 mt-2">Đang tìm kiếm...</Text>
               </View>
             ) : searchError ? (
-              <View className="items-center py-8">
-                <Ionicons name="search-outline" size={40} color="#9CA3AF" />
-                <Text className="text-gray-500 mt-2 text-center">Không có kết quả phù hợp</Text>
+              <View className="items-center py-8 px-6">
+                <Ionicons name="alert-circle-outline" size={40} color="#EF4444" />
+                <Text className="text-red-500 mt-2 text-center font-medium">{searchError}</Text>
+                <TouchableOpacity 
+                  onPress={() => void runSearch(searchKeyword)}
+                  className="mt-4 px-4 py-2 bg-gray-100 rounded-lg"
+                >
+                  <Text className="text-gray-600">Thử lại</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <>

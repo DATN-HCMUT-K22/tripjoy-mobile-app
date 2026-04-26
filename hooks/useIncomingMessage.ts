@@ -243,46 +243,23 @@ export function useIncomingMessage() {
         console.log("[useIncomingMessage] ✅ Socket listener registered successfully");
         console.log("[useIncomingMessage] Ready to receive messages");
         
-        // Đăng ký listener cho socket reconnect để đảm bảo listener luôn active
+        // Đăng ký listener cho socket reconnect để invalidation queries
         const socket = socketService.getSocket();
-        let reconnectListener: (() => void) | null = null;
         
         if (socket) {
-          reconnectListener = () => {
-            console.log("[useIncomingMessage] 🔄 Socket reconnected, ensuring listener is active");
-            // 🔥 Redux: Update connection status
-            store.dispatch(setConnectionStatus('connected'));
-            if (callbackRef.current && isMounted) {
-              // Re-register listener sau khi reconnect (socketService.onReceiveMessage sẽ tự check duplicate)
-              socketService.onReceiveMessage(callbackRef.current);
-            }
+          const onConnect = () => {
+            console.log("[useIncomingMessage] 🔄 Socket connected/reconnected, refreshing data");
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
             queryClient.refetchQueries({ queryKey: ["conversations"], type: "active" });
           };
 
-          // 🔥 Redux: Track disconnect status
-          const disconnectListener = () => {
-            console.log("[useIncomingMessage] 🔌 Socket disconnected");
-            store.dispatch(setConnectionStatus('disconnected'));
+          socket.on("connect", onConnect);
+          
+          // Return cleanup function
+          return () => {
+            socket.off("connect", onConnect);
           };
-
-          // 🔥 Redux: Track reconnect attempts
-          const reconnectAttemptListener = () => {
-            console.log("[useIncomingMessage] 🔄 Socket reconnecting...");
-            store.dispatch(setConnectionStatus('connecting'));
-          };
-
-          socket.on("connect", reconnectListener);
-          socket.on("disconnect", disconnectListener);
-          socket.on("reconnect_attempt" as any, reconnectAttemptListener);
         }
-        
-        // Return cleanup function
-        return () => {
-          if (reconnectListener && socket) {
-            socket.off("connect", reconnectListener);
-          }
-        };
       } catch (error) {
         console.log(
           "[useIncomingMessage] Failed to setup socket listener:",

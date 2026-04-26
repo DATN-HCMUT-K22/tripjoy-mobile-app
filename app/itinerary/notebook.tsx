@@ -1,7 +1,6 @@
 import React from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { StyleSheet, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SharedHeader } from "@/components/common/SharedHeader";
 import { TravelNotebookScreen } from "@/components/notebook/TravelNotebookScreen";
@@ -19,7 +18,7 @@ export default function ItineraryNotebookRoute() {
   const { data: detail } = useItineraryDetail(itineraryId);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <View style={styles.container}>
       {/* Header with back button */}
       <SharedHeader
         leftElement={
@@ -34,7 +33,7 @@ export default function ItineraryNotebookRoute() {
         centerElement={null}
         rightElement={null}
         withMenuDrawer={false}
-        showBorderBottom
+        showBorderBottom={false}
       />
 
       {/* Main content */}
@@ -42,7 +41,7 @@ export default function ItineraryNotebookRoute() {
         itineraryId={itineraryId || ""}
         itineraryName={detail?.title}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 

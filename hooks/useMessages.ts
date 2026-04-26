@@ -500,7 +500,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         )
       );
       try {
-        const response = await messageService.pinMessage(messageId);
+        const response = await messageService.pinMessage(messageId, conversationId);
         if (response.code === 1000 || response.code === 0) {
           // Refetch pinned do Screen gọi usePinnedMessages.refetch
         } else {
@@ -530,7 +530,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
   const unpinMessage = useCallback(
     async (messageId: string) => {
       try {
-        const response = await messageService.unpinMessage(messageId);
+        const response = await messageService.unpinMessage(messageId, conversationId);
         if (response.code === 1000 || response.code === 0) {
           // Cập nhật local state; realtime qua socket update_pin sẽ đồng bộ thêm
           setMessages((prev) =>

@@ -3,6 +3,7 @@ import { store } from "@/store";
 import { ChatMessageResponse, ConversationResponse } from "@/types/message";
 import { storage } from "@/utils/storage";
 import { io, Socket } from "socket.io-client";
+import { setConnectionStatus } from "@/store/slices/conversationSlice";
 
 export interface ServerToClientEvents {
   receive_message: (message: ChatMessageResponse) => void;
@@ -65,7 +66,7 @@ class SocketService {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
   private isConnecting = false;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = Infinity;
   
   // Callback arrays để quản lý nhiều listeners cho từng event
   private messageCallbacks: Set<(message: ChatMessageResponse) => void> = new Set();
@@ -98,8 +99,13 @@ class SocketService {
    */
   async connect(): Promise<void> {
     // Tránh kết nối nhiều lần
-    if (this.socket?.connected || this.isConnecting) {
-      console.log("Socket already connected or connecting");
+    if (this.socket?.connected) {
+      console.log("Socket already connected");
+      store.dispatch(setConnectionStatus("connected"));
+      return;
+    }
+    if (this.isConnecting) {
+      console.log("Socket is connecting...");
       return;
     }
 
@@ -193,6 +199,10 @@ class SocketService {
           console.log("==========================================\n");
           this.reconnectAttempts = 0;
           this.isConnecting = false;
+          
+          // Update Redux state
+          store.dispatch(setConnectionStatus('connected'));
+          
           resolve();
         });
 
@@ -236,6 +246,7 @@ class SocketService {
       console.log(`Socket ID: ${this.socket?.id}`);
       console.log("==========================================\n");
       this.reconnectAttempts = 0;
+      store.dispatch(setConnectionStatus('connected'));
     });
 
     // Ngắt kết nối
@@ -243,6 +254,9 @@ class SocketService {
       const timestamp = new Date().toISOString();
       console.log(`\n⚠️ [SOCKET] Disconnected [${timestamp}]`);
       console.log(`Reason: ${reason}`);
+
+      // Update Redux state
+      store.dispatch(setConnectionStatus('disconnected'));
 
       // Nếu disconnect do lỗi, thử reconnect
       if (reason === "io server disconnect") {
@@ -263,14 +277,13 @@ class SocketService {
       this.reconnectAttempts++;
       const timestamp = new Date().toISOString();
       console.error(`\n❌ [SOCKET] Connection Error [${timestamp}]`);
-      console.error(`Attempt: ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+      console.error(`Attempt: ${this.reconnectAttempts}`);
       console.error(`Error Message:`, error.message);
       console.error(`Error Name:`, error.name);
-
-      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        console.error("Max reconnection attempts reached - stopping");
-        this.disconnect();
-      }
+      
+      // Update status to connecting if it's not already
+      store.dispatch(setConnectionStatus('connecting'));
+      
       console.error("==========================================\n");
     });
 
@@ -282,6 +295,12 @@ class SocketService {
       console.error(`Error Message:`, error.message);
       console.error(`Timestamp:`, error.timestamp);
       console.error("==========================================\n");
+    });
+
+    // Reconnect attempt
+    this.socket.on("reconnect_attempt" as any, () => {
+      console.log("[SOCKET] Reconnecting...");
+      store.dispatch(setConnectionStatus("connecting"));
     });
   }
 

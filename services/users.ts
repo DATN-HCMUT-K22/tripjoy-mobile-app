@@ -1,5 +1,5 @@
 import { UserSimpleResponse } from "@/types/search";
-import { ApiResponse, User } from "@/types/user";
+import { ApiResponse, User, UserPublicProfile } from "@/types/user";
 import { httpClient } from "./http/client";
 
 export interface GetUsersResponse {
@@ -116,3 +116,27 @@ export const changePassword = (payload: ChangePasswordRequest) =>
  */
 export const deleteUserById = (userId: string) =>
   httpClient.delete<ApiResponse<null>>(`/users/${userId}`);
+
+/**
+ * Get public profile of any user by ID
+ * GET /users/{userId}/profile
+ *
+ * @param userId - User ID to fetch profile for
+ * @returns Public profile data
+ * @throws 404 if user not found
+ * @throws 403 if profile is private/blocked
+ */
+export const getUserProfile = async (userId: string): Promise<UserPublicProfile> => {
+  const response = await httpClient.get<ApiResponse<UserPublicProfile>>(
+    `/users/${userId}/profile`,
+    {
+      skipAuth: false, // Optional auth - works for guests too
+    }
+  );
+
+  if (!response.data) {
+    throw new Error('User not found');
+  }
+
+  return response.data;
+};

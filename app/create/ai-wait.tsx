@@ -12,14 +12,14 @@ import {
 import { ITINERARY_STATUS } from "@/services/itineraries";
 import { formatCurrencyVND } from "@/utils/format";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
-import { getLocationImageUrl } from "@/utils/locationImages";
+import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
 import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
 import type { TripItemResponse } from "@/services/itineraries";
 import type { ItineraryItem } from "@/types/itinerary";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -102,6 +102,7 @@ export default function AiItineraryWaitScreen() {
   const completedRef = useRef(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
 
   const {
     data,
@@ -180,6 +181,31 @@ export default function AiItineraryWaitScreen() {
     }
   }, [data?.status, queryClient]);
 
+  // Fetch images from Google Places API for trip items
+  useEffect(() => {
+    if (tripItems.length === 0) return;
+
+    const fetchImages = async () => {
+      const newCache: Record<string, string> = {};
+
+      for (const item of tripItems) {
+        const itemId = item.id || item.location?.id || "";
+        if (!itemId || imageUrlCache[itemId]) continue;
+
+        const imageUrl = await getLocationImageUrlAsync(item.location);
+        if (imageUrl) {
+          newCache[itemId] = imageUrl;
+        }
+      }
+
+      if (Object.keys(newCache).length > 0) {
+        setImageUrlCache((prev) => ({ ...prev, ...newCache }));
+      }
+    };
+
+    fetchImages();
+  }, [tripItems]);
+
   const isGenerating = data?.status === ITINERARY_STATUS.GENERATING;
   const isAiFailed = data?.status === ITINERARY_STATUS.FAILED;
   const canShowGeneratedResult = !!data && !isGenerating && !isAiFailed;
@@ -214,6 +240,23 @@ export default function AiItineraryWaitScreen() {
         )}/người`
       : selectedBudgetOption?.title || "Chưa chọn";
 
+  const formatElapsed = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    if (m <= 0) return `${s}s`;
+    return `${m} phút ${s}s`;
+  };
+
+  // Helper to get image URL from cache or fallback to sync version
+  const getItemImageUrl = (row: TripItemResponse): string | undefined => {
+    const itemId = row.id || row.location?.id || "";
+    return imageUrlCache[itemId] || getLocationImageUrl(row.location);
+  };
+
+  // Local editable state for items
+  const [draftItemsByDay, setDraftItemsByDay] = useState<Record<string, TripItemResponse[]>>({});
+
+  // Original items from API grouped by day
   const itemsByDay = useMemo(() => {
     const map: Record<string, TripItemResponse[]> = {};
     for (const row of tripItems) {
@@ -231,23 +274,46 @@ export default function AiItineraryWaitScreen() {
     return map;
   }, [tripItems]);
 
+  // Sync original items to draft when API data changes
+  useEffect(() => {
+    if (Object.keys(itemsByDay).length > 0) {
+      setDraftItemsByDay(itemsByDay);
+    }
+  }, [itemsByDay]);
+
+  const moveItem = useCallback((dayKey: string, from: number, to: number) => {
+    setDraftItemsByDay((prev) => {
+      const rows = [...(prev[dayKey] || [])];
+      if (from < 0 || to < 0 || from >= rows.length || to >= rows.length || from === to) {
+        return prev;
+      }
+      const [picked] = rows.splice(from, 1);
+      rows.splice(to, 0, picked);
+      return { ...prev, [dayKey]: rows };
+    });
+  }, []);
+
+  const deleteItem = useCallback((dayKey: string, index: number) => {
+    setDraftItemsByDay((prev) => {
+      const rows = [...(prev[dayKey] || [])];
+      rows.splice(index, 1);
+      return { ...prev, [dayKey]: rows };
+    });
+  }, []);
+
   const dayKeys = useMemo(() => {
-    const keys = Object.keys(itemsByDay);
+    const keys = Object.keys(draftItemsByDay);
     keys.sort((a, b) => {
       if (a === "_nodate") return 1;
       if (b === "_nodate") return -1;
       return a.localeCompare(b);
     });
     return keys;
-  }, [itemsByDay]);
+  }, [draftItemsByDay]);
 
-  const firstDayKey = useMemo(
-    () => dayKeys.find((k) => k !== "_nodate") || dayKeys[0],
-    [dayKeys]
-  );
-
+  // Sync draft to ItineraryContext for next steps
   useEffect(() => {
-    if (!canShowGeneratedResult || tripItems.length === 0) return;
+    if (!canShowGeneratedResult || Object.keys(draftItemsByDay).length === 0) return;
 
     const toHHmm = (iso?: string) => {
       if (!iso) return "08:00";
@@ -270,10 +336,11 @@ export default function AiItineraryWaitScreen() {
 
     resetItinerary();
     for (const dayKey of dayKeys) {
-      const rows = itemsByDay[dayKey] || [];
+      const rows = draftItemsByDay[dayKey] || [];
       const locationIds = rows
         .map((row) => row.location_id || row.location?.id || "")
         .filter((id): id is string => id.trim().length > 0);
+      
       const contextItems: ItineraryItem[] = rows.map((row, idx) => {
         const start = toHHmm(row.start_time);
         const duration = typeof row.duration === "number" && row.duration > 0 ? row.duration : 90;
@@ -288,7 +355,7 @@ export default function AiItineraryWaitScreen() {
           id: row.id || `${locationId}-${idx}`,
           locationId,
           name,
-          image: getLocationImageUrl(row.location),
+          image: getItemImageUrl(row) || "",
           timeRange: {
             start,
             end: addMinutes(start, duration),
@@ -307,17 +374,10 @@ export default function AiItineraryWaitScreen() {
     addLocationsToDay,
     canShowGeneratedResult,
     dayKeys,
-    itemsByDay,
+    draftItemsByDay,
     resetItinerary,
-    tripItems.length,
   ]);
 
-  const formatElapsed = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    if (m <= 0) return `${s}s`;
-    return `${m} phút ${s}s`;
-  };
   const bottomInset = Math.max(16, insets.bottom);
   const footerBarHeight = 16 + 56 + bottomInset;
 
@@ -369,13 +429,13 @@ export default function AiItineraryWaitScreen() {
         </View>
       ) : canShowGeneratedResult ? (
         <View className="flex-1">
-          {itemsLoading ? (
-            <View className="flex-1 items-center justify-center py-16">
-              <ActivityIndicator size="large" color="#2BB673" />
-              <Text className="mt-4 text-center text-sm text-gray-600">
-                Đang tải hoạt động…
-              </Text>
-            </View>
+          {itemsLoading && tripItems.length === 0 ? (
+              <View className="flex-1 items-center justify-center py-16">
+                <ActivityIndicator size="large" color="#2BB673" />
+                <Text className="mt-4 text-center text-sm text-gray-600">
+                  Đang tải danh sách địa điểm…
+                </Text>
+              </View>
           ) : itemsError ? (
             <View className="flex-1 items-center justify-center px-8 py-12">
               <Ionicons name="cloud-offline-outline" size={48} color="#9CA3AF" />
@@ -406,7 +466,7 @@ export default function AiItineraryWaitScreen() {
                   </Text>
                 ) : (
                   dayKeys.map((dayKey, dayIndex) => {
-                    const itemsForDay = itemsByDay[dayKey] || [];
+                    const itemsForDay = draftItemsByDay[dayKey] || [];
                     const mapPinsForDay: ItineraryMapLocation[] = [];
                     for (const row of itemsForDay) {
                       const coords = coordsFromTripItem(row);
@@ -445,10 +505,10 @@ export default function AiItineraryWaitScreen() {
                               row={row}
                               index={index}
                               total={itemsForDay.length}
-                              canInteract={false}
-                              imageUrl={getLocationImageUrl(row.location)}
-                              onMove={() => {}}
-                              onDelete={() => {}}
+                              canInteract={true}
+                              imageUrl={getItemImageUrl(row)}
+                              onMove={(from, to) => moveItem(dayKey, from, to)}
+                              onDelete={() => deleteItem(dayKey, index)}
                             />
                           ))}
                         </View>
@@ -620,9 +680,90 @@ export default function AiItineraryWaitScreen() {
               ) : null}
 
               <View className="mt-4">
-                {Array.from({ length: PLACE_SKELETON_COUNT }).map((_, idx) => (
-                  <PlaceItemSkeleton key={`skeleton-${idx}`} />
-                ))}
+                {tripItems.length > 0 ? (
+                  (() => {
+                    // Group items by day while generating
+                    const generatingItemsByDay: Record<string, TripItemResponse[]> = {};
+                    for (const row of tripItems) {
+                      const k = dayKeyFromItem(row);
+                      if (!generatingItemsByDay[k]) generatingItemsByDay[k] = [];
+                      generatingItemsByDay[k].push(row);
+                    }
+
+                    // Sort each day's items by time
+                    for (const k of Object.keys(generatingItemsByDay)) {
+                      generatingItemsByDay[k].sort((a, b) => {
+                        const ta = Date.parse(a.start_time || "") || 0;
+                        const tb = Date.parse(b.start_time || "") || 0;
+                        return ta - tb;
+                      });
+                    }
+
+                    // Sort days
+                    const sortedDayKeys = Object.keys(generatingItemsByDay).sort((a, b) => {
+                      if (a === "_nodate") return 1;
+                      if (b === "_nodate") return -1;
+                      return a.localeCompare(b);
+                    });
+
+                    return sortedDayKeys.map((dayKey, dayIndex) => {
+                      const itemsForDay = generatingItemsByDay[dayKey] || [];
+                      const mapPinsForDay: ItineraryMapLocation[] = [];
+
+                      for (const row of itemsForDay) {
+                        const coords = coordsFromTripItem(row);
+                        if (coords) {
+                          mapPinsForDay.push({
+                            id: row.id ?? row.location?.id ?? `gen-pin-${dayKey}-${mapPinsForDay.length}`,
+                            latitude: coords.latitude,
+                            longitude: coords.longitude,
+                            title:
+                              row.location?.name?.trim() ||
+                              row.location?.place_formatted?.trim() ||
+                              "Địa điểm",
+                          });
+                        }
+                      }
+
+                      return (
+                        <View key={dayKey} className="mb-4">
+                          <Text className="mb-3 text-base font-bold text-gray-900">
+                            {dayKey === "_nodate"
+                              ? "Chưa phân ngày"
+                              : `Ngày ${dayIndex + 1}: ${formatDayChipLabel(dayKey)}`}
+                          </Text>
+
+                          {mapPinsForDay.length > 0 && (
+                            <View className="mb-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                              <ItineraryRouteMap
+                                locations={mapPinsForDay}
+                                height={180}
+                                mode="DRIVING"
+                              />
+                            </View>
+                          )}
+
+                          {itemsForDay.map((row, idx) => (
+                            <DraggableApiItineraryItemCard
+                              key={row.id ?? `gen-row-${dayKey}-${idx}`}
+                              row={row}
+                              index={idx}
+                              total={itemsForDay.length}
+                              canInteract={false}
+                              imageUrl={getItemImageUrl(row)}
+                              onMove={() => {}}
+                              onDelete={() => {}}
+                            />
+                          ))}
+                        </View>
+                      );
+                    });
+                  })()
+                ) : (
+                  Array.from({ length: PLACE_SKELETON_COUNT }).map((_, idx) => (
+                    <PlaceItemSkeleton key={`skeleton-${idx}`} />
+                  ))
+                )}
               </View>
             </View>
           </View>

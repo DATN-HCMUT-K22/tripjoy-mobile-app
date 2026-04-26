@@ -23,6 +23,8 @@ export const notebookService = {
    */
   generateNotebook: (itineraryId: string) =>
     httpClient.post<ApiEnvelope<TravelNotebookResponse>>(
-      `/notebooks/${itineraryId}/ai-generate`
+      `/notebooks/${itineraryId}/ai-generate`,
+      undefined,
+      { timeout: 60000 } // Tăng timeout lên 60 giây cho AI generation
     ),
 };

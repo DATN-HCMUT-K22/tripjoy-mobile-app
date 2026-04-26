@@ -30,10 +30,12 @@ export function useUserSearchDebounce(
   const requestIdRef = useRef(0);
 
   useEffect(() => {
+    console.warn(`[useUserSearchDebounce] effect → enabled=${enabled} rawQuery="${rawQuery}"`);
     if (!enabled) {
       abortRef.current?.abort();
       setResults([]);
       setIsLoading(false);
+      console.warn('[useUserSearchDebounce] ⛔ early return: enabled=false');
       return;
     }
 
@@ -42,6 +44,7 @@ export function useUserSearchDebounce(
       abortRef.current?.abort();
       setResults([]);
       setIsLoading(false);
+      console.warn('[useUserSearchDebounce] ⛔ early return: query empty');
       return;
     }
 
@@ -51,9 +54,11 @@ export function useUserSearchDebounce(
       const controller = new AbortController();
       abortRef.current = controller;
       setIsLoading(true);
+      console.warn(`[useUserSearchDebounce] 🚀 Calling API searchUsers q="${trimmed}"`);
 
       try {
         const res = await searchService.searchUsers(trimmed, controller.signal);
+        console.warn(`[useUserSearchDebounce] ✅ Response code=${res.code}`, res.data);
         if (reqId !== requestIdRef.current) return;
         if (res.code === 1000 || res.code === 0) {
           setResults(normalizeUserSearchPayload(res.data));
@@ -62,7 +67,11 @@ export function useUserSearchDebounce(
         }
       } catch (e: unknown) {
         const err = e as { name?: string };
-        if (err?.name === "AbortError") return;
+        if (err?.name === "AbortError") {
+          console.warn('[useUserSearchDebounce] ⚠️ Request aborted (AbortError)');
+          return;
+        }
+        console.warn('[useUserSearchDebounce] ❌ Error:', e);
         if (reqId === requestIdRef.current) {
           setResults([]);
         }

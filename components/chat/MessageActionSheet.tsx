@@ -121,10 +121,10 @@ export function MessageActionSheet({
                   <Ionicons
                     name={isPinned ? "pin-outline" : "pin"}
                     size={22}
-                    color="#111827"
+                    color={isPinned ? "#EF4444" : "#111827"}
                     style={styles.actionIcon}
                   />
-                  <Text style={styles.actionText}>
+                  <Text style={[styles.actionText, isPinned && { color: "#EF4444" }]}>
                     {isPinned ? "Bỏ ghim" : "Ghim tin nhắn"}
                   </Text>
                 </View>

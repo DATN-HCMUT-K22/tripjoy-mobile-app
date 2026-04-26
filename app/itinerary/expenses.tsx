@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useExpenses, useAddExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/useExpenses";
 import { useItineraryDetail } from "@/hooks/useItineraries";
 import { ExpenseRequest, ExpenseResponse } from "@/services/itineraries";
+import { SharedHeader } from "@/components/common/SharedHeader";
 
 const EXPENSE_CATEGORIES = [
   { id: "FOOD", name: "Ăn uống", icon: "restaurant-outline", color: "#F59E0B", bg: "bg-amber-100" },
@@ -142,15 +143,23 @@ export default function ExpensesScreen() {
 
   if (!itineraryId) {
     return (
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-12 items-center justify-center">
-            <Ionicons name="arrow-back-outline" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text className="text-xl font-bold text-black flex-1 text-center">Quản lý chi phí</Text>
-          <View className="w-12" />
-        </View>
-        <View className="flex-1 items-center justify-center">
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }} edges={["top", "bottom"]}>
+        <SharedHeader
+          leftElement={
+            <TouchableOpacity
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="chevron-back" size={28} color="#111827" />
+            </TouchableOpacity>
+          }
+          centerElement={<Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Quản lý chi phí</Text>}
+          rightElement={null}
+          withMenuDrawer={false}
+          showBorderBottom={false}
+        />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <Text>Thiếu mã lịch trình</Text>
         </View>
       </SafeAreaView>
@@ -158,17 +167,25 @@ export default function ExpensesScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top", "bottom"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }} edges={["top", "bottom"]}>
       {/* Header */}
-      <View className="flex-row items-center border-b border-gray-200 bg-white px-2 py-3">
-        <TouchableOpacity onPress={() => router.back()} className="h-10 w-12 items-center justify-center">
-          <Ionicons name="arrow-back-outline" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text className="text-lg font-bold flex-1 text-center text-black">Quản lý chi phí</Text>
-        <View className="w-12" />
-      </View>
+      <SharedHeader
+        leftElement={
+          <TouchableOpacity
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="chevron-back" size={28} color="#111827" />
+          </TouchableOpacity>
+        }
+        centerElement={<Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Quản lý chi phí</Text>}
+        rightElement={null}
+        withMenuDrawer={false}
+        showBorderBottom={false}
+      />
 
-      <ScrollView className="flex-1 pt-4" contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView className="flex-1 pt-4 bg-[#F9FAFB]" contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Budget Card */}
         <View className="mx-4 mb-6 rounded-2xl bg-[#2BB673] p-5 shadow-sm">
           <Text className="text-white opacity-80 mb-1 text-sm">Tổng chi phí</Text>

@@ -118,15 +118,23 @@ export const messageService = {
   },
 
   /**
-   * Lấy pinned messages
+   * Lấy danh sách tin nhắn đã ghim
    * GET /api/v1/conversations/{conversationId}/pinned-messages
    */
   async getPinnedMessages(
     conversationId: string
   ): Promise<ApiResponse<ChatMessageResponse[]>> {
-    return httpClient.get<ApiResponse<ChatMessageResponse[]>>(
-      `/conversations/${conversationId}/pinned-messages`
-    );
+    console.log(`\n📌 [MESSAGE SERVICE] Re-fetching pins for: ${conversationId}`);
+    try {
+      const response = await httpClient.get<ApiResponse<ChatMessageResponse[]>>(
+        `/conversations/${conversationId}/pinned-messages`
+      );
+      console.log(`✅ [MESSAGE SERVICE] Got ${response.data?.length || 0} pinned messages`);
+      return response;
+    } catch (error) {
+      console.error(`❌ [MESSAGE SERVICE] Failed to fetch pins:`, error);
+      throw error;
+    }
   },
 
   /**
@@ -138,7 +146,8 @@ export const messageService = {
     console.log(`\n❤️ [MESSAGE SERVICE] Liking message: ${messageId}`);
     try {
       const response = await httpClient.post<ApiResponse<null>>(
-        `/messages/${messageId}/likes`
+        `/messages/${messageId}/likes`,
+        {}
       );
       console.log(`✅ [MESSAGE SERVICE] Message liked successfully`);
       return response;
@@ -159,7 +168,8 @@ export const messageService = {
     console.log(`\n💔 [MESSAGE SERVICE] Unliking message: ${messageId}`);
     try {
       const response = await httpClient.delete<ApiResponse<null>>(
-        `/messages/${messageId}/likes`
+        `/messages/${messageId}/likes`,
+        { body: JSON.stringify({}) } as any
       );
       console.log(`✅ [MESSAGE SERVICE] Message unliked successfully`);
       return response;
@@ -171,17 +181,35 @@ export const messageService = {
   },
 
   /**
-   * Pin message — POST /api/v1/messages/{messageId}/pin
+   * Pin message — POST /api/v1/messages/{messageId}/pin?conversationId={conversationId}
    */
-  async pinMessage(messageId: string): Promise<ApiResponse<null>> {
-    return httpClient.post<ApiResponse<null>>(`/messages/${messageId}/pin`);
+  async pinMessage(messageId: string, conversationId: string): Promise<ApiResponse<null>> {
+    console.log(`\n📌 [MESSAGE SERVICE] Pinning message: ${messageId} in conversation: ${conversationId}`);
+    try {
+      const response = await httpClient.post<ApiResponse<null>>(`/messages/${messageId}/pin?conversationId=${conversationId}`, {});
+      console.log(`✅ [MESSAGE SERVICE] Message pinned successfully`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ [MESSAGE SERVICE] Failed to pin message`);
+      console.error(`Error:`, error.message);
+      throw error;
+    }
   },
 
   /**
-   * Unpin message — DELETE /api/v1/messages/{messageId}/pin
+   * Unpin message — DELETE /api/v1/messages/{messageId}/pin?conversationId={conversationId}
    */
-  async unpinMessage(messageId: string): Promise<ApiResponse<null>> {
-    return httpClient.delete<ApiResponse<null>>(`/messages/${messageId}/pin`);
+  async unpinMessage(messageId: string, conversationId: string): Promise<ApiResponse<null>> {
+    console.log(`\n📍 [MESSAGE SERVICE] Unpinning message: ${messageId} in conversation: ${conversationId}`);
+    try {
+      const response = await httpClient.delete<ApiResponse<null>>(`/messages/${messageId}/pin?conversationId=${conversationId}`);
+      console.log(`✅ [MESSAGE SERVICE] Message unpinned successfully`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ [MESSAGE SERVICE] Failed to unpin message`);
+      console.error(`Error:`, error.message);
+      throw error;
+    }
   },
 
   /**

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState, useEffect } from "react";
+import { useRouter } from "expo-router";
+import React, { useState, useMemo } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -12,203 +12,73 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
 import { SearchBar } from "@/components/social/SearchBar";
-import { PostCard } from "@/components/social/PostCard";
-import { FilterModal } from "@/components/social/filters/FilterModal";
-import { usePosts, useLikePost, useCommentPost, useSharePost, useBookmarkPost } from "@/hooks/useSocial";
-import type { GetPostsParams } from "@/services/social";
-import type { Post } from "@/types/social";
+import { ItineraryCard } from "@/components/group/ItineraryCard";
+import { useItineraries } from "@/hooks/useItineraries";
+import { useDebounce } from "@/hooks/useDebounce";
+import type { Itinerary } from "@/types/group";
 
 export default function ExploreScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [filters, setFilters] = useState<GetPostsParams>({});
-  const [showFilterModal, setShowFilterModal] = useState(false);
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
-  // Read hashtag from URL params (when user clicks hashtag in a post)
-  useEffect(() => {
-    if (params.hashtag && typeof params.hashtag === "string") {
-      setFilters({ hashtag: params.hashtag });
-    }
-  }, [params.hashtag]);
+  // Fetch all itineraries (currently user's own, can be expanded to public ones)
+  const { data: itineraries = [], isLoading } = useItineraries();
 
-  // Fetch posts with search/filter params
-  const { data: posts = [], isLoading } = usePosts({
-    q: searchQuery,
-    ...filters,
-    sort: "relevance",
-  });
+  // Filter itineraries by search query
+  const filteredItineraries = useMemo(() => {
+    if (!debouncedSearch) return itineraries;
+    
+    const query = debouncedSearch.toLowerCase();
+    return itineraries.filter(
+      (it) =>
+        it.name.toLowerCase().includes(query) ||
+        it.startDate.includes(query) ||
+        it.endDate.includes(query)
+    );
+  }, [itineraries, debouncedSearch]);
 
-  // Post interaction hooks
-  const likeMutation = useLikePost();
-  const commentMutation = useCommentPost();
-  const shareMutation = useSharePost();
-  const bookmarkMutation = useBookmarkPost();
-
-  const handleLike = (postId: string) => {
-    likeMutation.mutate(postId);
+  const handleItineraryPress = (itinerary: Itinerary) => {
+    router.push(`/itinerary/detail?id=${itinerary.id}` as any);
   };
 
-  const handleComment = (postId: string) => {
-    // TODO: Open comment modal (Phase 4)
-    console.log("Comment on post:", postId);
+  const handleCreateNew = () => {
+    router.push("/create");
   };
-
-  const handleShare = (postId: string) => {
-    shareMutation.mutate(postId);
-  };
-
-  const handleBookmark = (postId: string) => {
-    bookmarkMutation.mutate(postId);
-  };
-
-  const handlePostPress = (post: Post) => {
-    router.push(`/post/${post.id}` as any);
-  };
-
-  const handleUserPress = (userId: string) => {
-    router.push(`/profile/${userId}` as any);
-  };
-
-  // Clear a specific filter
-  const clearFilter = (key: keyof GetPostsParams) => {
-    setFilters((prev) => {
-      const updated = { ...prev };
-      delete updated[key];
-      return updated;
-    });
-  };
-
-  // Clear all filters
-  const clearAllFilters = () => {
-    setFilters({});
-    setSearchQuery("");
-  };
-
-  // Count active filters
-  const activeFilterCount = Object.keys(filters).filter(
-    (key) => filters[key as keyof GetPostsParams] !== undefined
-  ).length;
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="search-outline" size={64} color="#D1D5DB" />
-      <Text style={styles.emptyTitle}>Không tìm thấy bài viết</Text>
+      <Text style={styles.emptyTitle}>Không tìm thấy lịch trình</Text>
       <Text style={styles.emptyText}>
-        {searchQuery || activeFilterCount > 0
-          ? "Thử thay đổi từ khóa tìm kiếm hoặc bộ lọc"
-          : "Bắt đầu tìm kiếm bài viết du lịch"}
+        {searchQuery
+          ? "Thử thay đổi từ khóa tìm kiếm để tìm lịch trình phù hợp"
+          : "Bắt đầu khám phá các lịch trình du lịch hấp dẫn"}
       </Text>
-      {(searchQuery || activeFilterCount > 0) && (
+      {searchQuery && (
         <TouchableOpacity
           style={styles.clearButton}
-          onPress={clearAllFilters}
+          onPress={() => setSearchQuery("")}
           activeOpacity={0.7}
         >
-          <Text style={styles.clearButtonText}>Xóa bộ lọc</Text>
+          <Text style={styles.clearButtonText}>Xóa tìm kiếm</Text>
         </TouchableOpacity>
       )}
     </View>
   );
 
-  const renderActiveFilters = () => {
-    if (activeFilterCount === 0) return null;
-
-    return (
-      <View style={styles.filtersContainer}>
-        <View style={styles.filtersHeader}>
-          <Text style={styles.filtersTitle}>
-            Bộ lọc ({activeFilterCount})
-          </Text>
-          <TouchableOpacity onPress={clearAllFilters}>
-            <Text style={styles.clearAllText}>Xóa tất cả</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.filtersChips}>
-          {filters.hashtag && (
-            <View style={styles.filterChip}>
-              <Text style={styles.filterChipText}>#{filters.hashtag}</Text>
-              <TouchableOpacity onPress={() => clearFilter("hashtag")}>
-                <Ionicons name="close-circle" size={18} color="#0369A1" />
-              </TouchableOpacity>
-            </View>
-          )}
-          {(filters.min_budget || filters.max_budget) && (
-            <View style={styles.filterChip}>
-              <Text style={styles.filterChipText}>
-                Ngân sách: {filters.min_budget || 0}đ - {filters.max_budget || "∞"}đ
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  clearFilter("min_budget");
-                  clearFilter("max_budget");
-                }}
-              >
-                <Ionicons name="close-circle" size={18} color="#0369A1" />
-              </TouchableOpacity>
-            </View>
-          )}
-          {(filters.start_date || filters.end_date) && (
-            <View style={styles.filterChip}>
-              <Text style={styles.filterChipText}>
-                Thời gian: {filters.start_date || "?"} - {filters.end_date || "?"}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  clearFilter("start_date");
-                  clearFilter("end_date");
-                }}
-              >
-                <Ionicons name="close-circle" size={18} color="#0369A1" />
-              </TouchableOpacity>
-            </View>
-          )}
-          {(filters.min_days || filters.max_days) && (
-            <View style={styles.filterChip}>
-              <Text style={styles.filterChipText}>
-                Thời lượng: {filters.min_days || 0} - {filters.max_days || "∞"} ngày
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  clearFilter("min_days");
-                  clearFilter("max_days");
-                }}
-              >
-                <Ionicons name="close-circle" size={18} color="#0369A1" />
-              </TouchableOpacity>
-            </View>
-          )}
-          {(filters.min_people || filters.max_people) && (
-            <View style={styles.filterChip}>
-              <Text style={styles.filterChipText}>
-                Số người: {filters.min_people || 0} - {filters.max_people || "∞"}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  clearFilter("min_people");
-                  clearFilter("max_people");
-                }}
-              >
-                <Ionicons name="close-circle" size={18} color="#0369A1" />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </View>
-    );
-  };
-
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Khám phá</Text>
+          <Text style={styles.headerTitle}>Lịch trình</Text>
         </View>
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
-          onFilterPress={() => setShowFilterModal(true)}
+          onFilterPress={() => {}} // Filter modal for itineraries can be added later
+          placeholder="Tìm kiếm lịch trình..."
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#16A34A" />
@@ -221,32 +91,37 @@ export default function ExploreScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Khám phá</Text>
-        <Text style={styles.headerSubtitle}>
-          {posts.length} bài viết
-        </Text>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.headerTitle}>Lịch trình</Text>
+            <Text style={styles.headerSubtitle}>
+              {filteredItineraries.length} lịch trình phù hợp
+            </Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.createButton}
+            onPress={handleCreateNew}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+            <Text style={styles.createButtonText}>Tạo mới</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <SearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
-        onFilterPress={() => setShowFilterModal(true)}
+        onFilterPress={() => {}} // Filter modal for itineraries can be added later
+        placeholder="Tìm kiếm lịch trình..."
       />
 
-      {renderActiveFilters()}
-
       <FlatList
-        data={posts}
+        data={filteredItineraries}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <PostCard
-            post={item}
-            onLike={handleLike}
-            onComment={handleComment}
-            onShare={handleShare}
-            onBookmark={handleBookmark}
-            onPostPress={handlePostPress}
-            onUserPress={handleUserPress}
+          <ItineraryCard
+            itinerary={item}
+            onPress={() => handleItineraryPress(item)}
           />
         )}
         contentContainerStyle={styles.listContent}
@@ -255,13 +130,6 @@ export default function ExploreScreen() {
       />
 
       <BottomNavigation />
-
-      <FilterModal
-        visible={showFilterModal}
-        filters={filters}
-        onApply={setFilters}
-        onClose={() => setShowFilterModal(false)}
-      />
     </SafeAreaView>
   );
 }
@@ -277,6 +145,25 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
+  },
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  createButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#16A34A",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 4,
+  },
+  createButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
   },
   headerTitle: {
     fontSize: 22,
@@ -326,48 +213,6 @@ const styles = StyleSheet.create({
   clearButtonText: {
     color: "#fff",
     fontSize: 14,
-    fontWeight: "600",
-  },
-  filtersContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#F9FAFB",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  filtersHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  filtersTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  clearAllText: {
-    fontSize: 13,
-    color: "#16A34A",
-    fontWeight: "600",
-  },
-  filtersChips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#E0F2FE",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  filterChipText: {
-    color: "#0369A1",
-    fontSize: 13,
     fontWeight: "600",
   },
 });

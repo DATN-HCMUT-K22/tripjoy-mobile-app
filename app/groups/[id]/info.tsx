@@ -49,7 +49,8 @@ export default function GroupInfoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: group, isLoading } = useGroup(id);
   const { data: currentUser } = useCurrentUser();
-  const { data: members = [], isLoading: isLoadingMembers } = useGroupMembers(id);
+  const { data: membersRaw, isLoading: isLoadingMembers } = useGroupMembers(id);
+  const members = useMemo(() => membersRaw || [], [membersRaw]);
   const {
     data: itinerariesData,
     isLoading: isLoadingItineraries,

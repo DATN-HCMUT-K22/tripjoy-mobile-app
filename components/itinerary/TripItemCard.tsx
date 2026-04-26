@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import type { TripItemResponse } from '@/services/itineraries';
+import { getLocationImageUrl } from '@/utils/locationImages';
 
 type TripItemCardProps = {
   item: TripItemResponse;
@@ -96,6 +98,9 @@ export function TripItemCard({
     (location as any)?.max_price
   );
 
+  // Compute image URL with fallbacks: Google Places -> content URL -> static map -> gradient
+  const imageUrl = useMemo(() => getLocationImageUrl(location), [location]);
+
   const handleMenuPress = () => {
     if (!onEdit && !onDelete) return;
 
@@ -147,8 +152,24 @@ export function TripItemCard({
       accessibilityRole="button"
       accessibilityLabel={`Hoạt động ${location?.name || ''}`}
     >
-      {/* Time and Menu Row */}
-      <View style={styles.header}>
+      {/* Location Image */}
+      {imageUrl ? (
+        <Image
+          source={{ uri: imageUrl }}
+          style={styles.locationImage}
+          contentFit="cover"
+          transition={200}
+          placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
+        />
+      ) : (
+        <View style={styles.placeholderImage}>
+          <Ionicons name={icon} size={32} color="#FFFFFF" />
+        </View>
+      )}
+
+      <View style={styles.contentWrapper}>
+        {/* Time and Menu Row */}
+        <View style={styles.header}>
         <Text style={styles.timeRange}>{timeRange}</Text>
         {showMenu && (onEdit || onDelete) && (
           <TouchableOpacity
@@ -207,6 +228,7 @@ export function TripItemCard({
           </Text>
         </View>
       )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -214,7 +236,6 @@ export function TripItemCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
-    padding: 16,
     marginHorizontal: 16,
     marginVertical: 6,
     borderRadius: 12,
@@ -225,12 +246,30 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
+    overflow: 'hidden',
+  },
+  locationImage: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#F3F4F6',
+  },
+  placeholderImage: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#2BB673',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contentWrapper: {
+    paddingBottom: 16,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+    marginTop: 12,
+    paddingHorizontal: 16,
   },
   timeRange: {
     fontSize: 14,
@@ -244,6 +283,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 8,
+    paddingHorizontal: 16,
     gap: 8,
   },
   locationName: {
@@ -257,6 +297,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 6,
+    paddingHorizontal: 16,
     gap: 6,
   },
   infoText: {
@@ -274,6 +315,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginTop: 8,
     paddingTop: 8,
+    paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
     gap: 6,

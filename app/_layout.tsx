@@ -32,6 +32,7 @@ import { storage } from "@/utils/storage";
 import { Ionicons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LogBox, Platform, Text, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
 import { Provider } from "react-redux";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -386,11 +387,12 @@ export default function RootLayout() {
   }
 
   console.log("Rendering main app with providers");
-  
+
   return (
-    <ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
           <Provider store={store}>
             <TripSetupProvider>
               <ItineraryProvider>
@@ -462,6 +464,18 @@ export default function RootLayout() {
                         />
                         <Stack.Screen
                           name="itinerary/[id]"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="itinerary/notebook"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="itinerary/expenses"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="itinerary/detail"
                           options={{ headerShown: false }}
                         />
                       </Stack>
@@ -581,7 +595,8 @@ export default function RootLayout() {
           </TripSetupProvider>
         </Provider>
       </QueryClientProvider>
+        </ErrorBoundary>
       </SafeAreaProvider>
-    </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

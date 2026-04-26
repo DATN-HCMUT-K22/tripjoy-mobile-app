@@ -758,11 +758,9 @@ export default function GroupChatScreen() {
 
     queryClient.invalidateQueries({ queryKey: ["conversations"] });
     queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.push("/messages");
-    }
+
+    // Luôn quay về danh sách tin nhắn thay vì back navigation history
+    router.push("/messages");
   }, [conversationId, messages, queryClient, router]);
 
   return (

@@ -280,6 +280,16 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         >
           {replyPreview}
 
+          {/* Pinned indicator */}
+          {message.is_pinned && (
+            <View style={[styles.pinIndicator, { backgroundColor: isMe ? "rgba(255,255,255,0.2)" : (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)") }]}>
+              <Ionicons name="pin" size={12} color={isMe ? "#FFFFFF" : (isDark ? "#9CA3AF" : "#6B7280")} />
+              <Text style={[styles.pinIndicatorText, { color: isMe ? "#FFFFFF" : (isDark ? "#9CA3AF" : "#6B7280") }]}>
+                Đã ghim
+              </Text>
+            </View>
+          )}
+
           <Text
             style={[styles.messageText, { color: textColor }]}
             selectable
@@ -506,5 +516,19 @@ const styles = StyleSheet.create({
   imageCaptionText: {
     fontSize: 15,
     lineHeight: 21,
+  },
+  pinIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 4,
+    alignSelf: "flex-start",
+    gap: 4,
+  },
+  pinIndicatorText: {
+    fontSize: 10,
+    fontWeight: "500",
   },
 });

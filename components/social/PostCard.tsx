@@ -80,6 +80,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   onDownload,
   onReport,
 }) => {
+  const router = useRouter();
   const currentUserId = useAppSelector(state => state.auth.user?.id);
   const isOwner = post.creator_id === currentUserId;
 
@@ -150,6 +151,17 @@ export const PostCard: React.FC<PostCardProps> = ({
     // Nếu result là null, có nghĩa là không có auth (modal đã hiện), không cập nhật state
     if (result !== null && result !== undefined) {
       setIsBookmarked(!isBookmarked);
+    }
+  };
+
+  const handleAvatarPress = () => {
+    // Check if viewing own profile
+    if (post.creator_id === currentUserId) {
+      // Navigate to own profile
+      router.push('/profile');
+    } else {
+      // Navigate to user profile
+      router.push(`/user/${post.creator_id}` as any);
     }
   };
 
@@ -287,46 +299,53 @@ export const PostCard: React.FC<PostCardProps> = ({
       <View className="px-4 py-3">
         <View className="flex-row items-center justify-between mb-2">
           <View className="flex-row items-center gap-2 flex-1">
-            {!avatarError ? (
-              <Image
-                source={{
-                  uri: resolveUserAvatarUri(post.user.avatar, post.user.name),
-                }}
-                style={{ width: 40, height: 40, borderRadius: 20 }}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                priority="normal"
-                placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
-                transition={200}
-                onError={(error) => {
-                  console.error(
-                    "[PostCard] Error loading avatar:",
-                    error,
-                    "URI:",
-                    post.user.avatar
-                  );
-                  setAvatarError(true);
-                }}
-              />
-            ) : (
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  backgroundColor: "#34B27D",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text className="text-white text-sm font-bold">
-                  {post.user.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
+            <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.7}>
+              {!avatarError ? (
+                <Image
+                  source={{
+                    uri: resolveUserAvatarUri(post.user.avatar, post.user.name),
+                  }}
+                  style={{ width: 40, height: 40, borderRadius: 20 }}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  priority="normal"
+                  placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+                  transition={200}
+                  onError={(error) => {
+                    console.error(
+                      "[PostCard] Error loading avatar:",
+                      error,
+                      "URI:",
+                      post.user.avatar
+                    );
+                    setAvatarError(true);
+                  }}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: "#34B27D",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text className="text-white text-sm font-bold">
+                    {post.user.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
             <View className="flex-1">
               <View className="flex-row items-center gap-2 flex-wrap">
-                <Text className="text-base text-gray-600">{post.timestamp}</Text>
+                <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.7}>
+                  <Text className="text-base text-gray-900 font-semibold">
+                    {post.user.name}
+                  </Text>
+                </TouchableOpacity>
+                <Text className="text-base text-gray-600">• {post.timestamp}</Text>
                 {post.visibility === 'PRIVATE' && (
                   <TouchableOpacity
                     style={styles.privacyBadge}

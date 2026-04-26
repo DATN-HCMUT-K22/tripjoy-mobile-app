@@ -106,8 +106,12 @@ export default function AddLocationScreen() {
 
   const hasGooglePlaces = isGooglePlacesConfigured();
   const useLiveApi = Boolean(center) && !EXPO_PUBLIC_MOCK_DATA;
-  const useGooglePlaces = useLiveApi && hasGooglePlaces;
-  const useTripjoyFallback = useLiveApi && !useGooglePlaces;
+  // Backend API first strategy - tránh gọi Google Places trực tiếp để tiết kiệm phí
+  const useGooglePlaces = false;
+  const useBackendApi = useLiveApi;
+
+  // State lưu resolved location IDs (provider_id -> location_id)
+  const [resolvedLocationIds, setResolvedLocationIds] = useState<Record<string, string>>({});
 
   const {
     data: googleHits = [],
@@ -187,7 +191,7 @@ export default function AddLocationScreen() {
       if (!isLocationApiSuccess(res.code)) return [];
       return normalizeSearchPagePayload(res.data);
     },
-    enabled: useTripjoyFallback,
+    enabled: useBackendApi,
     staleTime: 60_000,
   });
 
@@ -196,11 +200,79 @@ export default function AddLocationScreen() {
       showErrorToast("Không tải được địa điểm", poiError);
     }
   }, [poiIsError, poiError]);
+
+  // Auto-resolve locations từ Google Maps để lưu vào database
   useEffect(() => {
-    if (googleIsError && googleError) {
-      showErrorToast("Google Places tạm lỗi", googleError);
-    }
-  }, [googleIsError, googleError]);
+    if (!useBackendApi || apiHits.length === 0) return;
+
+    const locationsToResolve = apiHits.filter((h): h is LocationAutocompleteSuggestionDto => {
+      if (!("provider_id" in h)) return false;
+      const suggestion = h as LocationAutocompleteSuggestionDto;
+      return (
+        !suggestion.location_id &&
+        suggestion.source === "GOOGLE_MAPS" &&
+        suggestion.provider_id &&
+        typeof suggestion.latitude === "number" &&
+        typeof suggestion.longitude === "number"
+      );
+    });
+
+    if (locationsToResolve.length === 0) return;
+
+    // Resolve từng location và lưu kết quả
+    const resolvePromises = locationsToResolve.map(async (suggestion) => {
+      const cacheKey = `gmap:${suggestion.provider_id}`;
+
+      // Skip nếu đã resolve rồi
+      if (resolvedLocationIds[cacheKey]) return;
+
+      try {
+        const resolveRes = await resolveLocation({
+          name: suggestion.name,
+          latitude: suggestion.latitude,
+          longitude: suggestion.longitude,
+          full_address: suggestion.full_address || suggestion.secondary_text || undefined,
+          provider: "GOOGLE_MAPS",
+          provider_id: suggestion.provider_id,
+          maki: suggestion.primary_type,
+        });
+
+        if (
+          isLocationApiSuccess(resolveRes.code) &&
+          resolveRes.data &&
+          typeof resolveRes.data.id === "string"
+        ) {
+          setResolvedLocationIds((prev) => ({
+            ...prev,
+            [cacheKey]: resolveRes.data!.id,
+          }));
+        }
+      } catch (error) {
+        // Ignore resolve errors - không block UX
+        console.warn(`Failed to auto-resolve location ${suggestion.name}:`, error);
+      }
+    });
+
+    // Fire and forget - không block UI
+    void Promise.all(resolvePromises);
+  }, [useBackendApi, apiHits, resolvedLocationIds]);
+
+  // Sync selectedLocationIds khi resolvedLocationIds thay đổi
+  // Thay thế cacheKey (gmap:xxx) bằng resolved locationId
+  useEffect(() => {
+    setSelectedLocationIds((prevIds) => {
+      let updated = false;
+      const newIds = prevIds.map((id) => {
+        const resolvedId = resolvedLocationIds[id];
+        if (resolvedId && resolvedId !== id) {
+          updated = true;
+          return resolvedId;
+        }
+        return id;
+      });
+      return updated ? newIds : prevIds;
+    });
+  }, [resolvedLocationIds]);
 
   const filteredMockAttractions = useMemo(() => {
     let filtered = mockAttractions;
@@ -235,28 +307,21 @@ export default function AddLocationScreen() {
       }));
     }
 
-    if (useGooglePlaces) {
-      return googleHits.map((h) => ({
-        id: h.id,
-        name: h.name,
-        subtitle: h.subtitle,
-        imageUrl: h.imageUrl,
-        latitude: h.latitude,
-        longitude: h.longitude,
-        types: h.types,
-        source: "google",
-        fromMock: false,
-      }));
-    }
-
+    // Backend API data mapping
     return apiHits.map((h) => {
       const isAutocompleteHit = "provider_id" in h;
       if (isAutocompleteHit) {
         const suggestion = h as LocationAutocompleteSuggestionDto;
-        const rowId = suggestion.location_id || `gmap:${suggestion.provider_id}`;
+        const cacheKey = `gmap:${suggestion.provider_id}`;
+        const resolvedId = resolvedLocationIds[cacheKey];
+
+        // Ưu tiên: resolved ID > original location_id > provider_id tạm
+        const finalLocationId = suggestion.location_id || resolvedId;
+        const rowId = finalLocationId || cacheKey;
+
         return {
           id: rowId,
-          locationId: suggestion.location_id || undefined,
+          locationId: finalLocationId,
           providerId: suggestion.provider_id,
           name: suggestion.name,
           subtitle: suggestion.full_address || suggestion.secondary_text || "",
@@ -266,8 +331,8 @@ export default function AddLocationScreen() {
           types: suggestion.primary_type ? [suggestion.primary_type] : ["point_of_interest"],
           source: "tripjoy",
           fromMock: false,
-          sourceLabel: suggestion.source === "DB" ? "TripJoy DB" : "Google Maps",
-          needsResolve: !suggestion.location_id,
+          sourceLabel: suggestion.source === "DB" ? "TripJoy DB" : (resolvedId ? "Google Maps (đã lưu)" : "Google Maps"),
+          needsResolve: !finalLocationId,
           resolveSource: suggestion.source === "GOOGLE_MAPS" ? "GOOGLE_MAPS" : undefined,
         };
       }
@@ -291,9 +356,8 @@ export default function AddLocationScreen() {
     EXPO_PUBLIC_MOCK_DATA,
     useLiveApi,
     filteredMockAttractions,
-    useGooglePlaces,
-    googleHits,
     apiHits,
+    resolvedLocationIds,
   ]);
 
   const toggleLocation = (locationId: string) => {
@@ -314,8 +378,11 @@ export default function AddLocationScreen() {
       for (const id of selectedLocationIds) {
         const row = listRows.find((x) => x.id === id);
         if (!row) continue;
+
+        // Đã auto-resolve rồi, dùng locationId luôn
         let finalId = row.locationId || id;
 
+        // Retry resolve nếu auto-resolve fail (vẫn còn needsResolve)
         if (
           row.needsResolve &&
           row.resolveSource === "GOOGLE_MAPS" &&
@@ -340,6 +407,12 @@ export default function AddLocationScreen() {
             ) {
               finalId = resolveRes.data.id;
               remappedIds.set(id, finalId);
+              // Cache lại resolved ID
+              const cacheKey = `gmap:${row.providerId}`;
+              setResolvedLocationIds((prev) => ({
+                ...prev,
+                [cacheKey]: finalId,
+              }));
             }
           } catch {
             // Nếu resolve fail, vẫn fallback lưu snapshot theo id tạm để không chặn flow tạo lịch.
@@ -382,21 +455,16 @@ export default function AddLocationScreen() {
         ? `Không tìm thấy địa điểm nào trong ${tripData.location.name}`
         : "Không có dữ liệu mẫu phù hợp";
     }
-    if (useGooglePlaces && googleIsError) {
-      return "Google Places tạm thời không phản hồi. Hãy thử lại.";
-    }
     if (poiIsError) {
       return "Không tải được dữ liệu. Vuốt xuống hoặc thử lại sau.";
     }
     if (debouncedSearch.trim()) {
       return "Không tìm thấy địa điểm phù hợp.";
     }
-    return "Chưa có địa điểm nào cho điểm đến này trên TripJoy.";
+    return "Chưa có địa điểm nào cho điểm đến này.";
   }, [
     EXPO_PUBLIC_MOCK_DATA,
     useLiveApi,
-    useGooglePlaces,
-    googleIsError,
     tripData.location,
     poiIsError,
     debouncedSearch,
@@ -405,9 +473,7 @@ export default function AddLocationScreen() {
   const hintUnderSearch =
     EXPO_PUBLIC_MOCK_DATA || !useLiveApi
       ? null
-      : useGooglePlaces
-        ? "Gợi ý từ Google Places Nearby quanh điểm đến. Nhập từ khóa để tìm cụ thể."
-        : "Không nhập từ khóa: Nearby. Nhập từ khóa >= 2 ký tự: Autocomplete (DB/Google).";
+      : "Không nhập từ khóa: Nearby. Nhập từ khóa >= 2 ký tự: Autocomplete (DB/Google).";
 
   return (
     <SafeAreaView
@@ -463,7 +529,7 @@ export default function AddLocationScreen() {
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         <View className="px-4 py-2">
-          {useLiveApi && (googleLoading || tripjoyLoading) && listRows.length === 0 ? (
+          {useLiveApi && tripjoyLoading && listRows.length === 0 ? (
             <View className="py-16 items-center">
               <ActivityIndicator size="large" color="#34B27D" />
               <Text className="text-gray-500 mt-3 text-center">
@@ -476,16 +542,10 @@ export default function AddLocationScreen() {
               <Text className="text-gray-500 mt-4 text-center">
                 {emptyMessage}
               </Text>
-              {useLiveApi && (poiIsError || googleIsError) ? (
+              {useLiveApi && poiIsError ? (
                 <TouchableOpacity
                   className="mt-4 px-5 py-2 rounded-full bg-emerald-50 border border-emerald-200"
-                  onPress={() => {
-                    if (useGooglePlaces) {
-                      void refetchGoogle();
-                    } else {
-                      void refetchPoi();
-                    }
-                  }}
+                  onPress={() => void refetchPoi()}
                   activeOpacity={0.8}
                 >
                   <Text className="text-sm font-semibold text-emerald-700">

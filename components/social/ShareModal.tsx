@@ -13,6 +13,10 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
+import { conversationService } from "@/services/conversations";
+import { messageService } from "@/services/messages";
+import { sharePost } from "@/services/social";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 
 interface ShareModalProps {
   visible: boolean;
@@ -38,6 +42,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const { copyLink, shareNative } = useNativeShare();
   const { data: groups, isLoading: loadingGroups } = useGroups();
   const [showGroupList, setShowGroupList] = useState(false);
+  const [sharingToGroup, setSharingToGroup] = useState(false);
 
   const handleCopyLink = async () => {
     const success = await copyLink(postId);
@@ -57,10 +62,49 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     setShowGroupList(true);
   };
 
-  const handleGroupSelect = (groupId: string) => {
-    // TODO: Implement share to group functionality
-    console.log("Share to group:", groupId);
-    onClose();
+  const handleGroupSelect = async (groupId: string) => {
+    if (sharingToGroup) return;
+
+    try {
+      setSharingToGroup(true);
+
+      // 1. Lấy danh sách conversations để tìm conversation của group
+      const conversationsRes = await conversationService.getConversations();
+
+      if (!conversationsRes.data) {
+        showErrorToast("Không thể tải danh sách hội thoại");
+        return;
+      }
+
+      // 2. Tìm conversation có group_id matching
+      const groupConversation = conversationsRes.data.find(
+        (conv) => conv.type === "GROUP" && conv.group_id === groupId
+      );
+
+      if (!groupConversation?.id) {
+        showErrorToast("Không tìm thấy hội thoại của nhóm");
+        return;
+      }
+
+      // 3. Gửi message với type SHARE_POST
+      const shareUrl = `https://tripjoy.com/post/${postId}`;
+      await messageService.sendMessage(groupConversation.id, {
+        message_content: postTitle || "Chia sẻ bài viết",
+        message_type: "SHARE_POST",
+        share_post_url: shareUrl,
+      });
+
+      // 4. Track share count
+      await sharePost(postId);
+
+      showSuccessToast("Đã chia sẻ vào nhóm!");
+      onClose();
+    } catch (error) {
+      console.error("Share to group error:", error);
+      showErrorToast("Chia sẻ thất bại");
+    } finally {
+      setSharingToGroup(false);
+    }
   };
 
   const shareOptions: ShareOption[] = [
@@ -158,6 +202,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                       <ActivityIndicator size="small" color="#34B27D" />
                       <Text className="text-gray-500 mt-2">Đang tải...</Text>
                     </View>
+                  ) : sharingToGroup ? (
+                    <View className="py-8 items-center">
+                      <ActivityIndicator size="small" color="#34B27D" />
+                      <Text className="text-gray-500 mt-2">Đang chia sẻ...</Text>
+                    </View>
                   ) : (
                     <FlatList
                       data={groups}
@@ -167,6 +216,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                           onPress={() => handleGroupSelect(item.id)}
                           className="flex-row items-center py-3 border-b border-gray-100"
                           activeOpacity={0.7}
+                          disabled={sharingToGroup}
                         >
                           <Image
                             source={{
@@ -209,16 +259,18 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                   )}
 
                   {/* Back button */}
-                  <TouchableOpacity
-                    onPress={() => setShowGroupList(false)}
-                    className="flex-row items-center justify-center py-3 mt-2"
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="arrow-back" size={20} color="#34B27D" />
-                    <Text className="text-green-600 font-medium ml-2">
-                      Quay lại
-                    </Text>
-                  </TouchableOpacity>
+                  {!sharingToGroup && (
+                    <TouchableOpacity
+                      onPress={() => setShowGroupList(false)}
+                      className="flex-row items-center justify-center py-3 mt-2"
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="arrow-back" size={20} color="#34B27D" />
+                      <Text className="text-green-600 font-medium ml-2">
+                        Quay lại
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
 

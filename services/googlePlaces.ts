@@ -262,3 +262,80 @@ function dedupeById(items: GooglePlaceListItem[]): GooglePlaceListItem[] {
     return true;
   });
 }
+
+/**
+ * Lấy thông tin chi tiết của một Place theo ID (bao gồm photos).
+ * Place ID format: "ChIJ..." hoặc full resource name "places/ChIJ..."
+ */
+export async function getPlaceDetails(placeId: string): Promise<{
+  photos?: { name: string }[];
+  displayName?: { text: string };
+  formattedAddress?: string;
+} | null> {
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey || !placeId) return null;
+
+  // Normalize place ID to resource name format
+  const resourceName = placeId.startsWith("places/")
+    ? placeId
+    : `places/${placeId}`;
+
+  try {
+    const res = await fetch(`${PLACES_BASE}/${resourceName}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "photos,displayName,formattedAddress",
+      },
+    });
+
+    const text = await res.text();
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      console.warn(`Invalid JSON response for place ${placeId}`);
+      return null;
+    }
+
+    if (!res.ok) {
+      const err = json as { error?: { message?: string; status?: string } };
+      console.warn(`Failed to fetch place details: ${err?.error?.message || res.status}`);
+      return null;
+    }
+
+    return json as {
+      photos?: { name: string }[];
+      displayName?: { text: string };
+      formattedAddress?: string;
+    };
+  } catch (error) {
+    console.warn(`Failed to fetch place details for ${placeId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Lấy URL ảnh đầu tiên của một Place theo ID.
+ * Trả về undefined nếu không tìm thấy hoặc có lỗi.
+ */
+export async function getPlacePhotoUrl(placeId: string): Promise<string | undefined> {
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey || !placeId) return undefined;
+
+  const details = await getPlaceDetails(placeId);
+  if (!details?.photos || details.photos.length === 0) return undefined;
+
+  const firstPhoto = details.photos[0];
+  return buildPhotoMediaUrl(firstPhoto.name, apiKey);
+}
+
+/**
+ * Build URL ảnh từ photo resource name (public export).
+ * Dùng cho trường hợp đã có photo reference từ backend.
+ */
+export function buildPlacePhotoUrl(photoResourceName: string): string {
+  const apiKey = getGoogleMapsApiKey();
+  return buildPhotoMediaUrl(photoResourceName, apiKey);
+}

@@ -27,3 +27,17 @@ export interface ApiResponse<T> {
   message?: string;
   data: T;
 }
+
+/**
+ * Public user profile data (visible to all users)
+ * Returned by GET /users/{userId}/profile
+ */
+export interface UserPublicProfile {
+  id: string;
+  username: string;
+  fullName: string;
+  avatarUrl?: string;
+  bio?: string;
+  location?: string;
+  createdAt: string; // ISO 8601 format
+}

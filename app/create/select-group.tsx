@@ -6,6 +6,7 @@ import { useGroups } from "@/hooks/useGroups";
 import { useCreateItinerary } from "@/hooks/useItineraries";
 import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { itineraryService, ItineraryRequest } from "@/services/itineraries";
+import { conversationService } from "@/services/conversations";
 import { tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { tripTypeIdsToItineraryThemes } from "@/utils/itineraryThemes";
 import { showErrorToast } from "@/utils/toast";
@@ -205,7 +206,51 @@ export default function SelectGroupScreen() {
 
         resetItinerary();
         resetTripData();
-        router.push(`/groups/${selectedGroupId}/chat` as any);
+
+        // Delay nhỏ để đảm bảo backend đã xử lý xong
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        // Load conversation để lấy conversationId trước khi điều hướng
+        try {
+          console.log("[SelectGroup] Loading conversations to find group conversation...");
+          const conversationsRes = await conversationService.getConversations();
+
+          if (conversationsRes.code === 0 || conversationsRes.code === 1000) {
+            // Tìm conversation của group này
+            const groupConversation = conversationsRes.data?.find((conv) => {
+              const groupId = conv.group_id ?? (conv as any).groupId;
+              return conv.type === "GROUP" && groupId === selectedGroupId;
+            });
+
+            if (groupConversation) {
+              console.log("[SelectGroup] Found group conversation:", groupConversation.id);
+              // Điều hướng với conversationId
+              router.push({
+                pathname: `/groups/${selectedGroupId}/chat` as any,
+                params: {
+                  conversationId: groupConversation.id,
+                  name: groupConversation.name || undefined,
+                  avatar: groupConversation.avatar || undefined,
+                  memberCount: groupConversation.members?.length
+                    ? String(groupConversation.members.length)
+                    : undefined,
+                },
+              } as any);
+            } else {
+              // Không tìm thấy conversation, vẫn điều hướng nhưng không có tin nhắn
+              console.warn("[SelectGroup] Group conversation not found, navigating without conversationId");
+              router.push(`/groups/${selectedGroupId}/chat` as any);
+            }
+          } else {
+            // Lỗi khi load conversations
+            console.warn("[SelectGroup] Failed to load conversations, navigating without conversationId");
+            router.push(`/groups/${selectedGroupId}/chat` as any);
+          }
+        } catch (convError: any) {
+          console.error("[SelectGroup] Error loading conversations:", convError);
+          // Vẫn điều hướng dù có lỗi
+          router.push(`/groups/${selectedGroupId}/chat` as any);
+        }
       } catch (error: any) {
         showErrorToast(
           "Không tạo được lịch trình",

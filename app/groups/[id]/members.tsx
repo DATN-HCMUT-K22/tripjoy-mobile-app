@@ -33,11 +33,12 @@ export default function GroupMembersScreen() {
 
   const { data: group } = useGroup(groupId);
   const {
-    data: members = [],
+    data: membersRaw,
     isLoading,
     error,
     refetch,
   } = useGroupMembers(groupId);
+  const members = useMemo(() => membersRaw || [], [membersRaw]);
   const { data: currentUser } = useCurrentUser(!!groupId);
 
   const addMemberMutation = useAddGroupMember(groupId);
@@ -56,9 +57,9 @@ export default function GroupMembersScreen() {
   const searchAbortRef = useRef<AbortController | null>(null);
 
   const myMembership = useMemo(() => {
-    if (!currentUser) return null;
-    return members.find((m) => m.user.id === currentUser.id) ?? null;
-  }, [members, currentUser]);
+    if (!currentUser || !membersRaw) return null;
+    return membersRaw.find((m) => m.user.id === currentUser.id) ?? null;
+  }, [membersRaw, currentUser]);
 
   /** Luôn hiển thị Trưởng nhóm đầu tiên, sau đó Phó nhóm, rồi Thành viên */
   const sortedMembers = useMemo(() => {
@@ -107,7 +108,7 @@ export default function GroupMembersScreen() {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [memberSearch, canManageMembers, members]);
+  }, [memberSearch, canManageMembers, membersRaw]);
 
   /** Backend transfer-leadership dùng UUID user (user.id), không dùng id bản ghi membership */
   const handleTransferLeader = (newLeaderUserId: string) => {

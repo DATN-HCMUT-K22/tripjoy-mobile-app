@@ -14,29 +14,41 @@ export const ConnectionBanner: React.FC = () => {
     const shouldShow = connectionStatus !== 'connected';
 
     if (shouldShow) {
-      // Slide down
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }).start();
+      // Small grace period on mount to avoid flicker
+      // If it's 'connecting', show immediately. If 'disconnected', wait 1s.
+      const delay = connectionStatus === 'disconnected' && prevStatusRef.current === 'connected' ? 1000 : 0;
+      
+      const timer = setTimeout(() => {
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 11,
+        }).start();
+      }, delay);
+
+      return () => clearTimeout(timer);
     } else {
       // Slide up after a short delay (so user sees "Connected" briefly)
       const wasDisconnected = prevStatusRef.current !== 'connected';
       const delay = wasDisconnected ? 1500 : 0;
 
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         Animated.timing(slideAnim, {
           toValue: -50,
           duration: 300,
           useNativeDriver: true,
         }).start();
       }, delay);
-    }
 
-    prevStatusRef.current = connectionStatus;
+      return () => clearTimeout(timer);
+    }
   }, [connectionStatus, slideAnim]);
+
+  // Update prevStatus in a separate effect to ensure it's always up to date
+  useEffect(() => {
+    prevStatusRef.current = connectionStatus;
+  }, [connectionStatus]);
 
   const getStatusConfig = () => {
     switch (connectionStatus) {

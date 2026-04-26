@@ -4,7 +4,12 @@ import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
 import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { TypingIndicatorBubble } from "@/components/chat/TypingIndicatorBubble";
 import { useMessages } from "@/hooks/useMessages";
+import { usePinnedMessages } from "@/hooks/usePinnedMessages";
+import { MessageActionSheet } from "@/components/chat/MessageActionSheet";
 import { conversationService } from "@/services/conversations";
+import { PinnedMessageBar, PINNED_BAR_HEIGHT } from "@/components/chat/PinnedMessageBar";
+import { PinnedMessagesModal } from "@/components/chat/PinnedMessagesModal";
+import { messageService } from "@/services/messages";
 import { uploadImage, uploadVideo } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -96,9 +101,17 @@ export default function ChatScreen() {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [likesModalVisible, setLikesModalVisible] = useState(false);
   const [likesModalMessageId, setLikesModalMessageId] = useState<string | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<ChatMessageResponse | null>(null);
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [pinnedModalVisible, setPinnedModalVisible] = useState(false);
+  const [pinnedIndex, setPinnedIndex] = useState(0);
+  const [isPinning, setIsPinning] = useState(false);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
   const conversationId = params.id;
+
+  // Load pinned messages với hook
+  const { pinnedMessages, isLoading: isPinListLoading, refetch: refetchPinned } = usePinnedMessages(conversationId || null);
 
   // Conversation đang mở — không hiện banner tin nhắn từ chính conversation này
   useEffect(() => {
@@ -199,6 +212,15 @@ export default function ChatScreen() {
     refetchOnWindowFocus: false,
   });
 
+  /** Cycle qua các tin ghim mỗi 8 giây nếu có > 1 tin */
+  useEffect(() => {
+    if (pinnedMessages.length <= 1) return;
+    const timer = setInterval(() => {
+      setPinnedIndex((prev) => (prev + 1) % pinnedMessages.length);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [pinnedMessages.length]);
+
   // Sử dụng useMessages hook
   const {
     messages,
@@ -209,6 +231,8 @@ export default function ChatScreen() {
     sendMessage,
     likeMessage,
     unlikeMessage,
+    pinMessage,
+    unpinMessage,
     loadMore,
     refresh,
   } = useMessages({
@@ -454,6 +478,46 @@ export default function ChatScreen() {
     setLikesModalVisible(true);
   }, []);
 
+  const handleLongPress = useCallback((msg: ChatMessageResponse) => {
+    setSelectedMessage(msg);
+    setActionSheetVisible(true);
+  }, []);
+
+  const handlePin = useCallback(async (messageId: string) => {
+    if (isPinning || !conversationId) return;
+    setIsPinning(true);
+    console.log(`\n📌 [UI ACTION] Pinning message: ${messageId}`);
+    try {
+      const response = await pinMessage(messageId);
+      console.log(`✅ [UI ACTION] Pin API success, code: ${response.code}`);
+      // Hook sẽ tự động refetch qua socket event, nhưng gọi thêm để đảm bảo
+      await refetchPinned();
+    } catch (err) {
+      console.error(`❌ [UI ACTION] Pin failed:`, err);
+    } finally {
+      setIsPinning(false);
+    }
+  }, [isPinning, pinMessage, conversationId, refetchPinned]);
+
+  const handleUnpin = useCallback(async (messageId: string) => {
+    if (isPinning || !conversationId) return;
+    setIsPinning(true);
+    console.log(`\n📍 [UI ACTION] Unpinning message: "${messageId}"`);
+
+    try {
+      const response = await unpinMessage(messageId);
+      console.log(`✅ [UI ACTION] Unpin API success, code: ${response?.code}`);
+      // Hook sẽ tự động refetch qua socket event, nhưng gọi thêm để đảm bảo
+      await refetchPinned();
+    } catch (err) {
+      console.error("❌ [UI ACTION] Unpin failed:", err);
+      // Refetch để đảm bảo UI đồng bộ
+      await refetchPinned();
+    } finally {
+      setIsPinning(false);
+    }
+  }, [isPinning, unpinMessage, conversationId, refetchPinned]);
+
   // 🔥 Memoize renderItem for FlashList
   const renderItem = useCallback(({ item }: { item: any }) => {
     if (item.type === "date") {
@@ -466,6 +530,7 @@ export default function ChatScreen() {
         showSenderName={item.showSenderName}
         onLike={handleLike}
         onShowLikes={handleShowLikes}
+        onLongPress={() => handleLongPress(item.message)}
       />
     );
   }, [currentUser?.id, handleLike, handleShowLikes]);
@@ -480,6 +545,11 @@ export default function ChatScreen() {
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
+
+  // Debug render state
+  if (__DEV__) {
+    console.log(`[CHAT RENDER] Pinned count: ${pinnedMessages.length}, Index: ${pinnedIndex}`);
+  }
 
   return (
     <SafeAreaView
@@ -528,6 +598,12 @@ export default function ChatScreen() {
 
       {/* Messages */}
       <View style={styles.messagesWrapper}>
+        <PinnedMessageBar
+          pinnedMessages={pinnedMessages}
+          currentIndex={pinnedIndex}
+          isDark={isDark}
+          onTap={() => setPinnedModalVisible(true)}
+        />
         <FlashList
           ref={flashListRef}
           data={listData}
@@ -537,6 +613,7 @@ export default function ChatScreen() {
           style={styles.messagesContainer}
           contentContainerStyle={[
             styles.messagesContent,
+            { paddingTop: pinnedMessages.length > 0 ? PINNED_BAR_HEIGHT : 0 },
             listData.length === 0 && { flex: 1 },
           ]}
           showsVerticalScrollIndicator={false}
@@ -712,6 +789,37 @@ export default function ChatScreen() {
           setLikesModalVisible(false);
           setLikesModalMessageId(null);
         }}
+      />
+
+      {/* Message Action Sheet (Pin/Unpin, etc.) */}
+      <MessageActionSheet
+        visible={actionSheetVisible}
+        message={selectedMessage}
+        onDismiss={() => {
+          setActionSheetVisible(false);
+          setSelectedMessage(null);
+        }}
+        onPin={handlePin}
+        onUnpin={handleUnpin}
+      />
+
+      {/* Pinned Messages Modal */}
+      <PinnedMessagesModal
+        visible={pinnedModalVisible}
+        conversationId={conversationId || ""}
+        pinnedMessages={pinnedMessages}
+        loading={isPinListLoading}
+        onRefresh={refetchPinned}
+        isDark={isDark}
+        onClose={() => setPinnedModalVisible(false)}
+        onUnpinMessage={handleUnpin}
+        onJumpToMessage={(mid) => {
+          const idx = messageIdToIndex.get(mid);
+          if (idx !== undefined) {
+             flashListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+          }
+        }}
+        onUnpinMessage={handleUnpin}
       />
     </SafeAreaView>
   );

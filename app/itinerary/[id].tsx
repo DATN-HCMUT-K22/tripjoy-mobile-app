@@ -13,7 +13,7 @@ import type {
   TripItemResponse,
 } from "@/services/itineraries";
 import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
-import { getLocationImageUrl } from "@/utils/locationImages";
+import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
 import { LocationForMap } from "@/utils/mapLocations";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -119,9 +119,9 @@ function normItineraryStatus(raw?: string): string {
 }
 
 function placeIdFromTripItem(row: TripItemResponse): string | undefined {
-  const flat = row.location_id?.trim();
+  const flat = typeof row.location_id === "string" ? row.location_id.trim() : undefined;
   if (flat) return flat;
-  const nid = row.location?.id?.trim();
+  const nid = typeof row.location?.id === "string" ? row.location.id.trim() : undefined;
   if (nid) return nid;
   return undefined;
 }
@@ -146,6 +146,7 @@ export default function ItineraryDetailScreen() {
   const [draftItemsByDay, setDraftItemsByDay] = useState<
     Record<string, TripItemResponse[]>
   >({});
+  const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
 
   const {
     data: detail,
@@ -188,6 +189,31 @@ export default function ItineraryDetailScreen() {
     }, [itineraryId, refetchDetail, refetchItems]),
   );
 
+  // Fetch images from Google Places API for trip items
+  useEffect(() => {
+    if (tripItems.length === 0) return;
+
+    const fetchImages = async () => {
+      const newCache: Record<string, string> = {};
+
+      for (const item of tripItems) {
+        const itemId = item.id || item.location?.id || "";
+        if (!itemId || imageUrlCache[itemId]) continue;
+
+        const imageUrl = await getLocationImageUrlAsync(item.location);
+        if (imageUrl) {
+          newCache[itemId] = imageUrl;
+        }
+      }
+
+      if (Object.keys(newCache).length > 0) {
+        setImageUrlCache((prev) => ({ ...prev, ...newCache }));
+      }
+    };
+
+    fetchImages();
+  }, [tripItems]);
+
   const itemsByDay = useMemo(() => {
     const map: Record<string, TripItemResponse[]> = {};
     for (const row of tripItems) {
@@ -214,6 +240,12 @@ export default function ItineraryDetailScreen() {
     });
     return keys;
   }, [itemsByDay]);
+
+  // Helper to get image URL from cache or fallback to sync version
+  const getItemImageUrl = (row: TripItemResponse): string | undefined => {
+    const itemId = row.id || row.location?.id || "";
+    return imageUrlCache[itemId] || getLocationImageUrl(row.location);
+  };
 
   useEffect(() => {
     setDraftItemsByDay(itemsByDay);
@@ -597,7 +629,7 @@ export default function ItineraryDetailScreen() {
                     {itemsForDay.length > 0 ? (
                       <View className="pb-2">
                         {itemsForDay.map((row, index) => {
-                          const imageUrl = getLocationImageUrl(row.location);
+                          const imageUrl = getItemImageUrl(row);
                           return (
                             <DraggableApiItineraryItemCard
                               key={row.id ?? `row-${dayKey}-${index}`}
@@ -716,7 +748,14 @@ export default function ItineraryDetailScreen() {
             contentContainerStyle={{ paddingBottom: 24 }}
             showsVerticalScrollIndicator={false}
           >
-            {placesForAiModify.length === 0 ? (
+            {itemsLoading && placesForAiModify.length === 0 ? (
+              <View className="items-center py-12">
+                <ActivityIndicator size="large" color="#2BB673" />
+                <Text className="mt-4 text-sm text-gray-500">
+                  Đang tải danh sách địa điểm…
+                </Text>
+              </View>
+            ) : placesForAiModify.length === 0 ? (
               <Text className="py-8 text-center text-sm text-gray-500">
                 Không có địa điểm nào kèm mã hợp lệ để gửi lên máy chủ.
               </Text>
