@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import type { TripItemResponse } from '@/services/itineraries';
-import { getLocationImageUrl } from '@/utils/locationImages';
+import { LocationImage } from '@/components/location/LocationImage';
 
 type TripItemCardProps = {
   item: TripItemResponse;
@@ -91,15 +91,25 @@ export function TripItemCard({
   const [menuVisible, setMenuVisible] = useState(false);
 
   const location = item.location;
-  const icon = getCategoryIcon(location?.category);
+  const category = location?.category || (location?.categories && location.categories.length > 0 ? location.categories[0] : undefined);
+  const icon = getCategoryIcon(category);
   const timeRange = formatTimeRange(item.start_time, item.duration);
   const priceRange = formatPriceRange(
     (location as any)?.min_price,
     (location as any)?.max_price
   );
 
-  // Compute image URL with fallbacks: Google Places -> content URL -> static map -> gradient
-  const imageUrl = useMemo(() => getLocationImageUrl(location), [location]);
+  // Location display name logic
+  const displayName = useMemo(() => {
+    if (location?.name) return location.name;
+    if (item.note) {
+      const cleanNote = item.note.trim();
+      const match = cleanNote.match(/^([^.,!?:;]+?)\s+(là|có|mang đến|mang lại|là bãi biển|là địa điểm|là một ngôi đền)/i);
+      if (match && match[1].length < 60) return match[1].trim();
+      return cleanNote.split(/[.,!?:;]/)[0].trim().substring(0, 50);
+    }
+    return 'Hoạt động';
+  }, [location, item.note]);
 
   const handleMenuPress = () => {
     if (!onEdit && !onDelete) return;
@@ -150,22 +160,15 @@ export function TripItemCard({
       activeOpacity={onPress ? 0.7 : 1}
       disabled={!onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Hoạt động ${location?.name || ''}`}
+      accessibilityLabel={`Hoạt động ${displayName}`}
     >
       {/* Location Image */}
-      {imageUrl ? (
-        <Image
-          source={{ uri: imageUrl }}
-          style={styles.locationImage}
-          contentFit="cover"
-          transition={200}
-          placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
-        />
-      ) : (
-        <View style={styles.placeholderImage}>
-          <Ionicons name={icon} size={32} color="#FFFFFF" />
-        </View>
-      )}
+      <LocationImage
+        location={location}
+        style={styles.locationImage}
+        containerStyle={styles.imageContainer}
+        placeholderIcon={icon}
+      />
 
       <View style={styles.contentWrapper}>
         {/* Time and Menu Row */}
@@ -187,7 +190,7 @@ export function TripItemCard({
       <View style={styles.locationRow}>
         <Ionicons name={icon} size={20} color="#2BB673" />
         <Text style={styles.locationName} numberOfLines={2}>
-          {location?.name || 'Địa điểm chưa xác định'}
+          {displayName}
         </Text>
       </View>
 
@@ -325,5 +328,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     lineHeight: 18,
+  },
+  imageContainer: {
+    width: '100%',
+    height: 140,
+    position: 'relative',
   },
 });

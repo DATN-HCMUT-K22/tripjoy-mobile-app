@@ -9,15 +9,17 @@ import { httpClient } from "./http/client";
 /** Đường dẫn API nhóm — giữ tập trung theo docs/modules/groups.md */
 export const GROUP_API = {
   list: "/groups",
-  byId: (groupId: string) => `/groups/${groupId}`,
-  members: (groupId: string) => `/groups/${groupId}/members`,
+  byId: (groupId: string) => `/groups/${groupId.trim()}`,
+  members: (groupId: string) => `/groups/${groupId.trim()}/members`,
   memberById: (groupId: string, memberId: string) =>
-    `/groups/${groupId}/members/${memberId}`,
-  leaveMe: (groupId: string) => `/groups/${groupId}/members/me`,
+    `/groups/${groupId.trim()}/members/${memberId.trim()}`,
+  leaveMe: (groupId: string) => `/groups/${groupId.trim()}/members/me`,
   transferLeadership: (groupId: string) =>
-    `/groups/${groupId}/transfer-leadership`,
+    `/groups/${groupId.trim()}/transfer-leadership`,
   locationSuggestions: (groupId: string) =>
-    `/groups/${groupId}/location-suggestions`,
+    `/groups/${groupId.trim()}/location-suggestions`,
+  suggestionById: (groupId: string, suggestionId: string) =>
+    `/groups/${groupId.trim()}/location-suggestions/${suggestionId.trim()}`,
 } as const;
 
 /** Theo FE Notes: validate code trước khi bind data (hỗ trợ 0 hoặc 1000) */
@@ -130,12 +132,44 @@ export function mapGroupFromApi(raw: unknown): Group {
     theme_color: (r.theme_color as string | null | undefined) ?? null,
     is_pro: Boolean(r.is_pro ?? r.isPro ?? false),
     chatbot_count: Number(r.chatbot_count ?? r.chatbotCount ?? 0),
+    iti_count: Number(r.iti_count ?? r.itiCount ?? 0),
     isDeleted: (r.isDeleted as boolean | null | undefined) ?? null,
     members,
     created_at: r.created_at as string | undefined,
     created_by: (r.created_by as string | null | undefined) ?? null,
     updated_at: r.updated_at as string | undefined,
     updated_by: (r.updated_by as string | null | undefined) ?? null,
+  };
+}
+
+export function mapLocationFromApi(raw: unknown): SuggestionLocationResponse {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  return {
+    id: String(r.id ?? ""),
+    name: String(r.name ?? ""),
+    lat: Number(r.lat ?? r.latitude ?? 0),
+    lng: Number(r.lng ?? r.longitude ?? 0),
+    hotline: (r.hotline as string) || undefined,
+    category: (r.category as string) || undefined,
+    isOpen: Boolean(r.isOpen ?? r.is_open ?? false),
+    content: (r.content as string) || undefined,
+    full_address: (r.full_address ?? r.fullAddress) as string | undefined,
+    place_formatted: (r.place_formatted ?? r.placeFormatted) as string | undefined,
+  };
+}
+
+export function mapSuggestionFromApi(raw: unknown): SuggestLocationResponse {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  return {
+    id: String(r.id ?? ""),
+    location: mapLocationFromApi(r.location),
+    notes: (r.notes as string) || undefined,
+    created_at: r.created_at as string | undefined,
+    created_by: (r.created_by as string) || undefined,
+    updated_at: r.updated_at as string | undefined,
+    updated_by: (r.updated_by as string) || undefined,
+    suggested_by: mapUserSimple(r.suggested_by || r.suggestedBy),
+    group_id: String(r.group_id ?? r.groupId ?? ""),
   };
 }
 
@@ -257,19 +291,37 @@ export const groupService = {
   async getLocationSuggestions(
     groupId: string
   ): Promise<ApiResponse<SuggestLocationResponse[]>> {
-    return httpClient.get<ApiResponse<SuggestLocationResponse[]>>(
+    const response = await httpClient.get<ApiResponse<SuggestLocationResponse[]>>(
       GROUP_API.locationSuggestions(groupId)
     );
+    const list = response.data;
+    if (!isGroupApiSuccess(response.code) || !Array.isArray(list)) {
+      return response;
+    }
+    return { ...response, data: list.map(mapSuggestionFromApi) };
   },
 
   async suggestLocation(
     groupId: string,
     payload: SuggestLocationRequest
   ): Promise<ApiResponse<SuggestLocationResponse>> {
-    return httpClient.post<
+    const response = await httpClient.post<
       ApiResponse<SuggestLocationResponse>,
       SuggestLocationRequest
     >(GROUP_API.locationSuggestions(groupId), payload);
+    if (!isGroupApiSuccess(response.code) || response.data == null) {
+      return response;
+    }
+    return { ...response, data: mapSuggestionFromApi(response.data) };
+  },
+
+  async deleteLocationSuggestion(
+    groupId: string,
+    suggestionId: string
+  ): Promise<ApiResponseVoid> {
+    return httpClient.delete<ApiResponseVoid>(
+      GROUP_API.suggestionById(groupId, suggestionId)
+    );
   },
 };
 

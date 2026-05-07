@@ -21,6 +21,7 @@ export interface ItineraryItem {
     airplane?: string;
   };
   timelineIcon?: "restaurant" | "location" | "telescope" | "bed";
+  note?: string;
 }
 
 // Filter and Sort types

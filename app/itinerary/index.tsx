@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { View, FlatList, RefreshControl, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import { View, FlatList, RefreshControl, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useItineraries } from '@/hooks/useItineraries';
+import { useDeleteItinerary, useItineraries } from '@/hooks/useItineraries';
 import { ItineraryCard } from '@/components/group/ItineraryCard';
 import { StatusBadge } from '@/components/itinerary/StatusBadge';
 import { NoItinerariesEmpty, NoSearchResultsEmpty } from '@/components/shared/EmptyState';
@@ -28,6 +28,15 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 function resolveItineraryTab(itinerary: Itinerary): ItineraryTab {
+  // Respect explicit status if available
+  if (itinerary.status) {
+    const s = itinerary.status.toUpperCase().replace(/-/g, "_");
+    if (s === ITINERARY_STATUS.COMPLETED) return "completed";
+    if (s === ITINERARY_STATUS.IN_PROGRESS) return "ongoing";
+    if (s === ITINERARY_STATUS.DRAFT) return "draft";
+    // For other statuses or CONFIRMED, fall back to date-based logic
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -58,9 +67,31 @@ function resolveItineraryTab(itinerary: Itinerary): ItineraryTab {
 export default function ItineraryListScreen() {
   const router = useRouter();
   const { data: itineraries = [], isLoading, refetch, isRefetching } = useItineraries();
+  const { mutateAsync: deleteItinerary } = useDeleteItinerary();
   const [activeTab, setActiveTab] = useState<ItineraryTab>('ongoing');
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
+
+  const handleDeleteItinerary = (itineraryId: string, name: string) => {
+    Alert.alert(
+      "Xóa lịch trình",
+      `Bạn có chắc chắn muốn xóa lịch trình "${name}"? Hành động này không thể hoàn tác.`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteItinerary(itineraryId);
+            } catch (error) {
+              console.error("Failed to delete itinerary:", error);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Filter itineraries by active tab and search
   const filteredItineraries = useMemo(() => {
@@ -97,6 +128,7 @@ export default function ItineraryListScreen() {
     <ItineraryCard
       itinerary={item}
       onPress={() => handleItineraryPress(item)}
+      onDelete={() => handleDeleteItinerary(item.id, item.name)}
     />
   );
 

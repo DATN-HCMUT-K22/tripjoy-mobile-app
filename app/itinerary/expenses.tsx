@@ -12,7 +12,7 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useExpenses, useAddExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/useExpenses";
 import { useItineraryDetail } from "@/hooks/useItineraries";
@@ -34,7 +34,7 @@ function getCategoryData(type?: string) {
 }
 
 export default function ExpensesScreen() {
-  const router = useRouter();
+  // const router = useRouter();
   const insets = useSafeAreaInsets();
   const { itineraryId: rawId } = useLocalSearchParams<{ itineraryId?: string }>();
   const itineraryId = typeof rawId === "string" ? rawId : undefined;
@@ -143,44 +143,26 @@ export default function ExpensesScreen() {
 
   if (!itineraryId) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }} edges={["top", "bottom"]}>
+      <View style={{ flex: 1, backgroundColor: "#FFFFFF", paddingTop: insets.top }}>
         <SharedHeader
-          leftElement={
-            <TouchableOpacity
-              onPress={() => router.back()}
-              activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Ionicons name="chevron-back" size={28} color="#111827" />
-            </TouchableOpacity>
-          }
+          showBackButton={true}
           centerElement={<Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Quản lý chi phí</Text>}
-          rightElement={null}
           withMenuDrawer={false}
           showBorderBottom={false}
         />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <Text>Thiếu mã lịch trình</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }} edges={["top", "bottom"]}>
+    <View style={{ flex: 1, backgroundColor: "#FFFFFF", paddingTop: insets.top }}>
       {/* Header */}
       <SharedHeader
-        leftElement={
-          <TouchableOpacity
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Ionicons name="chevron-back" size={28} color="#111827" />
-          </TouchableOpacity>
-        }
+        showBackButton={true}
         centerElement={<Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Quản lý chi phí</Text>}
-        rightElement={null}
         withMenuDrawer={false}
         showBorderBottom={false}
       />
@@ -289,6 +271,8 @@ export default function ExpensesScreen() {
         onRequestClose={() => setModalVisible(false)}
       >
         <View className="flex-1 bg-white">
+          {/* Khoảng trống để không bị đè lên status bar trên Android */}
+          <View style={{ height: Platform.OS === 'android' ? insets.top : 0 }} />
           <View className="flex-row items-center border-b border-gray-200 px-2 py-3 bg-white">
             <TouchableOpacity onPress={() => setModalVisible(false)} className="px-3" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="close" size={26} color="#000" />
@@ -382,6 +366,6 @@ export default function ExpensesScreen() {
         </View>
       </Modal>
 
-    </SafeAreaView>
+    </View>
   );
 }

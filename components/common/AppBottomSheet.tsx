@@ -1,18 +1,17 @@
-/**
- * AppBottomSheet Component
- * Reusable bottom sheet wrapper with consistent styling
- */
-
 import { View, Text, TouchableOpacity } from 'react-native';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { 
+  BottomSheetBackdrop, 
+  BottomSheetScrollView, 
+  BottomSheetModal 
+} from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useEffect } from 'react';
 import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
 
 interface AppBottomSheetProps {
   visible: boolean;
   onClose: () => void;
-  snapPoints?: string[];
+  snapPoints?: (string | number)[];
   title?: string;
   children: React.ReactNode;
   enablePanDownToClose?: boolean;
@@ -26,9 +25,16 @@ export function AppBottomSheet({
   children,
   enablePanDownToClose = true,
 }: AppBottomSheetProps) {
-  const bottomSheetRef = useRef<BottomSheet>(null);
+  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const snapPointsMemo = useMemo(() => snapPoints, [snapPoints]);
 
+  useEffect(() => {
+    if (visible) {
+      bottomSheetModalRef.current?.present();
+    } else {
+      bottomSheetModalRef.current?.dismiss();
+    }
+  }, [visible]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -49,17 +55,16 @@ export function AppBottomSheet({
     }
   }, [onClose]);
 
-  if (!visible) return null;
-
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
+    <BottomSheetModal
+      ref={bottomSheetModalRef}
       index={0}
       snapPoints={snapPointsMemo}
       onChange={handleSheetChange}
       enablePanDownToClose={enablePanDownToClose}
       backdropComponent={renderBackdrop}
       backgroundStyle={{ backgroundColor: '#fff' }}
+      onDismiss={onClose}
     >
       {title && (
         <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
@@ -72,6 +77,6 @@ export function AppBottomSheet({
       <BottomSheetScrollView>
         {children}
       </BottomSheetScrollView>
-    </BottomSheet>
+    </BottomSheetModal>
   );
 }

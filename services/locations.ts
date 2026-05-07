@@ -202,6 +202,8 @@ export type LocationAutocompleteParams = {
   city?: string;
   lat?: number;
   lng?: number;
+  type?: string;
+  categories?: string;
 };
 
 export async function searchLocations(params: SearchLocationsParams) {
@@ -237,6 +239,8 @@ export async function autocompleteLocations(params: LocationAutocompleteParams) 
       ...(params.city ? { city: params.city } : {}),
       ...(params.lat !== undefined ? { lat: params.lat } : {}),
       ...(params.lng !== undefined ? { lng: params.lng } : {}),
+      ...(params.type ? { type: params.type } : {}),
+      ...(params.categories ? { categories: params.categories } : {}),
     },
   });
 }
@@ -289,6 +293,7 @@ export async function fetchAdministrativeProvincesVN(): Promise<
   });
   if (!isLocationApiSuccess(response.code)) return [];
   const list = Array.isArray(response.data) ? response.data : [];
+  
   if (list.length) await saveCachedAdministrativeProvincesVN(list);
   return list;
 }

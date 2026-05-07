@@ -16,12 +16,13 @@ type RequestOptions = RequestInit & {
   timeout?: number; // Timeout trong milliseconds (mặc định: 15000 = 15 giây)
 };
 
+import { setCredentials } from "@/store/slices/authSlice";
+
 // Biến để tránh refresh token nhiều lần cùng lúc
 let isRefreshing = false;
 let refreshPromise: Promise<string> | null = null;
 
-// Interface cho refresh token response (theo format giống login/refresh hiện tại)
-// { code: 1000, data: { authenticated, access_token, refresh_token, expires_in, token_type } }
+// Interface cho refresh token response
 interface RefreshTokenData {
   authenticated: boolean;
   access_token: string;
@@ -31,7 +32,7 @@ interface RefreshTokenData {
 }
 
 // Hàm để refresh token (tách ra để tránh circular dependency)
-async function handleRefreshToken(): Promise<string> {
+export async function handleRefreshToken(): Promise<string> {
   if (isRefreshing && refreshPromise) {
     return refreshPromise;
   }
@@ -78,6 +79,21 @@ async function handleRefreshToken(): Promise<string> {
         await storage.setAccessToken(newAccessToken);
         if (newRefreshToken) {
           await storage.setRefreshToken(newRefreshToken);
+        }
+
+        // Cập nhật Redux store để các component/service khác lấy được token mới nhất
+        try {
+          const { store } = require("@/store"); // Dynamic import để tránh circular dependency
+          const currentState = store.getState();
+          const currentUser = currentState.auth.user;
+
+          store.dispatch(setCredentials({
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken || undefined,
+            user: currentUser || undefined, // Đảm bảo giữ lại thông tin user
+          }));
+        } catch (e) {
+          console.error("Failed to update Redux store after token refresh:", e);
         }
 
         return newAccessToken;
@@ -337,10 +353,18 @@ async function request<T>(
         console.log(`[${requestId}] Response Data:`, JSON.stringify(responseData, null, 2));
         console.log("================================\n");
         return responseData;
-      } catch (refreshError: any) {
+      } catch (retryError: any) {
         // Clear retry timeout nếu có lỗi
         if (retryTimeoutId) clearTimeout(retryTimeoutId);
-        console.error("Refresh token failed:", refreshError);
+        
+        // Phân biệt lỗi do refresh token hay lỗi do chính request retry
+        if (retryError.status) {
+          // Đây là lỗi từ chính request retry (ví dụ: 404, 400, 500)
+          console.error(`\n❌ [${requestId}] Retry request failed after token refresh:`, retryError.message);
+          throw retryError;
+        }
+
+        console.error("Token refresh or retry logic failed:", retryError);
         throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
       }
     }

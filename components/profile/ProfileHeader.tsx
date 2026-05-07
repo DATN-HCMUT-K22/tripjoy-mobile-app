@@ -11,10 +11,10 @@ interface ProfileHeaderProps {
 
 export function ProfileHeader({ user }: ProfileHeaderProps) {
   // Format member since date
-  const memberSince = new Date(user.createdAt).toLocaleDateString('vi-VN', {
+  const memberSince = user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN', {
     year: 'numeric',
     month: 'long',
-  });
+  }) : null;
 
   return (
     <View style={styles.container}>
@@ -45,8 +45,10 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
       {/* Bio (conditional) */}
       {user.bio && <Text style={styles.bio}>{user.bio}</Text>}
 
-      {/* Member Since */}
-      <Text style={styles.memberSince}>Thành viên từ {memberSince}</Text>
+      {/* Member Since (conditional) */}
+      {memberSince && memberSince !== 'Invalid Date' && (
+        <Text style={styles.memberSince}>Thành viên từ {memberSince}</Text>
+      )}
     </View>
   );
 }
@@ -54,52 +56,50 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
   },
+
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 16,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    marginBottom: 10,
   },
   fullName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 4,
+    marginBottom: 2,
     textAlign: 'center',
   },
   username: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#6B7280',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   locationText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#6B7280',
     marginLeft: 4,
   },
   bio: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#374151',
     textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 12,
-    lineHeight: 22,
+    marginTop: 4,
+    marginBottom: 6,
+    lineHeight: 20,
     paddingHorizontal: 16,
   },
   memberSince: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#9CA3AF',
-    marginTop: 4,
+    marginTop: 2,
   },
 });

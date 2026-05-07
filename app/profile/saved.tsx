@@ -7,15 +7,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  SafeAreaView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import * as RN from "react-native";
 
 export default function SavedPostsScreen() {
   const router = useRouter();
@@ -45,11 +37,11 @@ export default function SavedPostsScreen() {
   const savedPosts = data?.pages.flatMap((page) => page.content) ?? [];
 
   const handleLike = async (postId: string) => {
-    return handleAuthAction(() => likeMutation.mutateAsync(postId));
+    return handleAuthAction(() => likeMutation.mutateAsync({ postId }));
   };
 
   const handleBookmark = async (postId: string) => {
-    return handleAuthAction(() => bookmarkMutation.mutateAsync(postId));
+    return handleAuthAction(() => bookmarkMutation.mutateAsync({ postId }));
   };
 
   const handleComment = (postId: string) => {
@@ -65,10 +57,6 @@ export default function SavedPostsScreen() {
     setShowShareModal(true);
   };
 
-  const handleDownload = (postId: string) => {
-    console.log("Download post:", postId);
-  };
-
   const handleReport = (postId: string) => {
     console.log("Report post:", postId);
   };
@@ -82,78 +70,78 @@ export default function SavedPostsScreen() {
   const renderFooter = () => {
     if (!isFetchingNextPage) return null;
     return (
-      <View className="py-4">
-        <ActivityIndicator size="small" color="#34B27D" />
-      </View>
+      <RN.View className="py-4">
+        <RN.ActivityIndicator size="small" color="#34B27D" />
+      </RN.View>
     );
   };
 
   const renderEmpty = () => {
     if (isLoading) {
       return (
-        <View className="flex-1 items-center justify-center py-20">
-          <ActivityIndicator size="large" color="#34B27D" />
-          <Text className="text-gray-500 mt-4">Đang tải...</Text>
-        </View>
+        <RN.View className="flex-1 items-center justify-center py-20">
+          <RN.ActivityIndicator size="large" color="#34B27D" />
+          <RN.Text className="text-gray-500 mt-4">Đang tải...</RN.Text>
+        </RN.View>
       );
     }
 
     if (isError) {
       return (
-        <View className="flex-1 items-center justify-center py-20">
+        <RN.View className="flex-1 items-center justify-center py-20">
           <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
-          <Text className="text-gray-800 text-lg font-semibold mt-4">
+          <RN.Text className="text-gray-800 text-lg font-semibold mt-4">
             Không thể tải dữ liệu
-          </Text>
-          <Text className="text-gray-500 mt-2">Vui lòng thử lại sau</Text>
-          <TouchableOpacity
+          </RN.Text>
+          <RN.Text className="text-gray-500 mt-2">Vui lòng thử lại sau</RN.Text>
+          <RN.TouchableOpacity
             onPress={() => refetch()}
             className="mt-4 bg-green-600 px-6 py-3 rounded-lg"
           >
-            <Text className="text-white font-semibold">Thử lại</Text>
-          </TouchableOpacity>
-        </View>
+            <RN.Text className="text-white font-semibold">Thử lại</RN.Text>
+          </RN.TouchableOpacity>
+        </RN.View>
       );
     }
 
     return (
-      <View className="flex-1 items-center justify-center py-20">
+      <RN.View className="flex-1 items-center justify-center py-20">
         <Ionicons name="bookmark-outline" size={64} color="#9CA3AF" />
-        <Text className="text-gray-800 text-lg font-semibold mt-4">
+        <RN.Text className="text-gray-800 text-lg font-semibold mt-4">
           Chưa có bài viết đã lưu
-        </Text>
-        <Text className="text-gray-500 mt-2 text-center px-8">
+        </RN.Text>
+        <RN.Text className="text-gray-500 mt-2 text-center px-8">
           Nhấn vào biểu tượng bookmark để lưu các bài viết yêu thích
-        </Text>
-        <TouchableOpacity
+        </RN.Text>
+        <RN.TouchableOpacity
           onPress={() => router.push("/(tabs)")}
           className="mt-6 bg-green-600 px-6 py-3 rounded-lg"
         >
-          <Text className="text-white font-semibold">Khám phá ngay</Text>
-        </TouchableOpacity>
-      </View>
+          <RN.Text className="text-white font-semibold">Khám phá ngay</RN.Text>
+        </RN.TouchableOpacity>
+      </RN.View>
     );
   };
 
   if (isCheckingAuth) {
     return (
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#34B27D" />
-        </View>
-      </SafeAreaView>
+      <RN.SafeAreaView className="flex-1 bg-white">
+        <RN.View className="flex-1 items-center justify-center">
+          <RN.ActivityIndicator size="large" color="#34B27D" />
+        </RN.View>
+      </RN.SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
+    <RN.SafeAreaView className="flex-1 bg-gray-50">
       <SocialHeader
         title="Bài viết đã lưu"
         showBackButton
         onBackPress={() => router.back()}
       />
 
-      <FlatList
+      <RN.FlatList
         data={savedPosts}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
@@ -163,7 +151,7 @@ export default function SavedPostsScreen() {
             onComment={handleComment}
             onShare={handleShare}
             onBookmark={handleBookmark}
-            onDownload={handleDownload}
+
             onReport={handleReport}
           />
         )}
@@ -172,7 +160,7 @@ export default function SavedPostsScreen() {
         ListFooterComponent={renderFooter}
         ListEmptyComponent={renderEmpty}
         refreshControl={
-          <RefreshControl
+          <RN.RefreshControl
             refreshing={isRefetching}
             onRefresh={refetch}
             tintColor="#34B27D"
@@ -193,6 +181,6 @@ export default function SavedPostsScreen() {
           postTitle={selectedPostTitle}
         />
       )}
-    </SafeAreaView>
+    </RN.SafeAreaView>
   );
 }

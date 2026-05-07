@@ -308,14 +308,14 @@ export default function GroupMembersScreen() {
                   >
                     <Image
                       source={{
-                        uri: resolveUserAvatarUri(u.avatarUrl, u.fullName || u.username),
+                        uri: resolveUserAvatarUri(u.avatarUrl || u.avatar_url, u.fullName || u.full_name || u.username),
                       }}
                       style={styles.searchResultAvatar}
                       contentFit="cover"
                     />
                     <View style={styles.searchResultTextCol}>
                       <Text style={styles.searchResultName} numberOfLines={1}>
-                        {u.fullName || u.username}
+                        {u.fullName || u.full_name || u.username}
                       </Text>
                       <Text style={styles.searchResultMeta} numberOfLines={1}>
                         @{u.username}
@@ -333,8 +333,8 @@ export default function GroupMembersScreen() {
                   <Image
                     source={{
                       uri: resolveUserAvatarUri(
-                        selectedUser.avatarUrl,
-                        selectedUser.fullName || selectedUser.username
+                        selectedUser.avatarUrl || selectedUser.avatar_url,
+                        selectedUser.fullName || selectedUser.full_name || selectedUser.username
                       ),
                     }}
                     style={styles.selectedUserAvatar}
@@ -342,7 +342,7 @@ export default function GroupMembersScreen() {
                   />
                   <View style={styles.selectedUserInfo}>
                     <Text style={styles.selectedUserName} numberOfLines={1}>
-                      {selectedUser.fullName || selectedUser.username}
+                      {selectedUser.fullName || selectedUser.full_name || selectedUser.username}
                     </Text>
                     <Text style={styles.selectedUserMeta} numberOfLines={1}>
                       @{selectedUser.username}
@@ -436,14 +436,14 @@ export default function GroupMembersScreen() {
             const showMemberOverflowMenu =
               isLeader && !isMe && m.role !== "LEADER";
 
-            const name = m.user.fullName || m.user.username || "Thành viên";
+            const name = m.user.fullName || m.user.full_name || m.user.username || "Thành viên";
 
             return (
               <React.Fragment key={m.id}>
               <View style={styles.memberItem}>
                 <Image
                   source={{
-                    uri: resolveUserAvatarUri(m.user.avatarUrl, name),
+                    uri: resolveUserAvatarUri(m.user.avatarUrl || (m.user as any).avatar_url, name),
                   }}
                   style={styles.memberAvatar}
                   contentFit="cover"

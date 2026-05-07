@@ -22,10 +22,11 @@ import { getDirectPeerAvatarUrl } from "@/utils/conversationDisplay";
 import { showErrorToast } from "@/utils/toast";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Video, ResizeMode } from "expo-av";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -92,6 +93,7 @@ const shouldShowDateSeparator = (
 export default function ChatScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ id?: string; scrollToEnd?: string; messageId?: string }>();
   const [input, setInput] = useState("");
   const [selectedMedia, setSelectedMedia] = useState<PickedMedia | null>(null);
@@ -106,6 +108,8 @@ export default function ChatScreen() {
   const [pinnedModalVisible, setPinnedModalVisible] = useState(false);
   const [pinnedIndex, setPinnedIndex] = useState(0);
   const [isPinning, setIsPinning] = useState(false);
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageResponse | null>(null);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
   const conversationId = params.id;
@@ -432,7 +436,12 @@ export default function ChatScreen() {
           const result = await sendMessage(caption, {
             messageType: mediaToSend.kind === "video" ? "VIDEO" : "IMAGE",
             mediaUrl,
+            parentMessageId: replyingToMessage?.id,
           });
+
+          if (result) {
+            setReplyingToMessage(null);
+          }
 
           if (!result) {
             setSelectedMedia(mediaToSend);
@@ -448,8 +457,12 @@ export default function ChatScreen() {
           setUploadingMedia(false);
         }
       } else {
-        const result = await sendMessage(content);
-        if (!result) {
+        const result = await sendMessage(content, {
+          parentMessageId: replyingToMessage?.id,
+        });
+        if (result) {
+          setReplyingToMessage(null);
+        } else {
           setInput(content);
         }
       }
@@ -479,8 +492,16 @@ export default function ChatScreen() {
   }, []);
 
   const handleLongPress = useCallback((msg: ChatMessageResponse) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelectedMessage(msg);
     setActionSheetVisible(true);
+    setHighlightMessageId(msg.id);
+  }, []);
+
+  const handleActionSheetDismiss = useCallback(() => {
+    setActionSheetVisible(false);
+    setSelectedMessage(null);
+    setHighlightMessageId(null);
   }, []);
 
   const handlePin = useCallback(async (messageId: string) => {
@@ -490,14 +511,12 @@ export default function ChatScreen() {
     try {
       const response = await pinMessage(messageId);
       console.log(`✅ [UI ACTION] Pin API success, code: ${response.code}`);
-      // Hook sẽ tự động refetch qua socket event, nhưng gọi thêm để đảm bảo
-      await refetchPinned();
     } catch (err) {
       console.error(`❌ [UI ACTION] Pin failed:`, err);
     } finally {
       setIsPinning(false);
     }
-  }, [isPinning, pinMessage, conversationId, refetchPinned]);
+  }, [isPinning, pinMessage, conversationId]);
 
   const handleUnpin = useCallback(async (messageId: string) => {
     if (isPinning || !conversationId) return;
@@ -507,16 +526,31 @@ export default function ChatScreen() {
     try {
       const response = await unpinMessage(messageId);
       console.log(`✅ [UI ACTION] Unpin API success, code: ${response?.code}`);
-      // Hook sẽ tự động refetch qua socket event, nhưng gọi thêm để đảm bảo
-      await refetchPinned();
     } catch (err) {
       console.error("❌ [UI ACTION] Unpin failed:", err);
-      // Refetch để đảm bảo UI đồng bộ
-      await refetchPinned();
     } finally {
       setIsPinning(false);
     }
-  }, [isPinning, unpinMessage, conversationId, refetchPinned]);
+  }, [isPinning, unpinMessage, conversationId]);
+
+  const handlePinnedBarTap = useCallback(() => {
+    if (pinnedMessages.length === 0) return;
+    const msg = pinnedMessages[pinnedIndex];
+    const idx = messageIdToIndex.get(msg.id);
+    if (idx !== undefined) {
+      flashListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+      setHighlightMessageId(msg.id);
+      setTimeout(() => setHighlightMessageId(null), 1500);
+    }
+    const next = (pinnedIndex + 1) % pinnedMessages.length;
+    setPinnedIndex(next);
+  }, [pinnedMessages, pinnedIndex, messageIdToIndex]);
+
+  const onScrollToIndexFailed = useCallback((info: { index: number }) => {
+    setTimeout(() => {
+      flashListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+    }, 150);
+  }, []);
 
   // 🔥 Memoize renderItem for FlashList
   const renderItem = useCallback(({ item }: { item: any }) => {
@@ -531,11 +565,61 @@ export default function ChatScreen() {
         onLike={handleLike}
         onShowLikes={handleShowLikes}
         onLongPress={() => handleLongPress(item.message)}
+        isHighlighted={highlightMessageId === item.message.id}
       />
     );
-  }, [currentUser?.id, handleLike, handleShowLikes]);
+  }, [currentUser?.id, handleLike, handleShowLikes, highlightMessageId, handleLongPress]);
 
   const keyExtractor = useCallback((item: any) => item.key, []);
+  
+  // 🔥 Handle Back with Cache Update
+  const handleBack = useCallback(() => {
+    if (conversationId) {
+      const latestMessage = messages[messages.length - 1];
+      const fallbackUpdatedAt = new Date().toISOString();
+
+      // Optimistically update the conversations list cache
+      queryClient.setQueryData<ConversationResponse[]>(
+        ["conversations"],
+        (prev) => {
+          if (!Array.isArray(prev)) return prev;
+          const next = prev.map((conv) => {
+            if (conv.id !== conversationId) return conv;
+            return {
+              ...conv,
+              updated_at: latestMessage?.created_at || fallbackUpdatedAt,
+              last_message: latestMessage || conv.last_message,
+            };
+          });
+
+          // Sort: pinned first, then by date
+          next.sort((a, b) => {
+            const aPinned = a.is_pinned ?? false;
+            const bPinned = b.is_pinned ?? false;
+            if (aPinned && !bPinned) return -1;
+            if (!aPinned && bPinned) return 1;
+            const aTime = a.last_message?.created_at || a.updated_at || a.created_at || "";
+            const bTime = b.last_message?.created_at || b.updated_at || b.created_at || "";
+            if (!aTime && !bTime) return 0;
+            if (!aTime) return 1;
+            if (!bTime) return -1;
+            return new Date(bTime).getTime() - new Date(aTime).getTime();
+          });
+
+          return next;
+        }
+      );
+    }
+
+    // Invalidate to force a fresh fetch from server
+    queryClient.invalidateQueries({ queryKey: ["conversations"] });
+
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push("/messages");
+    }
+  }, [conversationId, messages, queryClient, router]);
 
   // 🔥 Typing indicators
   const { emitTyping, emitStopTyping } = useSocketTyping(conversationId);
@@ -563,7 +647,7 @@ export default function ChatScreen() {
       <View style={[styles.header, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderBottomColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
         <View className="flex-row items-center">
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={handleBack}
             className="mr-3"
             activeOpacity={0.7}
           >
@@ -602,13 +686,14 @@ export default function ChatScreen() {
           pinnedMessages={pinnedMessages}
           currentIndex={pinnedIndex}
           isDark={isDark}
-          onTap={() => setPinnedModalVisible(true)}
+          onTap={handlePinnedBarTap}
         />
         <FlashList
           ref={flashListRef}
           data={listData}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
+          onScrollToIndexFailed={onScrollToIndexFailed}
           estimatedItemSize={80 as any}
           style={styles.messagesContainer}
           contentContainerStyle={[
@@ -724,6 +809,27 @@ export default function ChatScreen() {
         </View>
       )}
 
+      {/* Reply Preview */}
+      {replyingToMessage && (
+        <View style={[styles.replyContainer, { backgroundColor: isDark ? "#1A1A1A" : "#F3F4F6", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
+          <View style={styles.replyBar} />
+          <View style={styles.replyContent}>
+            <Text style={[styles.replyUser, { color: "#34B27D" }]}>
+              Đang phản hồi {replyingToMessage.sender?.fullName || replyingToMessage.sender?.username || "Thành viên"}
+            </Text>
+            <Text style={[styles.replyText, { color: isDark ? "#9CA3AF" : "#6B7280" }]} numberOfLines={1}>
+              {replyingToMessage.message_content || (replyingToMessage.message_type === "IMAGE" ? "Hình ảnh" : replyingToMessage.message_type === "VIDEO" ? "Video" : "Tin nhắn")}
+            </Text>
+          </View>
+          <TouchableOpacity 
+            onPress={() => setReplyingToMessage(null)}
+            style={styles.closeReplyButton}
+          >
+            <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Input */}
       <SafeAreaView 
         edges={["bottom"]} 
@@ -795,12 +901,14 @@ export default function ChatScreen() {
       <MessageActionSheet
         visible={actionSheetVisible}
         message={selectedMessage}
-        onDismiss={() => {
-          setActionSheetVisible(false);
-          setSelectedMessage(null);
-        }}
+        onDismiss={handleActionSheetDismiss}
         onPin={handlePin}
         onUnpin={handleUnpin}
+        onReply={(msg) => {
+          setReplyingToMessage(msg);
+          // Auto focus input
+          // Note: TextInput doesn't have a direct ref here yet, but usually autofocus works when state changes if implemented
+        }}
       />
 
       {/* Pinned Messages Modal */}
@@ -909,5 +1017,34 @@ const styles = StyleSheet.create({
     right: 8,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderRadius: 12,
+  },
+  replyContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+  },
+  replyBar: {
+    width: 4,
+    height: "100%",
+    backgroundColor: "#34B27D",
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  replyContent: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  replyUser: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  replyText: {
+    fontSize: 12,
+  },
+  closeReplyButton: {
+    padding: 4,
   },
 });

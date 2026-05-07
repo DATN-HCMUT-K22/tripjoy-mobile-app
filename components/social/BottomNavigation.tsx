@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { usePathname, useRouter } from "expo-router";
+import { usePathname, router } from "expo-router";
 import React from "react";
 import { TouchableOpacity, View } from "react-native";
 
@@ -18,7 +18,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   onCommunityPress,
   onProfilePress,
 }) => {
-  const router = useRouter();
+  // const router = useRouter();
   const pathname = usePathname();
 
   const isActive = (path: string) => {

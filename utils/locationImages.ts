@@ -17,10 +17,12 @@ export function getLocationImageUrl(location?: LocationResponse | null): string 
   }
 
   // Fallback to static map if coordinates exist
-  if (location.lat != null && location.lng != null &&
-      !Number.isNaN(location.lat) && !Number.isNaN(location.lng)) {
+  const lat = location.lat ?? location.latitude;
+  const lng = location.lng ?? location.longitude;
+  if (lat != null && lng != null &&
+      !Number.isNaN(lat) && !Number.isNaN(lng)) {
     return buildStaticMapImageUrl(
-      [{ latitude: location.lat, longitude: location.lng }],
+      [{ latitude: lat, longitude: lng }],
       { width: 400, height: 400, zoom: 16 }
     );
   }
@@ -38,12 +40,22 @@ export async function getLocationImageUrlAsync(
   location?: LocationResponse | null
 ): Promise<string | undefined> {
   if (!location) return undefined;
-
-  // First try: Google Places API if provider is Google
-  if (location.provider === "google" && location.provider_id) {
+  
+  console.log(`📂 [LOCATION IMAGES] Resolving image for: ${location.name || 'unnamed'}`);
+  console.log(`   - Provider: ${location.provider}, ID: ${location.provider_id}`);
+  
+  // First try: Google Places API if provider_id exists (most reliable)
+  const isGoogle = location.provider?.toUpperCase() === 'GOOGLE_MAPS' || 
+                   location.provider?.toLowerCase().includes('google');
+                   
+  if (location.provider_id || isGoogle) {
+    console.log(`   - 🚀 Calling getPlacePhotoUrl for ID: ${location.provider_id}`);
     try {
       const photoUrl = await getPlacePhotoUrl(location.provider_id);
-      if (photoUrl) return photoUrl;
+      if (photoUrl) {
+        console.log(`   - ✅ getPlacePhotoUrl success`);
+        return photoUrl;
+      }
     } catch (error) {
       console.warn("Failed to fetch photo from Google Places:", error);
     }
@@ -56,11 +68,13 @@ export async function getLocationImageUrlAsync(
   }
 
   // Final fallback: static map from coordinates
-  if (location.lat != null && location.lng != null &&
-      !Number.isNaN(location.lat) && !Number.isNaN(location.lng)) {
+  const lat = location.lat ?? location.latitude;
+  const lng = location.lng ?? location.longitude;
+  if (lat != null && lng != null &&
+      !Number.isNaN(lat) && !Number.isNaN(lng)) {
     return buildStaticMapImageUrl(
-      [{ latitude: location.lat, longitude: location.lng }],
-      { width: 400, height: 400, zoom: 16 }
+      [{ latitude: lat, longitude: lng }],
+      { width: 800, height: 600, zoom: 16 }
     );
   }
 

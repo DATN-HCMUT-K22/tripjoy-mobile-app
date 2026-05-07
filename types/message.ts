@@ -68,6 +68,7 @@ export interface ChatMessageResponse {
   message_type: MessageType;
   media_url?: string;
   share_post_url?: string; // SHARE_POST (mở rộng app)
+  shared_post_id?: string; // SHARE_POST (mới - theo API)
   parent_message?: ChatMessageResponse | ParentMessage;
   parent_message_id?: string;
   is_pinned?: boolean;
@@ -127,6 +128,7 @@ export interface SendMessageRequest {
   message_type?: MessageType; // "TEXT" | "IMAGE" | "VIDEO" | "SHARE_POST", default: "TEXT"
   media_url?: string; // Kèm IMAGE hoặc VIDEO
   share_post_url?: string; // Required nếu message_type = "SHARE_POST"
+  shared_post_id?: string; // UUID của post được chia sẻ
   parent_message_id?: string; // UUID của message được reply
 }
 

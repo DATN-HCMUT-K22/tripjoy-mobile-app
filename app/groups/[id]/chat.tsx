@@ -5,6 +5,7 @@ import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
 import { PinnedMessageBar, PINNED_BAR_HEIGHT } from "@/components/chat/PinnedMessageBar";
 import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { TypingIndicatorBubble } from "@/components/chat/TypingIndicatorBubble";
+import { MentionSuggestions, MentionUser } from "@/components/chat/MentionSuggestions";
 import { mockItineraries } from "@/data/mockItineraries";
 import { useMessages } from "@/hooks/useMessages";
 import { usePinnedMessages } from "@/hooks/usePinnedMessages";
@@ -38,7 +39,9 @@ import {
   TouchableOpacity,
   View,
   useColorScheme,
+  Modal,
 } from "react-native";
+import { ImageZoom } from '@likashefqet/react-native-image-zoom';
 import { FlashList } from "@shopify/flash-list";
 import type { FlashListProps } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -117,6 +120,7 @@ export default function GroupChatScreen() {
   const currentUser = useAppSelector((state) => state.auth.user);
   const [likesModalVisible, setLikesModalVisible] = useState(false);
   const [likesModalMessageId, setLikesModalMessageId] = useState<string | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   // ActionSheet, pin, highlight
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageResponse | null>(null);
@@ -124,6 +128,12 @@ export default function GroupChatScreen() {
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [currentPinnedIndex, setCurrentPinnedIndex] = useState(0);
   const [isPinning, setIsPinning] = useState(false);
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageResponse | null>(null);
+
+  // Mention state
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const [mentionSearchQuery, setMentionSearchQuery] = useState("");
+  const [cursorPosition, setCursorPosition] = useState(0);
 
   // Đảm bảo header bị tắt
   useLayoutEffect(() => {
@@ -295,34 +305,60 @@ export default function GroupChatScreen() {
     refetchOnWindowFocus: false,
   });
 
-  // Tính số thành viên — ưu tiên API group/conversation (đúng dữ liệu); params chỉ fallback khi chưa load
+  // Tính số thành viên — ưu tiên API group
   const memberCount = useMemo(() => {
     if (groupInfo?.members && Array.isArray(groupInfo.members) && groupInfo.members.length > 0) {
       return groupInfo.members.length;
     }
-    if (conversation?.members && Array.isArray(conversation.members) && conversation.members.length > 0) {
-      return conversation.members.length;
-    }
-    if (typeof initialMemberCountFromParams === "number") {
-      return initialMemberCountFromParams;
-    }
     return 0;
-  }, [initialMemberCountFromParams, conversation, groupInfo]);
+  }, [groupInfo]);
 
   // Tên nhóm — BE thường sai/khác ở field conversation.name trong inbox; GET /groups/{id} đáng tin hơn
   const groupName = useMemo(() => {
     if (groupInfo?.name) return groupInfo.name;
-    if (conversation?.name) return conversation.name;
-    if (initialNameFromParams) return initialNameFromParams;
-    return "Nhóm chat";
-  }, [groupInfo?.name, conversation?.name, initialNameFromParams]);
+    return "Đang tải...";
+  }, [groupInfo?.name]);
 
   const groupAvatar = useMemo(() => {
     if (groupInfo?.avatar) return groupInfo.avatar;
-    if (conversation?.avatar) return conversation.avatar;
-    if (initialAvatarFromParams) return initialAvatarFromParams;
     return null;
-  }, [groupInfo?.avatar, conversation?.avatar, initialAvatarFromParams]);
+  }, [groupInfo?.avatar]);
+
+  // Mention Suggestions logic
+  const mentionSuggestions = useMemo(() => {
+    const bot: MentionUser = {
+      id: "bot-tripjoy",
+      username: "Tripjoy",
+      fullName: "Tripjoy AI Assistant",
+      isBot: true,
+    };
+
+    const members = (groupInfo?.members || []).map((m) => ({
+      id: m.user.id,
+      username: m.user.username,
+      fullName: m.user.fullName,
+      avatarUrl: m.user.avatarUrl,
+      isBot: false,
+    }));
+
+    const all = [bot, ...members];
+
+    if (!mentionSearchQuery) return [bot];
+
+    return all.filter(
+      (u) =>
+        u.username.toLowerCase().includes(mentionSearchQuery.toLowerCase()) ||
+        u.fullName.toLowerCase().includes(mentionSearchQuery.toLowerCase())
+    );
+  }, [groupInfo?.members, mentionSearchQuery]);
+
+  const handleSelectMention = (user: MentionUser) => {
+    const textBefore = input.substring(0, input.lastIndexOf("@", cursorPosition - 1));
+    const textAfter = input.substring(cursorPosition);
+    const newText = `${textBefore}@${user.username} ${textAfter}`;
+    setInput(newText);
+    setShowMentionSuggestions(false);
+  };
 
   // Debounce typing indicator
   useEffect(() => {
@@ -438,7 +474,12 @@ export default function GroupChatScreen() {
           const result = await sendMessage(caption, {
             messageType: mediaToSend.kind === "video" ? "VIDEO" : "IMAGE",
             mediaUrl,
+            parentMessageId: replyingToMessage?.id,
           });
+
+          if (result) {
+            setReplyingToMessage(null);
+          }
 
           if (!result) {
             setSelectedMedia(mediaToSend);
@@ -456,8 +497,12 @@ export default function GroupChatScreen() {
           setUploadingMedia(false);
         }
       } else {
-        const result = await sendMessage(content);
-        if (!result) {
+        const result = await sendMessage(content, {
+          parentMessageId: replyingToMessage?.id,
+        });
+        if (result) {
+          setReplyingToMessage(null);
+        } else {
           setInput(content);
         }
       }
@@ -578,7 +623,8 @@ export default function GroupChatScreen() {
       if (shouldScroll) {
         lastMessageIdRef.current = lastMessage.id;
         hasScrolledToBottomRef.current = true;
-        const delay = scrollToEndParam === "1" ? 300 : 100;
+        // Tăng delay một chút để đảm bảo FlashList đã render xong các item phức tạp (như bot message)
+        const delay = scrollToEndParam === "1" ? 400 : 250;
         const t = setTimeout(() => {
           flashListRef.current?.scrollToEnd({ animated: true });
         }, delay);
@@ -659,12 +705,11 @@ export default function GroupChatScreen() {
       setIsPinning(true);
       try {
         await pinMessage(messageId);
-        await refetchPinned();
       } finally {
         setIsPinning(false);
       }
     },
-    [isPinning, pinMessage, refetchPinned]
+    [isPinning, pinMessage]
   );
 
   const handleUnpin = useCallback(
@@ -673,12 +718,11 @@ export default function GroupChatScreen() {
       setIsPinning(true);
       try {
         await unpinMessage(messageId);
-        await refetchPinned();
       } finally {
         setIsPinning(false);
       }
     },
-    [isPinning, unpinMessage, refetchPinned]
+    [isPinning, unpinMessage]
   );
 
   const handlePinnedBarTap = useCallback(() => {
@@ -713,6 +757,7 @@ export default function GroupChatScreen() {
           onLike={handleLike}
           onShowLikes={handleShowLikes}
           onLongPress={() => handleLongPress(item.message)}
+          onImagePress={(url) => setPreviewImageUrl(url)}
           isHighlighted={highlightMessageId === item.message.id}
         />
       );
@@ -759,8 +804,12 @@ export default function GroupChatScreen() {
     queryClient.invalidateQueries({ queryKey: ["conversations"] });
     queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
 
-    // Luôn quay về danh sách tin nhắn thay vì back navigation history
-    router.push("/messages");
+    // Quay về màn hình trước đó
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push("/messages");
+    }
   }, [conversationId, messages, queryClient, router]);
 
   return (
@@ -880,7 +929,7 @@ export default function GroupChatScreen() {
           data={listData}
           keyExtractor={(i) => i.key}
           renderItem={renderListItem}
-          estimatedItemSize={80 as any}
+          estimatedItemSize={120}
           contentContainerStyle={[
             styles.messagesContent,
             pinnedMessages.length > 0 && { paddingTop: PINNED_BAR_HEIGHT },
@@ -969,6 +1018,27 @@ export default function GroupChatScreen() {
         </View>
       )}
 
+      {/* Reply Preview */}
+      {replyingToMessage && (
+        <View style={[styles.replyContainer, { backgroundColor: isDark ? "#1A1A1A" : "#F3F4F6", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
+          <View style={styles.replyBar} />
+          <View style={styles.replyContent}>
+            <Text style={[styles.replyUser, { color: "#34B27D" }]}>
+              Đang phản hồi {replyingToMessage.sender?.fullName || replyingToMessage.sender?.username || "Thành viên"}
+            </Text>
+            <Text style={[styles.replyText, { color: isDark ? "#9CA3AF" : "#6B7280" }]} numberOfLines={1}>
+              {replyingToMessage.message_content || (replyingToMessage.message_type === "IMAGE" ? "Hình ảnh" : replyingToMessage.message_type === "VIDEO" ? "Video" : "Tin nhắn")}
+            </Text>
+          </View>
+          <TouchableOpacity 
+            onPress={() => setReplyingToMessage(null)}
+            style={styles.closeReplyButton}
+          >
+            <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Input */}
       <SafeAreaView 
         edges={["bottom"]} 
@@ -988,6 +1058,15 @@ export default function GroupChatScreen() {
           />
         </TouchableOpacity>
         <View className="flex-1">
+          {showMentionSuggestions && (
+            <View style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 100 }}>
+              <MentionSuggestions
+                suggestions={mentionSuggestions}
+                onSelect={handleSelectMention}
+                isDark={isDark}
+              />
+            </View>
+          )}
           <TextInput
             value={input}
             onChangeText={(text) => {
@@ -997,6 +1076,21 @@ export default function GroupChatScreen() {
               } else {
                 emitStopTyping();
               }
+
+              // Detect @ for mentions
+              const lastAtPos = text.lastIndexOf("@", cursorPosition);
+              if (lastAtPos !== -1) {
+                const query = text.substring(lastAtPos + 1, cursorPosition + 1);
+                if (!query.includes(" ")) {
+                  setMentionSearchQuery(query);
+                  setShowMentionSuggestions(true);
+                  return;
+                }
+              }
+              setShowMentionSuggestions(false);
+            }}
+            onSelectionChange={(event) => {
+              setCursorPosition(event.nativeEvent.selection.start);
             }}
             placeholder="Nhắn tin..."
             className="bg-gray-100 rounded-full px-4 py-3 text-sm"
@@ -1034,6 +1128,9 @@ export default function GroupChatScreen() {
         onDismiss={handleActionSheetDismiss}
         onPin={handlePin}
         onUnpin={handleUnpin}
+        onReply={(msg) => {
+          setReplyingToMessage(msg);
+        }}
       />
       <MessageLikesModal
         visible={likesModalVisible}
@@ -1043,6 +1140,21 @@ export default function GroupChatScreen() {
           setLikesModalMessageId(null);
         }}
       />
+
+      {/* Image Preview Modal */}
+      <Modal visible={!!previewImageUrl} transparent={true} onRequestClose={() => setPreviewImageUrl(null)} animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'black' }}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 8 }}
+            onPress={() => setPreviewImageUrl(null)}
+          >
+            <Ionicons name="close" size={32} color="white" />
+          </TouchableOpacity>
+          {previewImageUrl && (
+            <ImageZoom uri={previewImageUrl} style={{ flex: 1 }} />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1114,5 +1226,34 @@ const styles = StyleSheet.create({
     right: 8,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderRadius: 12,
+  },
+  replyContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+  },
+  replyBar: {
+    width: 4,
+    height: "100%",
+    backgroundColor: "#34B27D",
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  replyContent: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  replyUser: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  replyText: {
+    fontSize: 12,
+  },
+  closeReplyButton: {
+    padding: 4,
   },
 });

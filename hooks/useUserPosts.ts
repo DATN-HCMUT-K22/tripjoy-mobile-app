@@ -1,6 +1,8 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getPosts, type GetPostsResponse } from '@/services/social';
 import type { Post } from '@/types/social';
+import { mapPostData } from '@/utils/mappers';
+
 
 /**
  * Retry configuration for user posts queries
@@ -49,6 +51,7 @@ export function useUserPosts(userId: string | null) {
       // Fetch posts from API
       const response: GetPostsResponse = await getPosts({
         creator_id: userId,
+        creatorId: userId, // Ensure Spring @ModelAttribute binding works regardless of naming strategy
         page: pageParam as number,
         size: 20,
         sort: 'createdAt,desc',
@@ -67,7 +70,7 @@ export function useUserPosts(userId: string | null) {
       // Paginated response (Spring Boot PageImpl format)
       const data = response.data;
       return {
-        content: data.content || [],
+        content: (data.content || []).map(mapPostData),
         hasMore: (data.number || 0) < (data.totalPages || 0) - 1,
         totalElements: data.totalElements || 0,
       };

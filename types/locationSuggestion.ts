@@ -37,8 +37,17 @@ export interface SuggestLocationResponse {
 
 /** SuggestLocationRequest — POST .../location-suggestions */
 export interface SuggestLocationRequest {
-  location_id: string;
+  location_id?: string;
   notes?: string;
+  location_data?: {
+    provider: string;
+    provider_id: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    full_address?: string;
+    location_type?: string;
+  };
 }
 
 export type LocationSuggestionsResponse = ApiResponse<SuggestLocationResponse[]>;

@@ -19,73 +19,56 @@ export function useIncomingNotification() {
 
     let isMounted = true;
 
-    const setup = async () => {
+    const handleNotification = async (notification: NotificationObject) => {
+      const currentState = store.getState();
+      const userId = currentState.auth.user?.id;
+
+      console.log("\n========== [NOTIFICATION DEVICE: " + (userId?.substring(0, 8) || "UNKNOWN") + "] ==========");
+      console.log("[useIncomingNotification] 🔔 Incoming notification:", notification);
+
       try {
-        console.log("[useIncomingNotification] Setting up socket notification listener...");
-
-        if (!socketService.isConnected()) {
-          console.log("[useIncomingNotification] Socket not connected, connecting...");
-          await socketService.connect();
-        }
-
-        if (!isMounted) {
-          console.log("[useIncomingNotification] Unmounted before setup done, skip register");
-          return;
-        }
-
-        const handleNotification = async (notification: NotificationObject) => {
-          const currentState = store.getState();
-          const userId = currentState.auth.user?.id;
-
-          console.log("\n========== [NOTIFICATION DEVICE: " + (userId?.substring(0, 8) || "UNKNOWN") + "] ==========");
-          console.log("[useIncomingNotification] 🔔 Incoming notification:", notification);
-
-          // Hiện tại: hiển thị tất cả notification như 1 local notification generic
-          // Sau này có thể filter theo notification.type (NEW_MESSAGE, NEW_COMMENT, ...)
-          try {
-            await notificationService.showGenericNotification(
-              notification.title,
-              notification.message,
-              notification.data
-            );
-            console.log("[useIncomingNotification] ✅ Generic notification shown");
-          } catch (error) {
-            console.log(
-              "[useIncomingNotification] Failed to show generic notification:",
-              error
-            );
-          }
-
-          console.log("========== END [NOTIFICATION DEVICE: " + (userId?.substring(0, 8) || "UNKNOWN") + "] ==========\n");
-        };
-
-        socketService.onNotification(handleNotification);
-        console.log("[useIncomingNotification] ✅ Notification listener registered");
-
-        // Cleanup function
-        return () => {
-          console.log("[useIncomingNotification] Cleaning up notification listener");
-          socketService.offNotification(handleNotification);
-        };
+        await notificationService.showGenericNotification(
+          notification.title,
+          notification.message,
+          notification.data
+        );
+        console.log("[useIncomingNotification] ✅ Generic notification shown");
       } catch (error) {
         console.log(
-          "[useIncomingNotification] Failed to setup notification listener:",
+          "[useIncomingNotification] Failed to show generic notification:",
           error
         );
       }
+
+      console.log("========== END [NOTIFICATION DEVICE: " + (userId?.substring(0, 8) || "UNKNOWN") + "] ==========\n");
     };
 
-    const cleanupPromise = setup();
+    const registerListener = () => {
+      if (!isMounted) return;
+      socketService.onNotification(handleNotification);
+      console.log("[useIncomingNotification] ✅ Notification listener registered");
+    };
+
+    let onConnectListener: (() => void) | null = null;
+
+    if (socketService.isConnected()) {
+      registerListener();
+    } else {
+      console.log("[useIncomingNotification] Socket not connected, waiting for global initialization...");
+      onConnectListener = () => {
+        registerListener();
+        socketService.getSocket()?.off("connect", onConnectListener!);
+      };
+      socketService.getSocket()?.on("connect", onConnectListener);
+    }
 
     return () => {
       isMounted = false;
-      // Nếu setup trả về cleanup async, nó sẽ được xử lý trong đó
-      void cleanupPromise;
+      console.log("[useIncomingNotification] Cleaning up notification listener");
+      socketService.offNotification(handleNotification);
+      if (onConnectListener) {
+        socketService.getSocket()?.off("connect", onConnectListener);
+      }
     };
   }, []);
 }
-
-
-
-
-

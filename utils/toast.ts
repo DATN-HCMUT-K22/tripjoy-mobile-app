@@ -73,3 +73,15 @@ export function showErrorToast(
     position: "top",
   });
 }
+
+/**
+ * Hiển thị toast thông tin
+ */
+export function showInfoToast(text1: string, text2?: string) {
+  Toast.show({
+    type: "info",
+    text1,
+    text2,
+    position: "top",
+  });
+}

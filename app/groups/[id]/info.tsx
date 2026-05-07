@@ -3,6 +3,7 @@ import { useGroup, useGroupMembers } from "@/hooks/useGroups";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import {
   useGroupItinerariesByTab,
+  useConfirmItinerary,
   type GroupInfoItineraryListItem,
   type GroupItineraryTab,
 } from "@/hooks/useItineraries";
@@ -60,6 +61,18 @@ export default function GroupInfoScreen() {
   const [itineraryTab, setItineraryTab] = useState<GroupItineraryTab>("ongoing");
   const [isMembersExpanded, setIsMembersExpanded] = useState(false);
   const [isItineraryExpanded, setIsItineraryExpanded] = useState(false);
+
+  const { mutateAsync: confirmItinerary, isPending: isConfirming } = useConfirmItinerary();
+
+  const handleApplyItinerary = async (itinerary: GroupInfoItineraryListItem) => {
+    if (!itinerary.raw) return;
+    try {
+      await confirmItinerary(itinerary.raw);
+      refetchItineraries();
+    } catch (error) {
+      console.error("Failed to apply itinerary:", error);
+    }
+  };
 
   const itinerariesByTab = useMemo(
     () =>
@@ -405,14 +418,23 @@ export default function GroupInfoScreen() {
                       </Text>
                     )}
                     {itineraryTab === "draft" && (
-                      <Text
-                        style={[
-                          styles.itineraryApply,
-                          { color: tabStyle.borderColor, alignSelf: "flex-end" },
-                        ]}
+                      <TouchableOpacity
+                        onPress={() => handleApplyItinerary(it)}
+                        activeOpacity={0.7}
+                        disabled={isConfirming}
                       >
-                        Áp dụng
-                      </Text>
+                        <Text
+                          style={[
+                            styles.itineraryApply,
+                            {
+                              color: isConfirming ? "#9CA3AF" : tabStyle.borderColor,
+                              alignSelf: "flex-end",
+                            },
+                          ]}
+                        >
+                          {isConfirming ? "Đang xử lý..." : "Áp dụng"}
+                        </Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                   <TouchableOpacity

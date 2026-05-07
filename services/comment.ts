@@ -26,6 +26,7 @@ export const createComment = (payload: { postId: string; content: string }) =>
   httpClient.post(`/posts/${payload.postId}/comments`, {
     content: payload.content,
     post_id: payload.postId,
+    parent_comment_id: null,
   }, {
     skipAuth: false,
   });
@@ -40,8 +41,6 @@ export const createReply = (payload: {
 }) =>
   httpClient.post(`/comments/${payload.commentId}/replies`, {
     content: payload.content,
-    post_id: payload.postId,
-    parent_comment_id: payload.commentId,
   }, {
     skipAuth: false,
   });

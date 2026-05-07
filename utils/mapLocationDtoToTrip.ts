@@ -74,6 +74,8 @@ export function mapLocationDtoToTripLocation(dto: LocationDto): Location {
     priceRange: { min: 0, max: 0 },
     specialty: subtitle,
     ...(hasCoords ? { latitude: lat, longitude: lon } : {}),
+    provider: dto.provider || "GOOGLE_MAPS",
+    provider_id: dto.provider_id,
   };
 }
 

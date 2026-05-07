@@ -1,5 +1,5 @@
 import React from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SharedHeader } from "@/components/common/SharedHeader";
@@ -11,7 +11,7 @@ import { useItineraryDetail } from "@/hooks/useItineraries";
  * Route: /itinerary/notebook?id={itineraryId}
  */
 export default function ItineraryNotebookRoute() {
-  const router = useRouter();
+  // const router = useRouter();
   const { id: itineraryId } = useLocalSearchParams<{ id: string }>();
 
   // Fetch itinerary details for name

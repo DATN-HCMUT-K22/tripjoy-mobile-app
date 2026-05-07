@@ -45,6 +45,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginTop: 8,
+    marginBottom: 12,
   },
   chip: {
     backgroundColor: '#E0F2FE',

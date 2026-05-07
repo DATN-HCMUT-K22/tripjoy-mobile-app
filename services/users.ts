@@ -127,7 +127,7 @@ export const deleteUserById = (userId: string) =>
  * @throws 403 if profile is private/blocked
  */
 export const getUserProfile = async (userId: string): Promise<UserPublicProfile> => {
-  const response = await httpClient.get<ApiResponse<UserPublicProfile>>(
+  const response = await httpClient.get<ApiResponse<any>>(
     `/users/${userId}/profile`,
     {
       skipAuth: false, // Optional auth - works for guests too
@@ -138,5 +138,15 @@ export const getUserProfile = async (userId: string): Promise<UserPublicProfile>
     throw new Error('User not found');
   }
 
-  return response.data;
+  const data = response.data;
+  return {
+    id: data.id,
+    username: data.username,
+    fullName: data.full_name || data.fullName,
+    avatarUrl: data.avatar_url || data.avatarUrl,
+    bio: data.bio,
+    location: data.location,
+    createdAt: data.created_at || data.createdAt,
+  };
 };
+

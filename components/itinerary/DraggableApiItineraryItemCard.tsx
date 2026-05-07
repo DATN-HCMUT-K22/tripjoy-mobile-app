@@ -1,25 +1,36 @@
-import React, { useEffect } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import type { TripItemResponse } from "@/services/itineraries";
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
+import { LocationImage } from "@/components/location/LocationImage";
+import React, { useEffect } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
   runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from "react-native-reanimated";
-import type { TripItemResponse } from "@/services/itineraries";
 
 /**
  * Helper functions - matching app/itinerary/[id].tsx
  */
-function locationDisplayName(loc?: TripItemResponse["location"] | null): string {
-  if (!loc) return "(Chưa rõ)";
-  if (loc.name) return loc.name;
-  if (loc.full_address) return loc.full_address;
-  if (loc.place_formatted) return loc.place_formatted;
-  return "(Chưa đặt tên)";
+function locationDisplayName(loc?: TripItemResponse["location"] | null, note?: string): string {
+  if (loc) {
+    if (loc.name?.trim()) return loc.name.trim();
+    if (loc.full_address?.trim()) return loc.full_address.trim();
+    if (loc.place_formatted?.trim()) return loc.place_formatted.trim();
+  }
+  if (note?.trim()) {
+    const cleanNote = note.trim();
+    const match = cleanNote.match(/^([^.,!?:;]+?)\s+(là|có|mang đến|mang lại|là bãi biển|là địa điểm|là một ngôi đền)/i);
+    if (match && match[1].length < 60) return match[1].trim();
+
+    const firstPart = cleanNote.split(/[.,!?:;]/)[0].trim();
+    if (firstPart.length > 0 && firstPart.length < 60) return firstPart;
+
+    return cleanNote.length > 50 ? cleanNote.substring(0, 47) + "..." : cleanNote;
+  }
+  return "Hoạt động";
 }
 
 function locationAddress(loc?: TripItemResponse["location"] | null): string {
@@ -59,17 +70,17 @@ export const DraggableApiItineraryItemCard = React.memo(
     index,
     total,
     canInteract,
-    imageUrl,
     onMove,
     onDelete,
+    onSuggest,
   }: {
     row: TripItemResponse;
     index: number;
     total: number;
     canInteract: boolean;
-    imageUrl?: string;
     onMove: (from: number, to: number) => void;
     onDelete: () => void;
+    onSuggest?: () => void;
   }) {
   const translateY = useSharedValue(0);
   const isDragging = useSharedValue(false);
@@ -121,17 +132,17 @@ export const DraggableApiItineraryItemCard = React.memo(
   }));
 
   // Extract data from TripItemResponse
-  const name = locationDisplayName(row.location);
+  const name = locationDisplayName(row.location, row.note);
   const address = locationAddress(row.location);
   const timeRange = formatTimeRange(row.start_time, row.duration);
 
   return (
     <Animated.View style={animatedStyle} className="mb-3">
-      <View className="rounded-xl border border-gray-200 bg-white p-3">
-        <View className="flex-row items-center">
-          {/* Drag handle - only visible when can interact */}
-          {canInteract && (
-            <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={panGesture}>
+        <View className="rounded-xl border border-gray-200 bg-white p-3">
+          <View className="flex-row items-center">
+            {/* Drag handle - visual indicator */}
+            {canInteract && (
               <View className="mr-3 flex-row">
                 <Ionicons name="ellipsis-vertical" size={20} color="#666" />
                 <Ionicons
@@ -141,55 +152,57 @@ export const DraggableApiItineraryItemCard = React.memo(
                   style={{ marginLeft: -10 }}
                 />
               </View>
-            </GestureDetector>
-          )}
-
-          {/* Image or placeholder */}
-          <View
-            className="rounded-lg overflow-hidden bg-gray-100"
-            style={{ width: 112, height: 72 }}
-          >
-            {imageUrl ? (
-              <Image
-                source={{ uri: imageUrl }}
-                style={{ width: 112, height: 72 }}
-                contentFit="cover"
-              />
-            ) : (
-              <View className="flex-1 items-center justify-center">
-                <Ionicons name="image-outline" size={30} color="#D1D5DB" />
-              </View>
             )}
-          </View>
 
-          {/* Info */}
-          <View className="flex-1 ml-3">
-            <Text className="text-base font-bold text-black mb-1" numberOfLines={2}>
-              {name}
-            </Text>
-            {timeRange ? (
-              <Text className="text-xs text-gray-500 mb-1">{timeRange}</Text>
-            ) : null}
-            {address ? (
-              <Text className="text-xs text-gray-500" numberOfLines={1}>
-                {address}
+            {/* Image or placeholder */}
+            <LocationImage
+              location={row.location}
+              style={{ width: 112, height: 72 }}
+              containerStyle={{ borderRadius: 8 }}
+            />
+
+            {/* Info */}
+            <View className="flex-1 ml-3">
+              <Text className="text-base font-bold text-black mb-1" numberOfLines={2}>
+                {name}
               </Text>
-            ) : null}
-          </View>
+              {timeRange ? (
+                <Text className="text-xs text-gray-500 mb-1">{timeRange}</Text>
+              ) : null}
+              {address ? (
+                <Text className="text-xs text-gray-500" numberOfLines={1}>
+                  {address}
+                </Text>
+              ) : null}
+            </View>
 
-          {/* Delete button - only visible when can interact */}
-          {canInteract && (
-            <TouchableOpacity
-              onPress={onDelete}
-              activeOpacity={0.7}
-              className="ml-2"
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="trash-outline" size={24} color="#EF4444" />
-            </TouchableOpacity>
-          )}
+            {/* Actions */}
+            <View className="ml-2 flex-row items-center">
+              {canInteract && onSuggest && (
+                <TouchableOpacity
+                  onPress={onSuggest}
+                  activeOpacity={0.7}
+                  className="mr-3 p-2 bg-amber-50 rounded-full"
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="sparkles" size={18} color="#D97706" />
+                </TouchableOpacity>
+              )}
+
+              {canInteract && (
+                <TouchableOpacity
+                  onPress={onDelete}
+                  activeOpacity={0.7}
+                  className="p-1"
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="trash-outline" size={24} color="#EF4444" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
-      </View>
+      </GestureDetector>
     </Animated.View>
   );
   },
@@ -197,6 +210,5 @@ export const DraggableApiItineraryItemCard = React.memo(
     prev.row.id === next.row.id &&
     prev.index === next.index &&
     prev.total === next.total &&
-    prev.canInteract === next.canInteract &&
-    prev.imageUrl === next.imageUrl
+    prev.canInteract === next.canInteract
 );

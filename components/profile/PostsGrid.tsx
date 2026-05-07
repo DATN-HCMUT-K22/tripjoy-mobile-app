@@ -10,7 +10,9 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import type { Post } from '@/types/social';
+
 import { formatNumber } from '@/utils/format';
 
 interface PostsGridProps {
@@ -29,13 +31,14 @@ const ITEM_SIZE = (screenWidth - GAP * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
 // Post Grid Item Component
 const PostGridItem = React.memo<{ post: Post }>(({ post }) => {
+  const router = useRouter();
   const thumbnailUrl = post.media_urls?.[0] || post.image;
   const hasMultiplePhotos = (post.media_urls?.length || 0) > 1;
 
   const handlePress = () => {
-    console.log('Post clicked:', post.id);
-    // TODO: Navigate to post detail screen
+    router.push(`/post/${post.id}` as any);
   };
+
 
   return (
     <TouchableOpacity

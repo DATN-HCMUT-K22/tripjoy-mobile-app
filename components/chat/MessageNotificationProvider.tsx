@@ -26,6 +26,7 @@ export function MessageNotificationProvider() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     const handleReceiveMessage = (message: ChatMessageResponse) => {
       const state = store.getState();
       const currentUserId = state.auth.user?.id;
@@ -93,27 +94,22 @@ export function MessageNotificationProvider() {
       );
     };
 
-    let isMounted = true;
-
-    const setup = async () => {
-      try {
-        if (!socketService.isConnected()) {
-          await socketService.connect();
-        }
-        if (!isMounted) return;
-        callbackRef.current = handleReceiveMessage;
-        socketService.onReceiveMessage(handleReceiveMessage);
-      } catch (error) {
-        // Tránh hiện thanh lỗi đỏ (LogBox) ở môi trường dev.
-        // Luồng chat chính vẫn hoạt động, chỉ mất banner in-app nếu socket setup lỗi.
-        console.log(
-          "[MessageNotificationProvider] Setup socket listener failed, skip in-app banner:",
-          error
-        );
-      }
+    const registerListener = () => {
+      if (!isMounted) return;
+      callbackRef.current = handleReceiveMessage;
+      socketService.onReceiveMessage(handleReceiveMessage);
     };
 
-    setup();
+    if (socketService.isConnected()) {
+      registerListener();
+    } else {
+      console.log("[MessageNotificationProvider] Socket not connected, waiting for global initialization...");
+      const onConnect = () => {
+        registerListener();
+        socketService.getSocket()?.off("connect", onConnect);
+      };
+      socketService.getSocket()?.on("connect", onConnect);
+    }
 
     return () => {
       isMounted = false;

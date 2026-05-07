@@ -1,4 +1,4 @@
-import { ItineraryRouteMap, type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
+import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
 import { TripItemCard } from "@/components/itinerary/TripItemCard";
 import {
   useItineraryDetail,
@@ -8,8 +8,8 @@ import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
 import { getLocationImageUrl } from "@/utils/locationImages";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import { useLocalSearchParams, router } from "expo-router";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -20,6 +20,8 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { SharedHeader } from "@/components/common/SharedHeader";
+import { useAppSelector } from "@/store/hooks";
+import { ExpensesOverlay } from "@/components/itinerary/ExpensesOverlay";
 
 function formatHeaderDate(iso?: string): string {
   if (!iso?.trim()) return "";
@@ -42,9 +44,11 @@ function formatDayChipLabel(dayKey: string): string {
 }
 
 export default function ItineraryDetailScreen() {
-  const router = useRouter();
+  // const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id: itineraryId } = useLocalSearchParams<{ id: string }>();
+  const currentUserId = useAppSelector((state) => state.auth.user?.id);
+  const [showExpenses, setShowExpenses] = useState(false);
 
   const {
     data: detail,
@@ -106,6 +110,8 @@ export default function ItineraryDetailScreen() {
     [detail?.cover_image_url, detail?.thumbnail_url]
       .map((u) => (typeof u === "string" ? u.trim() : ""))
       .find((u) => u.length > 0) || "";
+
+  const isOwner = detail?.created_by === currentUserId;
 
   if (!itineraryId) {
     return (
@@ -188,13 +194,15 @@ export default function ItineraryDetailScreen() {
 
           {/* Quick Actions */}
           <View style={styles.actionsRow}>
-            <TouchableOpacity
-              onPress={() => router.push({ pathname: "/itinerary/expenses", params: { itineraryId } })}
-              style={[styles.actionButton, styles.expenseButton]}
-            >
-              <Ionicons name="wallet-outline" size={20} color="#047857" />
-              <Text style={styles.expenseText}>Chi phí</Text>
-            </TouchableOpacity>
+            {isOwner && (
+              <TouchableOpacity
+                onPress={() => setShowExpenses(true)}
+                style={[styles.actionButton, styles.expenseButton]}
+              >
+                <Ionicons name="wallet-outline" size={20} color="#047857" />
+                <Text style={styles.expenseText}>Chi phí</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               onPress={() => router.push(`/itinerary/notebook?id=${itineraryId}`)}
@@ -204,13 +212,15 @@ export default function ItineraryDetailScreen() {
               <Text style={styles.notebookText}>Hướng dẫn</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity
-              onPress={() => router.push(`/itinerary/${itineraryId}`)}
-              style={[styles.actionButton, styles.setupButton]}
-            >
-              <Ionicons name="settings-outline" size={20} color="#2563EB" />
-              <Text style={styles.setupText}>Thiết lập</Text>
-            </TouchableOpacity>
+            {isOwner && (
+              <TouchableOpacity
+                onPress={() => router.push(`/itinerary/${itineraryId}`)}
+                style={[styles.actionButton, styles.setupButton]}
+              >
+                <Ionicons name="settings-outline" size={20} color="#2563EB" />
+                <Text style={styles.setupText}>Thiết lập</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Days List */}
@@ -261,6 +271,14 @@ export default function ItineraryDetailScreen() {
           </View>
         </ScrollView>
       )}
+
+      <ExpensesOverlay
+        visible={showExpenses}
+        onClose={() => setShowExpenses(false)}
+        itineraryId={itineraryId || ""}
+        itineraryTitle={title}
+        budget={detail?.budget_estimate}
+      />
     </View>
   );
 }

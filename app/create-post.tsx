@@ -2,7 +2,6 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useItineraries } from "@/hooks/useItineraries";
 import { useAppSelector } from "@/store/hooks";
 import { uploadImage, uploadVideo, type MediaUploadResponse } from "@/services/media";
-import { mockItineraries } from "@/data/mockItineraries";
 import type { Itinerary } from "@/types/group";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
@@ -92,6 +91,7 @@ export default function CreatePostScreen() {
   const [mediaGalleryVisible, setMediaGalleryVisible] = useState(false);
   const [mediaGalleryIndex, setMediaGalleryIndex] = useState(0);
   const contentInputRef = useRef<TextInput>(null);
+  const hashtagInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!shouldLoadAuthenticatedData) {
@@ -141,11 +141,6 @@ export default function CreatePostScreen() {
     const raw = params?.itineraryId;
     const id = typeof raw === "string" ? raw.trim() : "";
     if (!id) return;
-    const fromMock = mockItineraries.find((x) => String(x.id) === String(id));
-    if (fromMock) {
-      setSelectedItinerary(fromMock);
-      return;
-    }
     const fromList = myItineraries.find((x) => String(x.id) === String(id));
     if (fromList) setSelectedItinerary(fromList);
   }, [params?.itineraryId, myItineraries]);
@@ -223,6 +218,8 @@ export default function CreatePostScreen() {
     if (tag && !hashtags.includes(tag)) {
       setHashtags([...hashtags, tag]);
       setHashtagInput("");
+      // Auto focus back to input for next hashtag
+      setTimeout(() => hashtagInputRef.current?.focus(), 100);
     }
   };
 
@@ -240,6 +237,12 @@ export default function CreatePostScreen() {
     // Validate content max length
     if (content.length > MAX_CONTENT_LENGTH) {
       showErrorToast("Lỗi", `Nội dung tối đa ${MAX_CONTENT_LENGTH} ký tự`);
+      return;
+    }
+
+    // Validate itinerary is selected (Required by BE)
+    if (!selectedItinerary?.id) {
+      showErrorToast("Lỗi", "Vui lòng chọn một lịch trình để đính kèm");
       return;
     }
 
@@ -338,13 +341,13 @@ export default function CreatePostScreen() {
           <Text style={styles.headerTitle}>Tạo bài viết</Text>
           <TouchableOpacity
             onPress={handleSubmit}
-            disabled={isSubmitting || (!content.trim() && selectedMedia.length === 0)}
+            disabled={isSubmitting || (!content.trim() && selectedMedia.length === 0) || !selectedItinerary}
             activeOpacity={0.7}
           >
             <Text
               style={[
                 styles.postButton,
-                (isSubmitting || (!content.trim() && selectedMedia.length === 0)) &&
+                (isSubmitting || (!content.trim() && selectedMedia.length === 0) || !selectedItinerary) &&
                   styles.postButtonDisabled,
               ]}
             >
@@ -503,6 +506,7 @@ export default function CreatePostScreen() {
               )}
               <View style={styles.hashtagInputContainer}>
                 <TextInput
+                  ref={hashtagInputRef}
                   style={styles.hashtagInput}
                   placeholder="Thêm #hashtag"
                   placeholderTextColor="#999"

@@ -43,7 +43,7 @@ export function useConversations(options?: { enabled?: boolean }) {
       }
       throw new Error(response.message || "Failed to load conversations");
     },
-    staleTime: 30000, // 30 giây
+    staleTime: 0, // Đảm bảo luôn lấy dữ liệu mới khi quay lại
     refetchOnWindowFocus: true,
     enabled,
   });

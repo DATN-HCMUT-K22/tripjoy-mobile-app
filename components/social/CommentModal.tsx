@@ -40,7 +40,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
   commentCount = 0,
 }) => {
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ["75%", "90%"], []);
+  const snapPoints = useMemo(() => ["65%", "90%"], []);
   const currentUser = useAppSelector((state) => state.auth.user);
 
   // State for reply mode
@@ -49,6 +49,14 @@ export const CommentModal: React.FC<CommentModalProps> = ({
   // Fetch comments with polling
   const { data: commentsData, isLoading } = usePostComments(postId, visible);
   const comments = commentsData?.content || [];
+
+  // Use count from fetch if available, otherwise fall back to prop
+  const displayCommentCount = useMemo(() => {
+    if (commentsData?.total_elements !== undefined) {
+      return commentsData.total_elements;
+    }
+    return commentCount;
+  }, [commentsData?.total_elements, commentCount]);
 
   // Mutations
   const createCommentMutation = useCreateComment();
@@ -173,6 +181,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
     return null;
   }, [isLoading, comments.length]);
 
+
   if (!visible) {
     return null;
   }
@@ -193,7 +202,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
-          Bình luận {commentCount > 0 ? `(${commentCount})` : ""}
+          Bình luận {displayCommentCount > 0 ? `(${displayCommentCount})` : ""}
         </Text>
         <TouchableOpacity
           onPress={onClose}
@@ -203,26 +212,30 @@ export const CommentModal: React.FC<CommentModalProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Comments list */}
-      <BottomSheetFlatList
-        data={comments}
-        renderItem={renderCommentItem}
-        keyExtractor={(item) => item.id}
-        ListHeaderComponent={renderListHeader}
-        ListEmptyComponent={!isLoading ? renderEmptyState : null}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      />
+      {/* Comments list and Input Container */}
+      <View style={{ flex: 1 }}>
+        <BottomSheetFlatList
+          data={comments}
+          renderItem={renderCommentItem}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderListHeader}
+          ListEmptyComponent={!isLoading ? renderEmptyState : null}
+          contentContainerStyle={styles.listContent}
+          style={styles.list}
+          showsVerticalScrollIndicator={false}
+        />
 
-      {/* Input */}
-      <CommentInput
-        onSubmit={handleSubmitComment}
-        isSubmitting={
-          createCommentMutation.isPending || createReplyMutation.isPending
-        }
-        replyToUsername={replyToComment?.created_by_user.name}
-        onCancelReply={() => setReplyToComment(null)}
-      />
+        <CommentInput
+          onSubmit={handleSubmitComment}
+          isSubmitting={
+            createCommentMutation.isPending || createReplyMutation.isPending
+          }
+          replyToUsername={replyToComment?.created_by_user.fullName}
+          onCancelReply={() => setReplyToComment(null)}
+          autoFocus={visible}
+        />
+      </View>
+
     </BottomSheet>
   );
 };
@@ -250,6 +263,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#000",
+  },
+  list: {
+    flex: 1,
   },
   listContent: {
     flexGrow: 1,

@@ -5,6 +5,8 @@ export interface UserSimpleResponse {
   username: string;
   fullName?: string | null;
   avatarUrl?: string | null;
+  full_name?: string | null;
+  avatar_url?: string | null;
 }
 
 export interface MessageSearchResponse {

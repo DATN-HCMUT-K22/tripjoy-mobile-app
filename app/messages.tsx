@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import debounce from "lodash.debounce";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -179,10 +179,11 @@ const SearchMessageResultRow: React.FC<SearchMessageResultRowProps> = ({
   if (!isGroup && conversation?.type === "DIRECT" && conversation.members?.length) {
     const other = conversation.members.find((m) => m.id !== currentUserId);
     headerTitle = other?.fullName || other?.username || "Chat riêng";
-    avatarUri =
-      getDirectPeerAvatarUrl(conversation, currentUserId) ||
-      other?.avatarUrl ||
-      null;
+      avatarUri =
+        getDirectPeerAvatarUrl(conversation, currentUserId) ||
+        other?.avatarUrl ||
+        other?.avatar_url ||
+        null;
   } else if (!isGroup && !headerTitle) {
     headerTitle = "Tin nhắn";
     avatarUri = null;
@@ -208,7 +209,7 @@ const SearchMessageResultRow: React.FC<SearchMessageResultRowProps> = ({
           {headerTitle}
         </Text>
         <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={1}>
-          {message.sender?.fullName || message.sender?.username || "Người dùng"} ·{" "}
+          {message.sender?.fullName || message.sender?.full_name || message.sender?.username || "Người dùng"} ·{" "}
           {formatTime(message.created_at)}
         </Text>
         <View className="mt-1">
@@ -274,7 +275,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
       const otherMember = conversation.members.find(
         (m) => m.id !== currentUserId
       );
-      return otherMember?.fullName || otherMember?.username || "Người dùng";
+      return otherMember?.fullName || otherMember?.full_name || otherMember?.username || "Người dùng";
     }
 
     // GROUP: ưu tiên tên từ GET /groups/{id} (đúng với bảng group), conversation.name từ inbox thường lệch BE
@@ -300,7 +301,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     const lm = conversation.last_message;
     if (!lm) return "Chưa có tin nhắn";
     const senderName =
-      lm.sender?.fullName || lm.sender?.username || null;
+      lm.sender?.fullName || lm.sender?.full_name || lm.sender?.username || null;
     const content = lm.message_content?.trim() || "";
     if (senderName && content) return `${senderName}: ${content}`;
     if (content) return content;
@@ -445,6 +446,15 @@ export default function MessagesScreen() {
 
   const conversations =
     activeTab === "personal" ? directConversations : groupConversations;
+
+  // Refresh data when screen is focused (e.g. returning from chat)
+  useFocusEffect(
+    useCallback(() => {
+      console.log("[MessagesScreen] Screen focused, refetching conversations...");
+      refetch();
+    }, [refetch])
+  );
+
   const debouncedSearch = useMemo(() => debounce((value: string) => void runSearch(value), 300), []);
 
   /** Map conversationId -> conversation (nhóm + cá nhân) để mở đúng màn từ kết quả search tin nhắn */
@@ -511,8 +521,8 @@ export default function MessagesScreen() {
         {
           userId: user.id,
           username: user.username,
-          fullName: user.fullName,
-          avatarUrl: user.avatarUrl,
+          fullName: user.fullName || user.full_name,
+          avatarUrl: user.avatarUrl || user.avatar_url,
         },
         ...filtered,
       ].slice(0, 12);
@@ -578,7 +588,8 @@ export default function MessagesScreen() {
       // Xử lý kết quả search users
       const usersRes = results[0];
       if (usersRes.status === "fulfilled") {
-        setSearchUsers(usersRes.value.code === 1000 ? usersRes.value.data || [] : []);
+        const { normalizeUserSearchPayload } = await import("@/hooks/useUserSearchDebounce");
+        setSearchUsers(usersRes.value.code === 1000 ? normalizeUserSearchPayload(usersRes.value.data) : []);
       } else if (usersRes.reason?.name !== "AbortError") {
         console.error("User search failed:", usersRes.reason);
       }

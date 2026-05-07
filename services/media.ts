@@ -39,6 +39,7 @@ export interface UploadVideoOptions {
   fileName?: string;
   fileType?: string; // MIME type (mặc định: video/mp4)
   folder?: string;
+  timeoutMs?: number; // Timeout upload (mặc định: 120 giây)
 }
 
 /**
@@ -158,7 +159,7 @@ export async function uploadImage(
 export async function uploadVideo(
   options: UploadVideoOptions
 ): Promise<MediaUploadResponse> {
-  const { fileUri, fileName = "video.mp4", fileType = "video/mp4", folder } = options;
+  const { fileUri, fileName = "video.mp4", fileType = "video/mp4", folder, timeoutMs = 120000 } = options;
 
   const formData = new FormData();
   formData.append("file", {
@@ -175,7 +176,8 @@ export async function uploadVideo(
   // Không set Content-Type header - React Native sẽ tự động set với boundary
   const response = await httpClient.post<ApiResponse<MediaUploadResponse>>(
     url,
-    formData
+    formData,
+    { timeout: timeoutMs }
   );
 
   if (response.code !== 1000) {

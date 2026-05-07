@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 const DEBOUNCE_MS = 300;
 
-function normalizeUserSearchPayload(data: unknown): UserSimpleResponse[] {
+export function normalizeUserSearchPayload(data: unknown): UserSimpleResponse[] {
   if (Array.isArray(data)) return data;
   if (data && typeof data === "object") {
     const o = data as Record<string, unknown>;

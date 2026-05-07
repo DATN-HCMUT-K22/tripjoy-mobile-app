@@ -98,6 +98,7 @@ export default function EditPostScreen() {
   const [mediaGalleryVisible, setMediaGalleryVisible] = useState(false);
   const [mediaGalleryIndex, setMediaGalleryIndex] = useState(0);
   const contentInputRef = useRef<TextInput>(null);
+  const hashtagInputRef = useRef<TextInput>(null);
 
   // Check ownership
   const isOwner = post && currentUser && post.creator_id === currentUser.id;
@@ -219,6 +220,8 @@ export default function EditPostScreen() {
     if (tag && !hashtags.includes(tag)) {
       setHashtags([...hashtags, tag]);
       setHashtagInput("");
+      // Auto focus back to input for next hashtag
+      setTimeout(() => hashtagInputRef.current?.focus(), 100);
     }
   };
 
@@ -546,6 +549,7 @@ export default function EditPostScreen() {
               )}
               <View style={styles.hashtagInputContainer}>
                 <TextInput
+                  ref={hashtagInputRef}
                   style={styles.hashtagInput}
                   placeholder="Thêm #hashtag"
                   placeholderTextColor="#999"

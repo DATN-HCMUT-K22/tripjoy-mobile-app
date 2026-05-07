@@ -35,6 +35,7 @@ export interface Group {
   theme_color?: string | null;   // Hex color code
   is_pro: boolean;               // Có phải pro group không
   chatbot_count: number;          // Số lượng chatbot
+  iti_count?: number;             // Số lượng lịch trình (từ API)
   isDeleted?: boolean | null;     // Đã bị xóa chưa (soft delete) - theo response format
   members: GroupMember[];         // Danh sách thành viên
   created_at?: string;           // ISO 8601 format
@@ -70,4 +71,5 @@ export interface Itinerary {
   duration: string;
   memberCount: number;
   budget: number;
+  status?: string;
 }

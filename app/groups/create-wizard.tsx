@@ -17,6 +17,7 @@ import { searchService } from '@/services/search';
 import { UserSimpleResponse } from '@/types/search';
 import { useDebounce } from '@/hooks/useDebounce';
 import Toast from 'react-native-toast-message';
+import { resolveUserAvatarUri } from '@/utils/userAvatar';
 
 type WizardStep = 'basic' | 'customize' | 'members' | 'review';
 type GroupMemberRole = 'LEADER' | 'CO_LEADER' | 'MEMBER';
@@ -366,32 +367,48 @@ function AddMembersStep({ data, onNext, onSkip }: any) {
 
       {searchResults.length > 0 && (
         <View className="mb-4">
-          {searchResults.map(user => (
-            <TouchableOpacity
-              key={user.id}
-              onPress={() => addMember(user)}
-              className="flex-row items-center p-3 bg-white rounded-lg mb-2"
-            >
-              <Text className="flex-1">{user.fullName}</Text>
-              <Text className="text-primary">Chọn</Text>
-            </TouchableOpacity>
-          ))}
+          {searchResults.map(user => {
+            const displayName = user.fullName || user.full_name || user.username || 'User';
+            return (
+              <TouchableOpacity
+                key={user.id}
+                onPress={() => addMember(user)}
+                className="flex-row items-center p-3 bg-white rounded-lg mb-2"
+              >
+                <ExpoImage
+                  source={{ uri: resolveUserAvatarUri(user.avatarUrl || user.avatar_url, displayName) }}
+                  style={{ width: 36, height: 36, borderRadius: 18, marginRight: 12 }}
+                />
+                <Text className="flex-1 font-medium">{displayName}</Text>
+                <Text className="text-primary font-semibold">Chọn</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       )}
 
       {selectedMembers.length > 0 && (
         <View className="mb-4">
           <Text className="text-sm font-bold mb-2">ĐÃ CHỌN ({selectedMembers.length})</Text>
-          {selectedMembers.map(member => (
-            <View key={member.user.id} className="bg-white rounded-lg p-3 mb-2">
-              <View className="flex-row items-center justify-between">
-                <Text className="flex-1">{member.user.fullName}</Text>
-                <TouchableOpacity onPress={() => removeMember(member.user.id)}>
-                  <Text className="text-red-500">Xóa</Text>
-                </TouchableOpacity>
+          {selectedMembers.map(member => {
+            const displayName = member.user.fullName || member.user.full_name || member.user.username || 'User';
+            return (
+              <View key={member.user.id} className="bg-white rounded-lg p-3 mb-2">
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center flex-1">
+                    <ExpoImage
+                      source={{ uri: resolveUserAvatarUri(member.user.avatarUrl || member.user.avatar_url, displayName) }}
+                      style={{ width: 32, height: 32, borderRadius: 16, marginRight: 10 }}
+                    />
+                    <Text className="flex-1 font-medium">{displayName}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => removeMember(member.user.id)}>
+                    <Text className="text-red-500 font-medium">Xóa</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
 

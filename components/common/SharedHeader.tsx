@@ -1,5 +1,6 @@
 import { MenuDrawer } from "@/components/common/MenuDrawer";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Image,
@@ -14,6 +15,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export interface SharedHeaderProps {
   /** Left: mặc định là nút menu mở MenuDrawer. Truyền custom để dùng nút back hoặc khác. */
   leftElement?: React.ReactNode;
+  /** Hiển thị nút back mặc định */
+  showBackButton?: boolean;
+  /** Callback khi bấm nút back (mặc định là router.back()) */
+  onBackPress?: () => void;
   /** Center: mặc định là logo. Truyền custom để dùng title (vd: "Tin nhắn"). */
   centerElement?: React.ReactNode;
   /** Right: mặc định là notification + message icons. Truyền null để ẩn. */
@@ -111,6 +116,8 @@ const DefaultRightIcons: React.FC<{
 
 export function SharedHeader({
   leftElement,
+  showBackButton,
+  onBackPress,
   centerElement,
   rightElement,
   notificationCount = 0,
@@ -144,7 +151,18 @@ export function SharedHeader({
     </TouchableOpacity>
   );
 
-  const left = leftElement ?? (withMenuDrawer ? defaultLeft : null);
+  const defaultBack = (
+    <TouchableOpacity
+      onPress={onBackPress || (() => router.back())}
+      activeOpacity={0.7}
+      style={styles.sideButton}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    >
+      <Ionicons name="chevron-back" size={28} color={isDark ? "#F3F4F6" : "#111827"} />
+    </TouchableOpacity>
+  );
+
+  const left = leftElement ?? (showBackButton ? defaultBack : (withMenuDrawer ? defaultLeft : null));
   const center = centerElement ?? <DefaultLogo />;
   const right =
     rightElement === undefined ? (
@@ -160,6 +178,7 @@ export function SharedHeader({
     ) : (
       rightElement
     );
+
 
   return (
     <>

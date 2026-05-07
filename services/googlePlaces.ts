@@ -29,10 +29,16 @@ function extractPlaceId(place: { id?: string; name?: string }): string {
  * URL ảnh Place Photos (New).
  * Không encode cả chuỗi thành một segment (%2F) — Google cần path dạng .../places/ID/photos/REF/media
  */
-function buildPhotoMediaUrl(photoResourceName: string, apiKey: string): string {
+function buildPhotoMediaUrl(
+  photoResourceName: string,
+  apiKey: string,
+  maxWidthPx: number = 800
+): string {
   const segments = photoResourceName.split("/").map(encodeURIComponent);
   const pathInUrl = segments.join("/");
-  return `${PLACES_BASE}/${pathInUrl}/media?maxWidthPx=400&maxHeightPx=400&key=${encodeURIComponent(apiKey)}`;
+  return `${PLACES_BASE}/${pathInUrl}/media?maxWidthPx=${maxWidthPx}&key=${encodeURIComponent(
+    apiKey
+  )}`;
 }
 
 const TYPE_LABEL_VI: Record<string, string> = {
@@ -104,7 +110,7 @@ function mapPlaceToListItem(
   if (!imageUrl) {
     imageUrl = buildStaticMapImageUrl(
       [{ latitude: loc.latitude, longitude: loc.longitude }],
-      { width: 400, height: 400, zoom: 16 }
+      { width: 800, height: 600, zoom: 16 }
     );
   }
 
@@ -279,7 +285,8 @@ export async function getPlaceDetails(placeId: string): Promise<{
   const resourceName = placeId.startsWith("places/")
     ? placeId
     : `places/${placeId}`;
-
+  
+  console.log(`\n🔍 [GOOGLE PLACES] Fetching details for: ${resourceName}`);
   try {
     const res = await fetch(`${PLACES_BASE}/${resourceName}`, {
       method: "GET",
@@ -305,11 +312,14 @@ export async function getPlaceDetails(placeId: string): Promise<{
       return null;
     }
 
-    return json as {
+    const details = json as {
       photos?: { name: string }[];
       displayName?: { text: string };
       formattedAddress?: string;
     };
+
+    console.log(`✅ [GOOGLE PLACES] Details received. Photos count: ${details.photos?.length || 0}`);
+    return details;
   } catch (error) {
     console.warn(`Failed to fetch place details for ${placeId}:`, error);
     return null;
@@ -325,10 +335,15 @@ export async function getPlacePhotoUrl(placeId: string): Promise<string | undefi
   if (!apiKey || !placeId) return undefined;
 
   const details = await getPlaceDetails(placeId);
-  if (!details?.photos || details.photos.length === 0) return undefined;
+  if (!details?.photos || details.photos.length === 0) {
+    console.log(`⚠️ [GOOGLE PLACES] No photos found for place: ${placeId}`);
+    return undefined;
+  }
 
   const firstPhoto = details.photos[0];
-  return buildPhotoMediaUrl(firstPhoto.name, apiKey);
+  const url = buildPhotoMediaUrl(firstPhoto.name, apiKey, 800);
+  console.log(`🖼️ [GOOGLE PLACES] Photo URL resolved (800px): ${url.substring(0, 60)}...`);
+  return url;
 }
 
 /**

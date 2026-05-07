@@ -21,11 +21,8 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     justifyContent: 'center',
-    paddingVertical: 20,
+    paddingVertical: 2,
     paddingHorizontal: 20,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
   statItem: {
     alignItems: 'center',

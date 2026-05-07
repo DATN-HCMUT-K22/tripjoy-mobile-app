@@ -22,6 +22,7 @@ export type GetPostsParams = {
   q?: string;
   hashtag?: string;
   creator_id?: string;
+  creatorId?: string;
   itinerary_id?: string;
   start_date?: string;
   end_date?: string;
@@ -52,6 +53,7 @@ export interface LikePostResponse {
 export interface CommentPostPayload {
   postId: string;
   content: string;
+  parent_comment_id?: string;
 }
 
 export interface CommentPostResponse {
@@ -120,10 +122,18 @@ export const getPopularHashtags = (limit = 20) =>
 // Các API này BẮT BUỘC phải có token
 
 /**
- * Like/Unlike một post (private - cần auth)
+ * Like một post (private - cần auth)
  */
 export const likePost = (postId: string) =>
-  httpClient.post<LikePostResponse>(`/posts/${postId}/like`, undefined, {
+  httpClient.post<LikePostResponse>(`/posts/${postId}/likes`, undefined, {
+    skipAuth: false, // Bắt buộc auth
+  });
+
+/**
+ * Unlike một post (private - cần auth)
+ */
+export const unlikePost = (postId: string) =>
+  httpClient.delete<LikePostResponse>(`/posts/${postId}/likes`, {
     skipAuth: false, // Bắt buộc auth
   });
 
@@ -135,11 +145,21 @@ export const commentPost = (payload: CommentPostPayload) =>
     `/posts/${payload.postId}/comments`,
     {
       content: payload.content,
+      parent_comment_id: payload.parent_comment_id,
     },
     {
       skipAuth: false, // Bắt buộc auth
     }
   );
+
+/**
+ * Lấy danh sách bình luận của một post (public - không cần auth)
+ */
+export const getPostComments = (postId: string, params?: { page?: number; size?: number }) =>
+  httpClient.get<ApiResponse<any>>(`/posts/${postId}/comments`, {
+    params,
+    skipAuth: false,
+  });
 
 /**
  * Share một post (private - cần auth)
@@ -154,12 +174,23 @@ export const sharePost = (postId: string) =>
   );
 
 /**
- * Bookmark một post (private - cần auth)
+ * Save một post (private - cần auth)
  */
-export const bookmarkPost = (postId: string) =>
+export const savePost = (postId: string) =>
   httpClient.post<ApiResponse<{ isBookmarked: boolean }>>(
-    `/posts/${postId}/bookmark`,
+    `/posts/${postId}/saves`,
     undefined,
+    {
+      skipAuth: false, // Bắt buộc auth
+    }
+  );
+
+/**
+ * Unsave một post (private - cần auth)
+ */
+export const unsavePost = (postId: string) =>
+  httpClient.delete<ApiResponse<{ isBookmarked: boolean }>>(
+    `/posts/${postId}/saves`,
     {
       skipAuth: false, // Bắt buộc auth
     }
@@ -169,7 +200,7 @@ export const bookmarkPost = (postId: string) =>
  * Lấy danh sách saved posts (private - cần auth)
  */
 export const getSavedPosts = (params?: { page?: number; size?: number }) =>
-  httpClient.get<GetPostsResponse>("/posts/saves", {
+  httpClient.get<GetPostsResponse>("/posts/my-saves", {
     params,
     skipAuth: false, // Bắt buộc auth
   });
@@ -197,6 +228,21 @@ export const deletePost = (postId: string) =>
   httpClient.delete<ApiResponse<void>>(`/posts/${postId}`, {
     skipAuth: false, // Bắt buộc auth
   });
+
+/**
+ * Like/Unlike comment
+ */
+export const likeComment = (commentId: string) =>
+  httpClient.post(`/comments/${commentId}/likes`, undefined);
+
+export const unlikeComment = (commentId: string) =>
+  httpClient.delete(`/comments/${commentId}/likes`);
+
+/**
+ * Xóa comment
+ */
+export const deleteComment = (commentId: string) =>
+  httpClient.delete(`/comments/${commentId}`);
 
 /**
  * Tạo group mới (private - cần auth)

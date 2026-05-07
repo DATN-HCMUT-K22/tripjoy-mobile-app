@@ -9,6 +9,7 @@ export type Itinerary = {
 
 /** Trạng thái lịch trình (BE `ItineraryStatus`) — dùng badge / polling. */
 export const ITINERARY_STATUS = {
+  PENDING: "PENDING",
   GENERATING: "GENERATING",
   FAILED: "FAILED",
   DRAFT: "DRAFT",
@@ -79,10 +80,13 @@ export type GenerateItineraryRequest = {
   peopleQuantity: number;
   budgetEstimate: number;
   themes: string[];
+  groupId?: string;
+  suggestLocations?: string[];
 };
 
 /** POST `/itineraries/{id}/ai-modify` — đồng bộ. */
 export type AiModifyItineraryRequest = {
+  itineraryId: string;
   unwantedPlaceIds: string[];
 };
 
@@ -112,7 +116,8 @@ export type TripItemRequest = {
   start_time: string;
   duration?: number;
   note?: string;
-  location_id: string;
+  location_id?: string;
+  place_id?: string;
 };
 
 export type LocationResponse = {
@@ -122,10 +127,13 @@ export type LocationResponse = {
   place_formatted?: string;
   lat?: number;
   lng?: number;
+  latitude?: number;
+  longitude?: number;
   routable_lat?: number;
   routable_lng?: number;
   hotline?: string;
   category?: string;
+  categories?: string[];
   poi_categories?: string[];
   maki?: string;
   operational_status?: string;
@@ -134,6 +142,9 @@ export type LocationResponse = {
   provider_id?: string;
   isOpen?: boolean;
   content?: string;
+  location_type?: string;
+  is_verified?: boolean;
+  usage_count?: number;
 };
 
 export type TripItemResponse = {
@@ -222,18 +233,22 @@ export const itineraryService = {
   /**
    * Tạo lịch bất đồng bộ (AI). HTTP 202; `data` thường có `id`, `status: GENERATING`.
    */
-  generateItinerary: (payload: GenerateItineraryRequest) =>
-    httpClient.post<ApiEnvelope<ItineraryResponse>, GenerateItineraryRequest>(
+  generateItinerary: (payload: GenerateItineraryRequest) => {
+    console.log(`\n🤖 [AI SERVICE] Generating Itinerary:`, JSON.stringify(payload, null, 2));
+    return httpClient.post<ApiEnvelope<ItineraryResponse>, GenerateItineraryRequest>(
       "/itineraries/ai-generate",
       payload
-    ),
+    );
+  },
 
-  /** Chỉnh lịch bằng AI (đồng bộ): loại place và gợi ý thay thế. */
-  aiModifyItinerary: (itineraryId: string, payload: AiModifyItineraryRequest) =>
-    httpClient.post<ApiEnvelope<ItineraryResponse>, AiModifyItineraryRequest>(
-      `/itineraries/${itineraryId}/ai-modify`,
+  /** Chỉnh lịch bằng AI: loại place và gợi ý thay thế (body chứa itineraryId). */
+  aiModifyItinerary: (payload: AiModifyItineraryRequest) => {
+    console.log(`\n🤖 [AI SERVICE] Modifying Itinerary with AI:`, JSON.stringify(payload, null, 2));
+    return httpClient.post<ApiEnvelope<ItineraryResponse>, AiModifyItineraryRequest>(
+      "/itineraries/ai-modify",
       payload
-    ),
+    );
+  },
 
   /** Sinh Travel Notebook (markdown) cho một lịch. */
   generateTravelNotebook: (itineraryId: string) =>
@@ -290,7 +305,7 @@ export const itineraryService = {
 
   getTripItems: (itineraryId: string) =>
     httpClient.get<ApiEnvelope<TripItemResponse[]>>(
-      `/itineraries/${itineraryId}/items`
+      `/itineraries/${itineraryId}/items?_t=${Date.now()}`
     ),
 
   addTripItem: (itineraryId: string, payload: TripItemRequest) =>
@@ -313,6 +328,18 @@ export const itineraryService = {
     httpClient.delete<ApiEnvelope<Record<string, unknown>>>(
       `/itineraries/${itineraryId}/items/${tripItemId}`
     ),
+
+  /**
+   * Gợi ý địa điểm mới lẻ (AI Suggest Location).
+   * Trả về list TripItemResponse (thông tin thô, chưa lưu DB).
+   */
+  suggestAlternativeLocation: (itineraryId: string, unwantedPlaceId?: string) => {
+    console.log(`\n🤖 [AI SERVICE] Suggesting Alternative Location: itineraryId=${itineraryId}, unwantedPlaceId=${unwantedPlaceId}`);
+    return httpClient.post<ApiEnvelope<TripItemResponse[]>>(
+      "/itineraries/ai-suggest-location",
+      { itineraryId, unwantedPlaceId }
+    );
+  },
 
   /**
    * Notebook: route BE có thể là placeholder — không nên phụ thuộc production (xem tài liệu module).

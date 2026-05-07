@@ -13,21 +13,22 @@ export interface Post {
 
   // Creator info
   creator_id: string;
-  creator: {
+  created_by_user: {
     id: string;
     username: string;
-    full_name: string;
-    avatar?: string;
+    fullName: string;
+    avatarUrl?: string;
   };
 
   // Itinerary link (optional)
   itinerary_id?: string;
   itinerary?: {
     id: string;
-    title: string;
-    start_date: string;
-    duration_days: number;
-    budget_estimate: number;
+    name: string;
+    title?: string;
+    start_date?: string;
+    duration_days?: number;
+    budget_estimate?: number;
   };
 
   // Hashtags
@@ -36,6 +37,7 @@ export interface Post {
   // Social metrics
   like_count: number;
   comment_count: number;
+  shared_quantity: number;
   is_liked: boolean;
   is_saved: boolean;
 

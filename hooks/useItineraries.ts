@@ -29,6 +29,7 @@ export type GroupInfoItineraryListItem = {
   endDate: string;
   budget?: number;
   createdAtLabel: string;
+  raw?: ItineraryResponse;
 };
 
 export type GroupItinerariesByTab = {
@@ -74,6 +75,7 @@ function mapApiItineraryToDisplay(api: ItineraryResponse): DisplayItinerary {
     duration: nights > 0 ? `${calendarDays} ngày ${nights} đêm` : `${calendarDays} ngày`,
     memberCount: memberFromApi,
     budget: budgetFromApi,
+    status: api.status,
   };
 }
 
@@ -105,7 +107,11 @@ function resolveItineraryTab(
 ): GroupItineraryTab {
   const s = normalizeStatus(api.status);
 
-  if (s === ITINERARY_STATUS.GENERATING || s === ITINERARY_STATUS.FAILED) {
+  if (
+    s === ITINERARY_STATUS.PENDING ||
+    s === ITINERARY_STATUS.GENERATING ||
+    s === ITINERARY_STATUS.FAILED
+  ) {
     return "draft";
   }
   if (s === ITINERARY_STATUS.COMPLETED) {
@@ -168,7 +174,10 @@ export function useItineraries(options?: { enabled?: boolean }) {
       if (code !== 0 && code !== 1000) {
         throw new Error(res?.message || "Không tải được danh sách lịch trình");
       }
-      const list = Array.isArray(res?.data) ? res.data : [];
+      const list = (Array.isArray(res?.data) ? res.data : []).filter((api) => {
+        const s = normalizeStatus(api.status);
+        return s !== ITINERARY_STATUS.FAILED && s !== ITINERARY_STATUS.GENERATING;
+      });
       return list.map(mapApiItineraryToDisplay);
     },
     staleTime: 60 * 1000,
@@ -239,7 +248,7 @@ export function useItineraryDetail(
     refetchInterval: (q) => {
       const d = q.state.data;
       const st = normalizeStatus(d?.status);
-      return poll && st === ITINERARY_STATUS.GENERATING ? 4000 : false;
+      return poll && (st === ITINERARY_STATUS.PENDING || st === ITINERARY_STATUS.GENERATING) ? 4000 : false;
     },
   });
 }
@@ -263,7 +272,7 @@ export function useItineraryTripItems(
 
   const itemsRefetchInterval = useMemo(() => {
     if (!poll) return false;
-    return itemStatusNorm === ITINERARY_STATUS.GENERATING ? 4000 : false;
+    return itemStatusNorm === ITINERARY_STATUS.PENDING || itemStatusNorm === ITINERARY_STATUS.GENERATING ? 4000 : false;
   }, [poll, itemStatusNorm]);
 
   return useQuery({
@@ -354,7 +363,10 @@ export function useGroupItinerariesByTab(groupId: string | undefined) {
       if (code !== 0 && code !== 1000) {
         throw new Error(res?.message || "Không tải được lịch trình nhóm");
       }
-      const list = Array.isArray(res?.data) ? res.data : [];
+      const list = (Array.isArray(res?.data) ? res.data : []).filter((api) => {
+        const s = normalizeStatus(api.status);
+        return s !== ITINERARY_STATUS.FAILED && s !== ITINERARY_STATUS.GENERATING;
+      });
       const rows = list.map((api) => {
         const display = mapApiItineraryToDisplay(api);
         const tab = resolveItineraryTab(api, display.startDate, display.endDate);
@@ -366,6 +378,7 @@ export function useGroupItinerariesByTab(groupId: string | undefined) {
           endDate: display.endDate,
           budget: display.budget > 0 ? display.budget : undefined,
           createdAtLabel: api.created_at ? timeAgo(api.created_at) : "—",
+          raw: api,
         };
         return { ...item, tab };
       });
@@ -430,7 +443,6 @@ export function useAiModifyItinerary() {
       payload: AiModifyItineraryRequest;
     }) => {
       const res = await itineraryService.aiModifyItinerary(
-        args.itineraryId,
         args.payload
       );
       const code = res?.code;
@@ -440,21 +452,28 @@ export function useAiModifyItinerary() {
       return res.data ?? null;
     },
     onSuccess: async (data, { itineraryId }) => {
-      await queryClient.invalidateQueries({
+      // Xóa cache cũ để ép buộc fetch mới hoàn toàn
+      queryClient.removeQueries({
         queryKey: ["itineraries", "detail", itineraryId],
       });
-      await queryClient.invalidateQueries({
+      queryClient.removeQueries({
         queryKey: ["itineraries", "detail", itineraryId, "items"],
       });
+
+      // Gọi nạp lại dữ liệu
+      await Promise.all([
+        queryClient.refetchQueries({
+          queryKey: ["itineraries", "detail", itineraryId],
+        }),
+        queryClient.refetchQueries({
+          queryKey: ["itineraries", "detail", itineraryId, "items"],
+        }),
+      ]);
+      
       await queryClient.invalidateQueries({ queryKey: ["itineraries"] });
-      await queryClient.refetchQueries({
-        queryKey: ["itineraries", "detail", itineraryId],
-      });
-      await queryClient.refetchQueries({
-        queryKey: ["itineraries", "detail", itineraryId, "items"],
-      });
+
       const st = normalizeStatus(data?.status);
-      if (st === ITINERARY_STATUS.GENERATING) {
+      if (st === ITINERARY_STATUS.PENDING || st === ITINERARY_STATUS.GENERATING) {
         showSuccessToast(
           "Đã gửi cho AI",
           "Lịch đang được cập nhật. Danh sách địa điểm sẽ tự làm mới khi xong."
@@ -465,6 +484,190 @@ export function useAiModifyItinerary() {
     },
     onError: (error) => {
       showErrorToast("Không điều chỉnh được lịch", error);
+    },
+  });
+}
+
+export function useUpdateItinerary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      itineraryId,
+      payload,
+    }: {
+      itineraryId: string;
+      payload: ItineraryRequest;
+    }) => {
+      const res = await itineraryService.updateItinerary(itineraryId, payload);
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data ?? {};
+      }
+      throw new Error(res?.message || "Không thể cập nhật lịch trình");
+    },
+    onSuccess: (_, { itineraryId }) => {
+      queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+      queryClient.invalidateQueries({
+        queryKey: ["itineraries", "detail", itineraryId],
+      });
+      showSuccessToast("Cập nhật lịch trình thành công");
+    },
+  });
+}
+
+export function useConfirmItinerary() {
+  const updateMutation = useUpdateItinerary();
+
+  return useMutation({
+    mutationFn: async (itinerary: ItineraryResponse) => {
+      if (!itinerary.id) throw new Error("Missing itinerary id");
+
+      const payload: ItineraryRequest = {
+        name: itinerary.title || "",
+        description: itinerary.description || "",
+        start_date: itinerary.start_date || "",
+        end_date: itinerary.end_date || "",
+        people_quantity: itinerary.people_quantity,
+        budget_estimate: itinerary.budget_estimate,
+        themes: itinerary.themes,
+        group_id: itinerary.group_id ?? undefined,
+        status: ITINERARY_STATUS.CONFIRMED,
+      };
+
+      return updateMutation.mutateAsync({
+        itineraryId: itinerary.id,
+        payload,
+      });
+    },
+  });
+}
+
+export function useDeleteItinerary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (itineraryId: string) => {
+      const res = await itineraryService.deleteItinerary(itineraryId);
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data;
+      }
+      throw new Error(res?.message || "Không thể xóa lịch trình");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+      showSuccessToast("Xóa lịch trình thành công");
+    },
+  });
+}
+
+export function useAddTripItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      itineraryId,
+      payload,
+    }: {
+      itineraryId: string;
+      payload: any;
+    }) => {
+      const res = await itineraryService.addTripItem(itineraryId, payload);
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data ?? {};
+      }
+      throw new Error(res?.message || "Không thể thêm địa điểm vào lịch");
+    },
+    onSuccess: (_, { itineraryId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["itineraries", "detail", itineraryId, "items"],
+      });
+      showSuccessToast("Đã thêm địa điểm");
+    },
+  });
+}
+
+export function useUpdateTripItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      itineraryId,
+      tripItemId,
+      payload,
+    }: {
+      itineraryId: string;
+      tripItemId: string;
+      payload: any;
+    }) => {
+      const res = await itineraryService.updateTripItem(
+        itineraryId,
+        tripItemId,
+        payload
+      );
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data ?? {};
+      }
+      throw new Error(res?.message || "Không thể cập nhật địa điểm");
+    },
+    onSuccess: (_, { itineraryId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["itineraries", "detail", itineraryId, "items"],
+      });
+      showSuccessToast("Đã cập nhật địa điểm");
+    },
+  });
+}
+
+export function useDeleteTripItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      itineraryId,
+      tripItemId,
+    }: {
+      itineraryId: string;
+      tripItemId: string;
+    }) => {
+      const res = await itineraryService.deleteTripItem(itineraryId, tripItemId);
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data;
+      }
+      throw new Error(res?.message || "Không thể xóa địa điểm");
+    },
+    onSuccess: (_, { itineraryId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["itineraries", "detail", itineraryId, "items"],
+      });
+      showSuccessToast("Đã xóa địa điểm");
+    },
+  });
+}
+
+/** Usecase 3: Gợi ý địa điểm thay thế bằng AI */
+export function useAiSuggestLocation() {
+  return useMutation({
+    mutationFn: async ({
+      itineraryId,
+      tripItemId,
+    }: {
+      itineraryId: string;
+      tripItemId: string;
+    }) => {
+      const res = await itineraryService.suggestAlternativeLocation(
+        itineraryId,
+        tripItemId // tripItemId ở đây đóng vai trò là unwantedPlaceId
+      );
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data ?? [];
+      }
+      throw new Error(res?.message || "Không thể lấy gợi ý địa điểm");
     },
   });
 }

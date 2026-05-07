@@ -253,15 +253,10 @@ export default function CreateGroupScreen() {
                     </Text>
                   </View>
                 ) : (
-                  <ScrollView
-                    nestedScrollEnabled
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator
-                    style={{ maxHeight: 280 }}
-                  >
+                  <View className="mt-2">
                     {displayUsers.map((user) => {
                       const displayName =
-                        user.fullName || user.username || "User";
+                        user.fullName || user.full_name || user.username || "User";
                       return (
                         <ContactItem
                           key={user.id}
@@ -269,7 +264,7 @@ export default function CreateGroupScreen() {
                             id: user.id,
                             name: displayName,
                             email: user.username ? `@${user.username}` : "",
-                            avatar: user.avatarUrl || "",
+                            avatar: user.avatarUrl || user.avatar_url || "",
                           }}
                           isSelected={selectedMembers.some(
                             (m) => m.id === user.id
@@ -278,7 +273,7 @@ export default function CreateGroupScreen() {
                         />
                       );
                     })}
-                  </ScrollView>
+                  </View>
                 )}
               </View>
             </View>
@@ -286,7 +281,10 @@ export default function CreateGroupScreen() {
 
           {/* Bottom Action Bar */}
           {selectedMembers.length > 0 && (
-            <View className="px-4 py-3 bg-white border-t border-gray-200">
+            <View 
+              className="px-4 bg-white border-t border-gray-200"
+              style={{ paddingBottom: 34, paddingTop: 16 }}
+            >
               <View className="flex-row items-center justify-between">
                 {/* Selected Contacts */}
                 <View className="flex-row items-center gap-2 flex-1">
@@ -294,6 +292,7 @@ export default function CreateGroupScreen() {
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     className="flex-1"
+                    contentContainerStyle={{ paddingVertical: 8, paddingRight: 8 }}
                   >
                     <View className="flex-row items-center gap-2">
                       {selectedMembers.map((user) => (
@@ -301,8 +300,8 @@ export default function CreateGroupScreen() {
                           <ExpoImage
                             source={{
                               uri: resolveUserAvatarUri(
-                                user.avatarUrl,
-                                user.fullName || user.username || "User"
+                                user.avatarUrl || user.avatar_url,
+                                user.fullName || user.full_name || user.username || "User"
                               ),
                             }}
                             style={{ width: 40, height: 40, borderRadius: 20 }}

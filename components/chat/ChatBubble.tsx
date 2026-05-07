@@ -18,6 +18,7 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+import { useRouter } from "expo-router";
 
 // Layout constants (tránh magic numbers)
 const AVATAR_SIZE = 40;
@@ -25,6 +26,12 @@ const AVATAR_RADIUS = AVATAR_SIZE / 2;
 const BUBBLE_BORDER_RADIUS = 18;
 const MAX_BUBBLE_WIDTH_PERCENT = "75%";
 const MIN_BUBBLE_WIDTH = 60;
+
+// Bot Premium Colors
+const BOT_PRIMARY = "#A855F7"; 
+const BOT_BG = "#F3E8FF";      
+const BOT_BORDER = "#D8B4FE";
+const BOT_TEXT = "#111827";
 
 interface ChatMessageProps {
   message: ChatMessageResponse;
@@ -35,6 +42,7 @@ interface ChatMessageProps {
   onShowLikes?: (messageId: string) => void;
   onReply?: (message: ChatMessageResponse) => void;
   onLongPress?: () => void;
+  onImagePress?: (imageUrl: string) => void;
   isHighlighted?: boolean;
 }
 
@@ -47,6 +55,9 @@ const formatTime = (dateString: string): string => {
 };
 
 
+// Cache để lưu trữ tỉ lệ khung hình của ảnh theo URL, tránh bị nhảy layout khi component re-render hoặc recycle
+const imageRatioCache = new Map<string, number>();
+
 export const ChatMessage: React.FC<ChatMessageProps> = ({
   message,
   currentUserId,
@@ -56,13 +67,24 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   onShowLikes,
   onReply,
   onLongPress,
+  onImagePress,
   isHighlighted = false,
 }) => {
-  const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
+  const router = useRouter();
+  
+  // Khởi tạo aspect ratio từ cache nếu đã có, tránh nhảy layout
+  const initialRatio = (message.media_url && imageRatioCache.get(message.media_url)) || 1;
+  const [imgAspectRatio, setImgAspectRatio] = React.useState<number>(initialRatio);
   
   const isMe = getChatSenderId(message) === currentUserId;
-  const isBot = message.is_bot === true;
+  
+  // Robust isBot detection
+  const senderName = (message.sender?.fullName || message.sender?.username || "").toLowerCase();
+  const isBot = message.is_bot === true || 
+                senderName.includes("tripjoy bot") || 
+                senderName.includes("tripjoy admin") ||
+                senderName.includes("assistant");
   
   // Color scheme - supports dark mode
   const bubbleColor = isBot 
@@ -111,11 +133,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const avatar = (
     <View style={styles.avatarContainer}>
       {isBot ? (
-        <Image
-          source={require("@/assets/logo/ai_bot.webp")}
-          style={styles.avatarBot}
-          contentFit="cover"
-        />
+        <View style={[styles.avatarCircle, { backgroundColor: BOT_BG, borderColor: BOT_BORDER, borderWidth: 1 }]}>
+          <Image
+            source={require("@/assets/logo/ai_bot.webp")}
+            style={styles.avatarBotIcon}
+            contentFit="cover"
+          />
+        </View>
       ) : (
         <Image
           source={{ uri: resolvedAvatarUri }}
@@ -158,8 +182,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       ]}
     >
       {showSenderName && (
-        <Text style={[styles.senderName, { color: senderNameColor }]}>
-          {senderDisplayName}
+        <Text style={[styles.senderName, { color: isBot ? BOT_PRIMARY : senderNameColor }]}>
+          {isBot ? "Tripjoy Bot" : senderDisplayName}
         </Text>
       )}
       <View style={styles.timestampContainer}>
@@ -207,6 +231,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       </View>
     );
 
+  const botReplyTarget = React.useMemo(() => {
+    if (!message.parent_message) return "Bạn";
+    const parentSenderId = (message.parent_message as any).sender_id || (message.parent_message.sender as any)?.id;
+    if (parentSenderId === currentUserId) return "Bạn";
+    return getSenderLabel(message.parent_message.sender, "Thành viên");
+  }, [message.parent_message, currentUserId]);
+
   // Nội dung bubble (text, ảnh hoặc video)
   const bubbleContent =
     message.message_type === "IMAGE" && message.media_url ? (
@@ -221,11 +252,36 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             },
           ]}
         >
-          <Image
-            source={{ uri: message.media_url }}
-            style={styles.image}
-            contentFit="cover"
-          />
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => onImagePress && message.media_url ? onImagePress(message.media_url) : undefined}
+            onLongPress={onLongPress}
+          >
+            <Image
+              source={{ uri: message.media_url }}
+              style={[styles.image, { height: undefined, aspectRatio: imgAspectRatio }]}
+              contentFit="cover"
+              transition={200}
+              cachePolicy="memory-disk"
+              onLoad={(e) => {
+                if (e.source.width && e.source.height) {
+                  let ratio = e.source.width / e.source.height;
+                  // Giới hạn tỉ lệ để ảnh không bị quá dài hoặc quá ngang
+                  if (ratio < 0.5) ratio = 0.5;
+                  if (ratio > 2) ratio = 2;
+                  
+                  // Lưu vào cache và cập nhật state nếu tỉ lệ thay đổi đáng kể
+                  if (message.media_url) {
+                    imageRatioCache.set(message.media_url, ratio);
+                  }
+                  
+                  if (Math.abs(ratio - imgAspectRatio) > 0.01) {
+                    setImgAspectRatio(ratio);
+                  }
+                }
+              }}
+            />
+          </TouchableOpacity>
           {message.message_content ? (
             <View style={styles.imageCaption}>
               <Text
@@ -266,18 +322,68 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           ) : null}
         </View>
       </View>
+    ) : message.message_type === "SHARE_POST" ? (
+      <View style={styles.bubbleWrapper}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            const postId = message.shared_post_id;
+            if (postId) {
+              router.push(`/post/${postId}` as any);
+            }
+          }}
+          style={[
+            styles.sharePostBubble,
+            {
+              backgroundColor: isDark ? "#1F2937" : "#F3F4F6",
+              borderColor: isDark ? "#374151" : "#E5E7EB",
+            },
+          ]}
+        >
+          <View style={styles.sharePostHeader}>
+            <View style={styles.sharePostIcon}>
+              <Ionicons name="share-social" size={16} color="#34B27D" />
+            </View>
+            <Text style={[styles.sharePostHeaderText, { color: isDark ? "#9CA3AF" : "#6B7280" }]}>
+              Đã chia sẻ một bài viết
+            </Text>
+          </View>
+          
+          <View style={styles.sharePostContent}>
+            <Text style={[styles.sharePostTitle, { color: isDark ? "#F3F4F6" : "#111827" }]} numberOfLines={2}>
+              {message.message_content || "Xem bài viết chi tiết"}
+            </Text>
+            <View style={styles.sharePostFooter}>
+              <Text style={styles.sharePostLink}>Xem chi tiết</Text>
+              <Ionicons name="chevron-forward" size={14} color="#34B27D" />
+            </View>
+          </View>
+        </TouchableOpacity>
+      </View>
     ) : (
       <View style={styles.bubbleWrapper}>
         <View
           style={[
             styles.bubble,
             {
-              backgroundColor: bubbleColor,
+              backgroundColor: isBot ? BOT_BG : bubbleColor,
               borderWidth: isBot || !isMe ? 1 : 0,
-              borderColor: borderColor,
+              borderColor: isBot ? BOT_BORDER : borderColor,
+              paddingTop: isBot ? 0 : 10,
+              paddingHorizontal: isBot ? 0 : 12,
             },
           ]}
         >
+          {isBot && (
+            <View style={styles.botReplyHeader}>
+               <View style={styles.botReplyRow}>
+                 <Ionicons name="arrow-back" size={14} color={BOT_PRIMARY} style={{ opacity: 0.7 }} />
+                 <Text style={styles.botReplyText}>Phản hồi đến {botReplyTarget}</Text>
+               </View>
+               <View style={[styles.botDivider, { backgroundColor: BOT_BORDER }]} />
+            </View>
+          )}
+
           {replyPreview}
 
           {/* Pinned indicator */}
@@ -291,14 +397,19 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           )}
 
           <Text
-            style={[styles.messageText, { color: textColor }]}
+            style={[styles.messageText, { 
+              color: isBot ? BOT_TEXT : textColor,
+              paddingHorizontal: isBot ? 12 : 0,
+              paddingBottom: isBot ? 10 : 0,
+              paddingTop: isBot ? 8 : 0,
+            }]}
             selectable
           >
             {message.message_content}
           </Text>
 
           {/* Like: like_count > 0 thì hiện số + icon heart màu đỏ */}
-          <View style={styles.likeContainer}>
+          <View style={[styles.likeContainer, { paddingHorizontal: isBot ? 12 : 0, paddingBottom: isBot ? 8 : 0 }]}>
             <TouchableOpacity
               onPress={() => onLike && onLike(message.id)}
               activeOpacity={0.7}
@@ -401,10 +512,17 @@ const styles = StyleSheet.create({
     height: AVATAR_SIZE,
     borderRadius: AVATAR_RADIUS,
   },
-  avatarBot: {
+  avatarCircle: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
-    borderRadius: 8,
+    borderRadius: AVATAR_RADIUS,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarBotIcon: {
+    width: "100%",
+    height: "100%",
   },
   messageWrapper: {
     maxWidth: MAX_BUBBLE_WIDTH_PERCENT,
@@ -487,6 +605,27 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     opacity: 0.5,
   },
+  // Bot styles
+  botReplyHeader: {
+    width: '100%',
+  },
+  botReplyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  botReplyText: {
+    fontSize: 13,
+    color: "#A855F7",
+    fontWeight: "500",
+  },
+  botDivider: {
+    height: 1,
+    width: '100%',
+    opacity: 0.3,
+  },
   likeContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -503,11 +642,11 @@ const styles = StyleSheet.create({
   imageBubble: {
     borderRadius: BUBBLE_BORDER_RADIUS,
     overflow: "hidden",
-    maxWidth: 280,
+    width: 260, // Cố định chiều rộng để không bị bóp theo độ dài của text
+    maxWidth: "100%",
   },
   image: {
     width: "100%",
-    height: 200,
   },
   imageCaption: {
     paddingHorizontal: 12,
@@ -530,5 +669,53 @@ const styles = StyleSheet.create({
   pinIndicatorText: {
     fontSize: 10,
     fontWeight: "500",
+  },
+  // Share post styles
+  sharePostBubble: {
+    borderRadius: 16,
+    borderWidth: 1,
+    width: 240,
+    overflow: "hidden",
+    alignSelf: "flex-start",
+  },
+  sharePostHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.05)",
+    gap: 8,
+  },
+  sharePostIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(52, 179, 125, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sharePostHeaderText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  sharePostContent: {
+    padding: 12,
+  },
+  sharePostTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  sharePostFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  sharePostLink: {
+    fontSize: 12,
+    color: "#34B27D",
+    fontWeight: "600",
   },
 });

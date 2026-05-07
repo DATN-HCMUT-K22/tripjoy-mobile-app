@@ -12,6 +12,8 @@ import {
 import { ITINERARY_STATUS } from "@/services/itineraries";
 import { formatCurrencyVND } from "@/utils/format";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import { fetchPlacePhotoUrls } from "@/utils/googlePlacePhoto";
+import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
 import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
 import type { TripItemResponse } from "@/services/itineraries";
@@ -26,6 +28,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -102,7 +105,14 @@ export default function AiItineraryWaitScreen() {
   const completedRef = useRef(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
+
+  const { width: windowWidth } = useWindowDimensions();
+  const carouselWidth = windowWidth - 64; // (padding-x 4 = 16px) * 2 for ScrollView + (padding-x 4 = 16px) * 2 for Card
+
+  const destinationLocation = tripData.destinationLocation ?? tripData.location;
+  const [destinationImageUris, setDestinationImageUris] = useState<string[]>([]);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [imageLoading, setImageLoading] = useState(false);
 
   const {
     data,
@@ -148,8 +158,70 @@ export default function AiItineraryWaitScreen() {
     return () => clearInterval(id);
   }, []);
 
+  // Fetch destination images (same logic as summary.tsx)
   useEffect(() => {
-    if (data?.status !== ITINERARY_STATUS.GENERATING) return;
+    let cancelled = false;
+    setDestinationImageUris([]);
+
+    const lat = destinationLocation?.latitude;
+    const lon = destinationLocation?.longitude;
+    const hasCoords =
+      typeof lat === "number" &&
+      typeof lon === "number" &&
+      !Number.isNaN(lat) &&
+      !Number.isNaN(lon);
+
+    if (!hasCoords) {
+      const fallback = destinationLocation?.image?.trim() ?? "";
+      setDestinationImageUris(fallback ? [fallback] : []);
+      return;
+    }
+
+    setImageLoading(true);
+
+    (async () => {
+      const rawName = destinationLocation?.name ?? destinationLocation?.nameEn;
+      const locationName = typeof rawName === "string" ? rawName.trim() || undefined : undefined;
+      const photoUrls = await fetchPlacePhotoUrls(
+        lat!,
+        lon!,
+        locationName,
+        800,
+        30_000,
+        5,
+        destinationLocation?.provider_id
+      );
+      if (cancelled) return;
+
+      if (photoUrls && photoUrls.length > 0) {
+        setDestinationImageUris(photoUrls);
+        setImageLoading(false);
+        return;
+      }
+
+      const dtoImage = destinationLocation?.image?.trim();
+      if (dtoImage) {
+        setDestinationImageUris([dtoImage]);
+        setImageLoading(false);
+        return;
+      }
+
+      const staticMap = buildStaticMapImageUrl(
+        [{ latitude: lat!, longitude: lon! }],
+        { width: 800, height: 512, zoom: 12 },
+      );
+      setDestinationImageUris([staticMap]);
+      setImageLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+      setImageLoading(false);
+    };
+  }, [destinationLocation]);
+
+  useEffect(() => {
+    if (data?.status !== ITINERARY_STATUS.GENERATING && data?.status !== ITINERARY_STATUS.PENDING) return;
     const id = setInterval(() => {
       setTipIndex((i) => (i + 1) % WAIT_TIPS.length);
     }, 6500);
@@ -181,40 +253,12 @@ export default function AiItineraryWaitScreen() {
     }
   }, [data?.status, queryClient]);
 
-  // Fetch images from Google Places API for trip items
-  useEffect(() => {
-    if (tripItems.length === 0) return;
 
-    const fetchImages = async () => {
-      const newCache: Record<string, string> = {};
-
-      for (const item of tripItems) {
-        const itemId = item.id || item.location?.id || "";
-        if (!itemId || imageUrlCache[itemId]) continue;
-
-        const imageUrl = await getLocationImageUrlAsync(item.location);
-        if (imageUrl) {
-          newCache[itemId] = imageUrl;
-        }
-      }
-
-      if (Object.keys(newCache).length > 0) {
-        setImageUrlCache((prev) => ({ ...prev, ...newCache }));
-      }
-    };
-
-    fetchImages();
-  }, [tripItems]);
-
-  const isGenerating = data?.status === ITINERARY_STATUS.GENERATING;
+  const isGenerating = data?.status === ITINERARY_STATUS.GENERATING || data?.status === ITINERARY_STATUS.PENDING;
   const isAiFailed = data?.status === ITINERARY_STATUS.FAILED;
   const canShowGeneratedResult = !!data && !isGenerating && !isAiFailed;
   const initialLoadError = isError && !data && !isLoading;
   const draftTitle = data?.title?.trim() || "Lịch trình bản nháp";
-  const destinationImage =
-    tripData.destinationLocation?.image ||
-    tripData.location?.image ||
-    "";
   const destinationName =
     tripData.destinationLocation?.name ||
     tripData.location?.name ||
@@ -247,11 +291,6 @@ export default function AiItineraryWaitScreen() {
     return `${m} phút ${s}s`;
   };
 
-  // Helper to get image URL from cache or fallback to sync version
-  const getItemImageUrl = (row: TripItemResponse): string | undefined => {
-    const itemId = row.id || row.location?.id || "";
-    return imageUrlCache[itemId] || getLocationImageUrl(row.location);
-  };
 
   // Local editable state for items
   const [draftItemsByDay, setDraftItemsByDay] = useState<Record<string, TripItemResponse[]>>({});
@@ -355,7 +394,7 @@ export default function AiItineraryWaitScreen() {
           id: row.id || `${locationId}-${idx}`,
           locationId,
           name,
-          image: getItemImageUrl(row) || "",
+          image: row.location?.content || "",
           timeRange: {
             start,
             end: addMinutes(start, duration),
@@ -506,7 +545,6 @@ export default function AiItineraryWaitScreen() {
                               index={index}
                               total={itemsForDay.length}
                               canInteract={true}
-                              imageUrl={getItemImageUrl(row)}
                               onMove={(from, to) => moveItem(dayKey, from, to)}
                               onDelete={() => deleteItem(dayKey, index)}
                             />
@@ -602,7 +640,8 @@ export default function AiItineraryWaitScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      ) : (
+          ) : (
+              
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
@@ -610,20 +649,64 @@ export default function AiItineraryWaitScreen() {
         >
           <View className="px-4 pt-4">
             <View className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-              {destinationImage ? (
-                <Image
-                  source={expoImageSourceForGoogleRaster(destinationImage)}
-                  style={{ width: "100%", height: 190 }}
-                  contentFit="cover"
-                />
-              ) : (
-                <View
-                  className="w-full items-center justify-center bg-gray-100"
-                  style={{ height: 190 }}
-                >
-                  <Ionicons name="image-outline" size={48} color="#D1D5DB" />
-                </View>
-              )}
+              {/* Destination Image Carousel */}
+              <View className="relative">
+                {imageLoading ? (
+                  <View
+                    className="w-full items-center justify-center bg-gray-100"
+                    style={{ height: 210 }}
+                  >
+                    <ActivityIndicator color="#2BB673" />
+                    <Text className="mt-2 text-xs text-gray-400">Đang tải ảnh điểm đến…</Text>
+                  </View>
+                ) : destinationImageUris.length > 0 ? (
+                  <View className="relative">
+                    <ScrollView
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      onScroll={(e) => {
+                        const contentOffset = e.nativeEvent.contentOffset.x;
+                        const width = e.nativeEvent.layoutMeasurement.width;
+                        const index = Math.round(contentOffset / width);
+                        setActiveImageIndex(index);
+                      }}
+                      scrollEventThrottle={16}
+                    >
+                      {destinationImageUris.map((uri, idx) => (
+                        <View key={idx} style={{ width: carouselWidth, height: 210 }}>
+                          <Image
+                            source={expoImageSourceForGoogleRaster(uri)}
+                            style={{ width: "100%", height: 210 }}
+                            contentFit="cover"
+                          />
+                        </View>
+                      ))}
+                    </ScrollView>
+                    
+                    {destinationImageUris.length > 1 && (
+                      <View className="absolute bottom-3 left-0 right-0 flex-row justify-center gap-1.5">
+                        {destinationImageUris.map((_, idx) => (
+                          <View
+                            key={idx}
+                            className={`h-1.5 rounded-full ${
+                              idx === activeImageIndex ? "w-4 bg-white" : "w-1.5 bg-white/60"
+                            }`}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <View
+                    className="w-full items-center justify-center bg-gray-100"
+                    style={{ height: 210 }}
+                  >
+                    <Ionicons name="image-outline" size={48} color="#D1D5DB" />
+                  </View>
+                )}
+              </View>
+
               <View className="px-4 pb-4 pt-3">
                 <Text className="text-lg font-bold text-gray-900" numberOfLines={2}>
                   {destinationName}
@@ -750,7 +833,6 @@ export default function AiItineraryWaitScreen() {
                               index={idx}
                               total={itemsForDay.length}
                               canInteract={false}
-                              imageUrl={getItemImageUrl(row)}
                               onMove={() => {}}
                               onDelete={() => {}}
                             />

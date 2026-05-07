@@ -6,7 +6,7 @@
 import { View, Text, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { useState, useMemo } from 'react';
 import * as Haptics from 'expo-haptics';
 import { AppBottomSheet } from '@/components/common/AppBottomSheet';
@@ -27,7 +27,7 @@ interface HeaderAction {
 }
 
 export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
-  const router = useRouter();
+  // const router = useRouter();
   const [showActionSheet, setShowActionSheet] = useState(false);
 
   const currentUserRole = getCurrentUserRole(group, currentUserId);
@@ -35,27 +35,10 @@ export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
   const isLeader = isGroupLeader(group, currentUserId);
 
   const headerActions = useMemo((): HeaderAction[] => {
-    const actions: HeaderAction[] = [
-      {
-        icon: 'notifications-outline',
-        label: 'Cài đặt thông báo',
-        onPress: () => {
-          setShowActionSheet(false);
-          // TODO: Navigate to notification settings
-        },
-      },
-      {
-        icon: 'share-social-outline',
-        label: 'Chia sẻ nhóm',
-        onPress: () => {
-          setShowActionSheet(false);
-          // TODO: Share group
-        },
-      },
-    ];
+    const actions: HeaderAction[] = [];
 
     if (isManager) {
-      actions.unshift({
+      actions.push({
         icon: 'create-outline',
         label: 'Chỉnh sửa thông tin',
         onPress: () => {
@@ -155,7 +138,7 @@ export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
         visible={showActionSheet}
         onClose={() => setShowActionSheet(false)}
         title="Tùy chọn nhóm"
-        snapPoints={['30%', '50%']}
+        snapPoints={['60%']}
       >
         <View className="pb-4">
           {headerActions.map((action, index) => (

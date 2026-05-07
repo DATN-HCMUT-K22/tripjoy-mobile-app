@@ -9,7 +9,7 @@ import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -30,7 +30,7 @@ interface MenuDrawerProps {
 }
 
 export function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
-  const router = useRouter();
+  // const router = useRouter();
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.auth.user);
   const { isGuest } = useGuestMode();

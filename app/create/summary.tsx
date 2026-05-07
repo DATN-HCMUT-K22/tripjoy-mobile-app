@@ -7,7 +7,7 @@ import { useGenerateItinerary } from "@/hooks/useItineraries";
 import { tripSetupToAiGenerateRequest } from "@/utils/aiItineraryGenerate";
 import { formatCurrencyVND } from "@/utils/format";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
-import { fetchPlacePhotoUrl } from "@/utils/googlePlacePhoto";
+import { fetchPlacePhotoUrls } from "@/utils/googlePlacePhoto";
 import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +20,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -29,6 +30,8 @@ export default function TripSummaryScreen() {
   const { tripData } = useTripSetup();
   const { resetItinerary } = useItinerary();
   const generateAiMutation = useGenerateItinerary();
+  const { width: windowWidth } = useWindowDimensions();
+  const carouselWidth = windowWidth - 64; // (padding-x 4 = 16px) * 2 for ScrollView + (padding-x 4 = 16px) * 2 for Card
 
   const handleAiGenerate = async () => {
     const dest =
@@ -81,12 +84,13 @@ export default function TripSummaryScreen() {
   // Ảnh điểm đến: ưu tiên ảnh thực từ Google Places API (New),
   // fallback về Static Maps nếu Places API không trả ảnh / chưa bật.
   // ---------------------------------------------------------------------------
-  const [destinationImageUri, setDestinationImageUri] = useState<string>("");
+  const [destinationImageUris, setDestinationImageUris] = useState<string[]>([]);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [imageLoading, setImageLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setDestinationImageUri("");
+    setDestinationImageUris([]);
 
     const lat = destinationLocation?.latitude;
     const lon = destinationLocation?.longitude;
@@ -99,22 +103,29 @@ export default function TripSummaryScreen() {
     if (!hasCoords) {
       // Không có coords: dùng image từ DTO nếu có, không thì trống
       const fallback = destinationLocation?.image?.trim() ?? "";
-      setDestinationImageUri(fallback);
+      setDestinationImageUris(fallback ? [fallback] : []);
       return;
     }
 
     setImageLoading(true);
 
     (async () => {
-      // 1. Thử lấy ảnh thực từ Places API (New) — truyền tên để Text Search tìm đúng địa danh
-      // Dùng typeof guard vì DTO có thể trả name không phải string trong một số trường hợp
+      // 1. Thử lấy danh sách ảnh thực từ Places API (New)
       const rawName = destinationLocation?.name ?? destinationLocation?.nameEn;
       const locationName = typeof rawName === "string" ? rawName.trim() || undefined : undefined;
-      const photoUrl = await fetchPlacePhotoUrl(lat!, lon!, locationName, 800, 30_000);
+      const photoUrls = await fetchPlacePhotoUrls(
+        lat!,
+        lon!,
+        locationName,
+        800,
+        30_000,
+        5,
+        destinationLocation?.provider_id
+      );
       if (cancelled) return;
 
-      if (photoUrl) {
-        setDestinationImageUri(photoUrl);
+      if (photoUrls && photoUrls.length > 0) {
+        setDestinationImageUris(photoUrls);
         setImageLoading(false);
         return;
       }
@@ -122,7 +133,7 @@ export default function TripSummaryScreen() {
       // 2. Fallback: dùng image DTO nếu có
       const dtoImage = destinationLocation?.image?.trim();
       if (dtoImage) {
-        setDestinationImageUri(dtoImage);
+        setDestinationImageUris([dtoImage]);
         setImageLoading(false);
         return;
       }
@@ -132,7 +143,7 @@ export default function TripSummaryScreen() {
         [{ latitude: lat!, longitude: lon! }],
         { width: 800, height: 512, zoom: 12 },
       );
-      setDestinationImageUri(staticMap);
+      setDestinationImageUris([staticMap]);
       setImageLoading(false);
     })();
 
@@ -167,7 +178,6 @@ export default function TripSummaryScreen() {
       <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
         <TouchableOpacity
           onPress={() => {
-            resetItinerary();
             router.back();
           }}
           className="h-10 w-12 items-center justify-center"
@@ -208,20 +218,54 @@ export default function TripSummaryScreen() {
 
           {/* Main Card */}
           <View className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
-            {/* Ảnh điểm đến: Places API thực → DTO image → Static Maps → placeholder */}
-            <View className="px-4 pt-4">
+            {/* Ảnh điểm đến: Carousel ảnh Places API → DTO image → Static Maps → placeholder */}
+            <View className="px-4 pt-4 relative">
               {imageLoading ? (
                 // Skeleton / loading placeholder
                 <View className="w-full h-64 bg-gray-100 items-center justify-center rounded-lg">
                   <ActivityIndicator color="#2BB673" />
                   <Text className="mt-2 text-xs text-gray-400">Đang tải ảnh điểm đến…</Text>
                 </View>
-              ) : destinationImageUri ? (
-                <Image
-                  source={expoImageSourceForGoogleRaster(destinationImageUri)}
-                  style={{ width: "100%", height: 256, borderRadius: 8 }}
-                  contentFit="cover"
-                />
+              ) : destinationImageUris.length > 0 ? (
+                <View className="relative">
+                  <ScrollView
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    onScroll={(e) => {
+                      const contentOffset = e.nativeEvent.contentOffset.x;
+                      const width = e.nativeEvent.layoutMeasurement.width;
+                      const index = Math.round(contentOffset / width);
+                      setActiveImageIndex(index);
+                    }}
+                    scrollEventThrottle={16}
+                    style={{ borderRadius: 8 }}
+                  >
+                    {destinationImageUris.map((uri, idx) => (
+                      <View key={idx} style={{ width: carouselWidth, height: 256 }}>
+                        <Image
+                          source={expoImageSourceForGoogleRaster(uri)}
+                          style={{ width: "100%", height: 256, borderRadius: 8 }}
+                          contentFit="cover"
+                        />
+                      </View>
+                    ))}
+                  </ScrollView>
+                  
+                  {/* Pagination Dots */}
+                  {destinationImageUris.length > 1 && (
+                    <View className="absolute bottom-3 left-0 right-0 flex-row justify-center gap-1.5">
+                      {destinationImageUris.map((_, idx) => (
+                        <View
+                          key={idx}
+                          className={`h-1.5 rounded-full ${
+                            idx === activeImageIndex ? "w-4 bg-white" : "w-1.5 bg-white/60"
+                          }`}
+                        />
+                      ))}
+                    </View>
+                  )}
+                </View>
               ) : (
                 <View className="w-full h-64 bg-gray-200 items-center justify-center rounded-lg">
                   <Ionicons name="image-outline" size={48} color="#ccc" />

@@ -416,17 +416,12 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     </Text>
                   </View>
                 ) : (
-                  <ScrollView
-                    nestedScrollEnabled
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator
-                    style={{ maxHeight: 280 }}
-                  >
+                  <View className="mt-2">
                     {displayUsers.map((user) => {
                       const displayName =
-                        user.fullName || user.username || "User";
+                        user.fullName || user.full_name || user.username || "User";
                       const avatarUrl = resolveUserAvatarUri(
-                        user.avatarUrl,
+                        user.avatarUrl || user.avatar_url,
                         displayName
                       );
                       return (
@@ -445,7 +440,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                         />
                       );
                     })}
-                  </ScrollView>
+                  </View>
                 )}
               </View>
             </View>
@@ -453,7 +448,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
           {/* Bottom Action Bar */}
           {selectedMembers.length > 0 && (
-            <View className="px-4 py-3 bg-white border-t border-gray-200">
+            <View 
+              className="px-4 bg-white border-t border-gray-200"
+              style={{ paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 20, paddingTop: 16 }}
+            >
               <View className="flex-row items-center justify-between">
                 {/* Selected Users */}
                 <View className="flex-row items-center gap-2 flex-1">
@@ -461,13 +459,14 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     className="flex-1"
+                    contentContainerStyle={{ paddingVertical: 8, paddingRight: 8 }}
                   >
                     <View className="flex-row items-center gap-2">
                       {selectedMembers.map((user) => {
                         const displayName =
                           user.fullName || user.username || "User";
                         const chipAvatarUri = resolveUserAvatarUri(
-                          user.avatarUrl,
+                          user.avatarUrl || user.avatar_url,
                           displayName
                         );
                         return (

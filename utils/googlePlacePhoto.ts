@@ -18,7 +18,7 @@
 import { getGoogleMapsApiKey } from "@/config/env";
 
 const PLACES_BASE = "https://places.googleapis.com/v1";
-const FIELD_MASK = "places.name,places.displayName,places.photos";
+const FIELD_MASK = "places.name,places.displayName,places.photos,places.types";
 
 // Types hợp lệ trong Places API (New) — dùng cho Nearby Search fallback
 const SCENIC_TYPES = [
@@ -65,7 +65,7 @@ async function textSearch(
         radius: radiusMeters,
       },
     },
-    maxResultCount: 1,
+    maxResultCount: 5,
   };
 
   try {
@@ -88,10 +88,10 @@ async function textSearch(
     }
 
     const json = (await res.json()) as { places?: NearbyPlaceResult[] };
-    return json.places?.[0] ?? null;
+    return json.places ?? [];
   } catch (err) {
     console.warn("[googlePlacePhoto] textSearch error:", err);
-    return null;
+    return [];
   }
 }
 
@@ -120,7 +120,7 @@ async function nearbySearch(
       },
     },
     includedTypes,
-    maxResultCount: 1,
+    maxResultCount: 5,
   };
 
   try {
@@ -143,9 +143,44 @@ async function nearbySearch(
     }
 
     const json = (await res.json()) as { places?: NearbyPlaceResult[] };
-    return json.places?.[0] ?? null;
+    return json.places ?? [];
   } catch (err) {
     console.warn("[googlePlacePhoto] nearbySearch error:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2.5. Get Place by ID — dùng khi đã có placeId (chính xác nhất)
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /places/{placeId}
+ */
+async function getPlaceById(placeId: string): Promise<NearbyPlaceResult | null> {
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey || !placeId) return null;
+
+  try {
+    const res = await fetch(`${PLACES_BASE}/places/${placeId}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "name,displayName,photos,types",
+      },
+    });
+
+    if (!res.ok) {
+      console.warn(
+        `[googlePlacePhoto] getPlaceById HTTP ${res.status}:`,
+        await res.text()
+      );
+      return null;
+    }
+
+    return (await res.json()) as NearbyPlaceResult;
+  } catch (err) {
+    console.warn("[googlePlacePhoto] getPlaceById error:", err);
     return null;
   }
 }
@@ -164,47 +199,101 @@ function buildPlacePhotoUrl(photoName: string, maxWidthPx: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Lấy URL ảnh đặc trưng của địa điểm.
+ * Lấy danh sách URL ảnh đặc trưng của địa điểm.
  *
  * @param lat           - Vĩ độ
  * @param lon           - Kinh độ
- * @param locationName  - Tên tỉnh / thành / địa điểm (vd: "Bà Rịa Vũng Tàu")
- *                        Nếu có → dùng Text Search để lấy đúng ảnh địa danh.
+ * @param locationName  - Tên tỉnh / thành / địa điểm (vd: "Bắc Kạn")
  * @param maxWidthPx    - Chiều rộng ảnh (mặc định 800)
  * @param radiusMeters  - Bán kính fallback Nearby Search (mặc định 30 000 m)
+ * @param maxPhotos     - Số lượng ảnh tối đa (mặc định 5)
+ * @param placeId       - Google Place ID (nếu có, sẽ dùng trực tiếp không cần search)
  */
-export async function fetchPlacePhotoUrl(
+export async function fetchPlacePhotoUrls(
   lat: number,
   lon: number,
   locationName?: string,
   maxWidthPx = 800,
-  radiusMeters = 30_000
-): Promise<string | null> {
+  radiusMeters = 30_000,
+  maxPhotos = 5,
+  placeId?: string
+): Promise<string[]> {
   try {
-    // typeof guard — tránh lỗi nếu locationName không phải string (vd: undefined từ DTO)
+    // 0. Nếu có placeId, lấy trực tiếp (ưu tiên cao nhất)
+    if (placeId) {
+      const place = await getPlaceById(placeId);
+      if (place?.photos?.length) {
+        return place.photos
+          .slice(0, maxPhotos)
+          .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
+      }
+    }
+
     const safeName =
       typeof locationName === "string" && locationName.trim().length > 0
         ? locationName.trim()
         : undefined;
 
-    let place: NearbyPlaceResult | null = null;
+    let places: NearbyPlaceResult[] = [];
 
-    // 1. Text Search (ưu tiên cao nhất — tìm đúng địa danh theo tên)
+    // 1. Text Search (ưu tiên cao nhất — tìm theo tên)
     if (safeName) {
-      place = await textSearch(safeName, lat, lon, radiusMeters);
+      places = (await textSearch(safeName, lat, lon, radiusMeters)) as any;
     }
 
-    // 2. Nearby Search với scenic types (fallback khi không có tên hoặc text search thất bại)
-    if (!place?.photos?.length) {
-      place = await nearbySearch(lat, lon, radiusMeters, SCENIC_TYPES);
+    // 2. Nearby Search với scenic types (fallback khi không tìm thấy hoặc kết quả không tốt)
+    if (places.length === 0) {
+      places = (await nearbySearch(lat, lon, radiusMeters, SCENIC_TYPES)) as any;
     }
 
-    const photoName = place?.photos?.[0]?.name;
-    if (!photoName) return null;
+    if (places.length === 0) return [];
 
-    return buildPlacePhotoUrl(photoName, maxWidthPx);
+    // 3. Chọn "Place" tốt nhất để lấy ảnh
+    // Ưu tiên: Thực thể hành chính (Tỉnh/Thành phố) > Điểm tham quan > Các loại khác (tránh nhà hàng)
+    const sortedPlaces = [...places].sort((a: any, b: any) => {
+      const aTypes = a.types || [];
+      const bTypes = b.types || [];
+
+      const isAdmin = (t: string[]) =>
+        t.includes("administrative_area_level_1") ||
+        t.includes("locality") ||
+        t.includes("political");
+      const isScenic = (t: string[]) =>
+        t.some((type) => SCENIC_TYPES.includes(type));
+      const isFood = (t: string[]) =>
+        t.includes("restaurant") || t.includes("cafe") || t.includes("food");
+
+      // Trọng số ưu tiên: Admin (100) > Scenic (50) > Food (-100) > Others (0)
+      const getScore = (t: string[]) => {
+        if (isAdmin(t)) return 100;
+        if (isScenic(t)) return 50;
+        if (isFood(t)) return -100;
+        return 0;
+      };
+
+      return getScore(bTypes) - getScore(aTypes);
+    });
+
+    // Lấy ảnh từ thực thể tốt nhất tìm được
+    const bestPlace = sortedPlaces[0];
+    const photos = bestPlace?.photos || [];
+
+    if (photos.length === 0 && sortedPlaces.length > 1) {
+      // Nếu thực thể tốt nhất không có ảnh, thử thực thể tiếp theo
+      for (let i = 1; i < sortedPlaces.length; i++) {
+        if (sortedPlaces[i].photos?.length) {
+          return sortedPlaces[i].photos!
+            .slice(0, maxPhotos)
+            .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
+        }
+      }
+    }
+
+    return photos
+      .slice(0, maxPhotos)
+      .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
   } catch (err) {
-    console.warn("[googlePlacePhoto] fetchPlacePhotoUrl error:", err);
-    return null;
+    console.warn("[googlePlacePhoto] fetchPlacePhotoUrls error:", err);
+    return [];
   }
 }

@@ -44,6 +44,7 @@ export const mockItineraryItems: ItineraryItem[] = [
       airplane: "-",
     },
     timelineIcon: "location",
+    note: "Ben Tre Riverside Resort là một lựa chọn tuyệt vời cho kỳ nghỉ thư giãn với không gian ven sông yên bình, phòng ốc sạch sẽ, tiện nghi cùng đội ngũ nhân viên thân thiện, nhiệt tình. Dù một số khách góp ý về điều hòa cần cải thiện và cách âm chưa tốt, nhưng đa số đều hài lòng với cảnh quan đẹp, ẩm thực ngon và giá cả hợp lý, đặc biệt được khuyên dùng cho các sự kiện hay kỳ nghỉ gia đình.",
   },
   {
     id: "it-3",

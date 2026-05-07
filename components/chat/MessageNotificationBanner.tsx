@@ -2,7 +2,7 @@ import { conversationService } from "@/services/conversations";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { dismissCurrent } from "@/store/slices/messageNotificationSlice";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
-import { useRouter } from "expo-router";
+import { router } from "expo-router";
 import { Image } from "expo-image";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
@@ -28,7 +28,6 @@ function truncateOneLine(text: string, maxLen: number): string {
 
 export function MessageNotificationBanner() {
   const dispatch = useAppDispatch();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const current = useAppSelector((state) => state.messageNotification.queue[0]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,16 +88,25 @@ export function MessageNotificationBanner() {
         // Fallback: vẫn navigate với conversationId, màn chat có thể xử lý
       }
     }
-
     if (groupId) {
+      // Điều hướng đến chat nhóm
       router.push({
         pathname: `/groups/${groupId}/chat` as any,
-        params: { conversationId, scrollToEnd: "1" },
-      } as any);
+        params: {
+          conversationId,
+          scrollToEnd: "1",
+        },
+      });
     } else {
-      router.push({ pathname: `/chat/${conversationId}` as any, params: { scrollToEnd: "1" } } as any);
+      // Điều hướng đến chat 1-1
+      router.push({
+        pathname: `/chat/${conversationId}` as any,
+        params: {
+          scrollToEnd: "1",
+        },
+      });
     }
-  }, [current, dismiss, router]);
+  }, [current, dismiss]);
 
   if (!current) return null;
 

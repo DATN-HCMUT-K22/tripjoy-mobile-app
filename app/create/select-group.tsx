@@ -12,7 +12,7 @@ import { tripTypeIdsToItineraryThemes } from "@/utils/itineraryThemes";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -64,7 +64,6 @@ function SelectGroupScreenHeader({
 }
 
 export default function SelectGroupScreen() {
-  const router = useRouter();
   const params = useLocalSearchParams<{
     createdGroupId?: string;
     autoSelect?: string;

@@ -15,10 +15,14 @@ import { SearchBar } from "@/components/social/SearchBar";
 import { ItineraryCard } from "@/components/group/ItineraryCard";
 import { useItineraries } from "@/hooks/useItineraries";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useTripSetup } from "@/contexts/TripSetupContext";
+import { useItinerary } from "@/contexts/ItineraryContext";
 import type { Itinerary } from "@/types/group";
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const { resetTripData } = useTripSetup();
+  const { resetItinerary } = useItinerary();
 
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
@@ -44,6 +48,8 @@ export default function ExploreScreen() {
   };
 
   const handleCreateNew = () => {
+    resetTripData();
+    resetItinerary();
     router.push("/create");
   };
 

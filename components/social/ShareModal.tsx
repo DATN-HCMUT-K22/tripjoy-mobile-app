@@ -87,11 +87,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       }
 
       // 3. Gửi message với type SHARE_POST
-      const shareUrl = `https://tripjoy.com/post/${postId}`;
       await messageService.sendMessage(groupConversation.id, {
         message_content: postTitle || "Chia sẻ bài viết",
         message_type: "SHARE_POST",
-        share_post_url: shareUrl,
+        shared_post_id: postId,
       });
 
       // 4. Track share count

@@ -13,6 +13,7 @@ import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
 import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
+import { LocationImage } from "@/components/location/LocationImage";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import { fetchPlacePhotoUrl } from "@/utils/googlePlacePhoto";
@@ -84,6 +85,41 @@ const TRANSPORT_DISPLAY_ORDER = [
   "bicycle",
   "airplane",
 ] as const;
+
+function CollapsibleNote({ text }: { text: string }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const maxLength = 120; // Khoảng 3 dòng trên mobile
+
+  if (!text) return null;
+  if (text.length <= maxLength) {
+    return <Text className="text-sm text-gray-600 mb-3">{text}</Text>;
+  }
+
+  return (
+    <View className="mb-3">
+      <Text className="text-sm text-gray-600 leading-5">
+        {expanded ? text : `${text.substring(0, maxLength).trim()}...`}
+        {!expanded && (
+          <Text
+            onPress={() => setExpanded(true)}
+            className="text-emerald-600 font-semibold"
+          >
+            {" "}xem thêm
+          </Text>
+        )}
+      </Text>
+      {expanded && (
+        <TouchableOpacity 
+          onPress={() => setExpanded(false)} 
+          className="mt-1 self-start"
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text className="text-xs text-gray-400 font-medium">Thu gọn</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
 
 function ItineraryItemCard({
   item,
@@ -168,20 +204,17 @@ function ItineraryItemCard({
 
       {/* Card content */}
       <View className="flex-1 rounded-xl overflow-hidden bg-white border border-gray-200">
-        {item.image ? (
-          <Image
-            source={expoImageSourceForGoogleRaster(item.image)}
-            style={{ width: "100%", height: 180 }}
-            contentFit="cover"
-          />
-        ) : (
-          <View
-            className="w-full bg-gray-100 items-center justify-center"
-            style={{ height: 180 }}
-          >
-            <Ionicons name="image-outline" size={40} color="#ccc" />
-          </View>
-        )}
+        <LocationImage
+          location={{
+            id: item.locationId,
+            name: item.name,
+            provider_id: item.locationId.startsWith("ChIJ") ? item.locationId : undefined,
+            provider: item.locationId.startsWith("ChIJ") ? "GOOGLE_MAPS" : undefined,
+            content: item.image, // URL ảnh hiện tại làm fallback
+          }}
+          style={{ width: "100%", height: 180 }}
+          placeholderIcon={getTimelineIcon() as any}
+        />
 
         {/* Content */}
         <View className="px-4 pt-3 pb-2">
@@ -199,6 +232,9 @@ function ItineraryItemCard({
               <Ionicons name="car-outline" size={22} color="#666" />
             </View>
           </View>
+          
+          {/* Mô tả địa điểm / Note */}
+          <CollapsibleNote text={item.note || ""} />
 
           {/* Details: Time, Price, Google Maps */}
           <View className="mb-3">
@@ -546,7 +582,6 @@ export default function ManualItineraryScreen() {
     >
       <ManualItineraryHeader
         onBack={() => {
-          resetItinerary();
           router.back();
         }}
         onHome={exitToHome}

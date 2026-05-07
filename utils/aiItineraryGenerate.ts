@@ -22,12 +22,14 @@ function estimateBudgetTotalVnd(tripData: TripSetupData): number {
     const mid = (tripData.budgetMinVnd + tripData.budgetMaxVnd) / 2;
     return Math.round(mid * pq);
   }
+
   const tierMidPerPerson: Record<string, number> = {
     budget: 7_500_000,
     mid: 15_000_000,
     flexible: 40_000_000,
     luxury: 100_000_000,
   };
+
   const perPerson = tierMidPerPerson[b ?? "mid"] ?? 15_000_000;
   return Math.round(perPerson * pq);
 }

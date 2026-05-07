@@ -100,9 +100,9 @@ export default function CreateTripScreen() {
   }, []);
 
   const [departureLocation, setDepartureLocationState] =
-    useState<Location | null>(null);
+    useState<Location | null>(tripData.departureLocation);
   const [destinationLocation, setDestinationLocationState] =
-    useState<Location | null>(null);
+    useState<Location | null>(tripData.destinationLocation);
   const [departureSearchText, setDepartureSearchText] = useState("");
   const [destinationSearchText, setDestinationSearchText] = useState("");
   const [debouncedDepartureSearchText, setDebouncedDepartureSearchText] = useState("");
@@ -113,9 +113,9 @@ export default function CreateTripScreen() {
   const [isTimeExpanded, setIsTimeExpanded] = useState(true);
   const [isBudgetExpanded, setIsBudgetExpanded] = useState(true);
   const [isTypeExpanded, setIsTypeExpanded] = useState(true);
-  const [selectedTripTypes, setSelectedTripTypes] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState<string | null>(null);
-  const [endDate, setEndDate] = useState<string | null>(null);
+  const [selectedTripTypes, setSelectedTripTypes] = useState<string[]>(tripData.tripTypes);
+  const [startDate, setStartDate] = useState<string | null>(tripData.startDate);
+  const [endDate, setEndDate] = useState<string | null>(tripData.endDate);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const provincesErrorToastShownRef = useRef(false);
@@ -142,7 +142,9 @@ export default function CreateTripScreen() {
     !!endDate &&
     tripData.peopleQuantity >= 1;
 
-  // Reset khi vào màn — đồng bộ context + state local
+  // Gỡ bỏ reset khi focus để giữ lại state khi user quay lại từ màn sau (summary, budget, v.v.)
+  // Reset chỉ nên thực hiện khi bắt đầu luồng mới từ Home.
+  /*
   useFocusEffect(
     useCallback(() => {
       resetTripData();
@@ -161,6 +163,7 @@ export default function CreateTripScreen() {
       setIsTypeExpanded(true);
     }, [resetTripData])
   );
+  */
 
   useEffect(() => {
     if (isProvincesError && !provincesErrorToastShownRef.current) {
@@ -341,8 +344,6 @@ export default function CreateTripScreen() {
       <View className="flex-row items-center border-b border-gray-100 px-2 py-3">
         <TouchableOpacity
           onPress={() => {
-            resetItinerary();
-            resetTripData();
             router.back();
           }}
           className="h-10 w-12 items-center justify-center"

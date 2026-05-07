@@ -12,6 +12,7 @@ interface ItineraryCardProps {
   isFavorite?: boolean;
   showStatus?: boolean;
   status?: string;
+  onDelete?: () => void;
 }
 
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400';
@@ -23,6 +24,7 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({
   isFavorite = false,
   showStatus = false,
   status,
+  onDelete,
 }) => {
   const [scaleAnim] = useState(new Animated.Value(1));
 
@@ -103,6 +105,18 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({
               />
             </TouchableOpacity>
           )}
+
+          {/* Delete Button Overlay */}
+          {onDelete && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={onDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Xóa lịch trình"
+            >
+              <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Details Section */}
@@ -176,6 +190,17 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(239, 68, 68, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },

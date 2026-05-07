@@ -3,7 +3,7 @@ import { notificationService } from "@/services/notification.service";
 import { socketService } from "@/services/socket/socketService";
 import { store } from "@/store";
 import { useChatStore } from "@/stores/chat.store";
-import { ChatMessageResponse } from "@/types/message";
+import { ChatMessageResponse, ConversationResponse, getChatSenderId } from "@/types/message";
 import { useQueryClient } from "@tanstack/react-query";
 import { appStateManager } from "@/utils/appStateManager";
 import { useEffect, useRef } from "react";
@@ -77,10 +77,8 @@ export function useIncomingMessage() {
       const state = store.getState();
       const currentUserId = state.auth.user?.id;
 
-      const senderId =
-        (message as any).sender_id ||
-        (message.sender as any)?.id ||
-        null;
+      const senderId = getChatSenderId(message);
+      const isSelf = currentUserId === senderId;
 
       console.log("\n========== [DEVICE: " + (currentUserId?.substring(0, 8) || "UNKNOWN") + "] ==========");
       console.log("[useIncomingMessage] 📨 Received message:", {
@@ -115,6 +113,38 @@ export function useIncomingMessage() {
           sender: message.sender,
         },
       }));
+
+      // 🔥 React Query: Update conversations list cache for real-time inbox/tab badges
+      queryClient.setQueryData(["conversations"], (oldData: ConversationResponse[] | undefined) => {
+        if (!Array.isArray(oldData)) return oldData;
+        
+        const exists = oldData.some(c => c.id === conversationId);
+        if (!exists) {
+          // If conversation doesn't exist in cache, invalidate to fetch it
+          setTimeout(() => queryClient.invalidateQueries({ queryKey: ["conversations"] }), 0);
+          return oldData;
+        }
+
+        return oldData.map((conv) => {
+          if (conv.id === conversationId) {
+            // Only increment unread if NOT self and NOT in current active chat
+            const shouldIncrement = !isSelf && (!isCurrentChat || !isAppActive);
+            
+            return {
+              ...conv,
+              last_message: {
+                id: message.id,
+                message_content: message.message_content,
+                created_at: message.created_at,
+                sender: message.sender,
+              },
+              unread_count: shouldIncrement ? (conv.unread_count ?? 0) + 1 : 0,
+              updated_at: message.created_at,
+            };
+          }
+          return conv;
+        });
+      });
 
       // If user is in the current chat, don't increase unread or show notification
       if (isCurrentChat && isAppActive) {
@@ -204,71 +234,40 @@ export function useIncomingMessage() {
 
     let isMounted = true;
 
-    const setup = async () => {
-      try {
-        // Kiểm tra authentication trước
-        const state = store.getState();
-        const isAuthenticated = state.auth.isAuthenticated && !!state.auth.user;
-        
-        if (!isAuthenticated) {
-          console.log("[useIncomingMessage] User not authenticated, skipping socket setup");
-          return;
-        }
+    const registerListeners = () => {
+      if (!isMounted) return;
 
-        console.log("[useIncomingMessage] Setting up socket listener...");
-        const latestCurrentChatId = useChatStore.getState().currentChatId;
-        console.log("[useIncomingMessage] Current chat ID:", latestCurrentChatId);
-        console.log("[useIncomingMessage] Socket connected:", socketService.isConnected());
-        
-        if (!socketService.isConnected()) {
-          console.log("[useIncomingMessage] Socket not connected, connecting...");
-          await socketService.connect();
-          console.log("[useIncomingMessage] Socket connected successfully");
-        }
-        
-        if (!isMounted) {
-          console.log("[useIncomingMessage] Component unmounted, skipping listener registration");
-          return;
-        }
-        
-        // Unregister old callback nếu có
-        if (callbackRef.current) {
-          console.log("[useIncomingMessage] Unregistering old callback");
-          socketService.offReceiveMessage(callbackRef.current);
-        }
-        
-        callbackRef.current = handleReceiveMessage;
-        socketService.onReceiveMessage(handleReceiveMessage);
-        
-        console.log("[useIncomingMessage] ✅ Socket listener registered successfully");
-        console.log("[useIncomingMessage] Ready to receive messages");
-        
-        // Đăng ký listener cho socket reconnect để invalidation queries
-        const socket = socketService.getSocket();
-        
-        if (socket) {
-          const onConnect = () => {
-            console.log("[useIncomingMessage] 🔄 Socket connected/reconnected, refreshing data");
-            queryClient.invalidateQueries({ queryKey: ["conversations"] });
-            queryClient.refetchQueries({ queryKey: ["conversations"], type: "active" });
-          };
+      // Unregister old callback nếu có
+      if (callbackRef.current) {
+        socketService.offReceiveMessage(callbackRef.current);
+      }
+      
+      callbackRef.current = handleReceiveMessage;
+      socketService.onReceiveMessage(handleReceiveMessage);
+      
+      console.log("[useIncomingMessage] ✅ Socket listener registered successfully");
 
-          socket.on("connect", onConnect);
-          
-          // Return cleanup function
-          return () => {
-            socket.off("connect", onConnect);
-          };
-        }
-      } catch (error) {
-        console.log(
-          "[useIncomingMessage] Failed to setup socket listener:",
-          error
-        );
+      const socket = socketService.getSocket();
+      if (socket) {
+        const onConnect = () => {
+          console.log("[useIncomingMessage] 🔄 Socket connected/reconnected, refreshing data");
+          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          queryClient.refetchQueries({ queryKey: ["conversations"], type: "active" });
+        };
+        socket.on("connect", onConnect);
+        return () => socket.off("connect", onConnect);
       }
     };
 
-    setup();
+    if (socketService.isConnected()) {
+      registerListeners();
+    } else {
+      const onInitialConnect = () => {
+        registerListeners();
+        socketService.getSocket()?.off("connect", onInitialConnect);
+      };
+      socketService.getSocket()?.on("connect", onInitialConnect);
+    }
 
     return () => {
       isMounted = false;
@@ -288,21 +287,15 @@ export function useIncomingMessage() {
 
     let cancelled = false;
 
-    const setup = async () => {
-      const state = store.getState();
-      if (!state.auth.isAuthenticated || !state.auth.user?.id) return;
-      try {
-        if (!socketService.isConnected()) {
-          await socketService.connect();
-        }
-        if (cancelled) return;
+    if (socketService.isConnected()) {
+      socketService.onNewConversation(handleNewConversation);
+    } else {
+      const onConnect = () => {
         socketService.onNewConversation(handleNewConversation);
-      } catch {
-        /* socket lỗi — inbox vẫn load khi user vào màn */
-      }
-    };
-
-    setup();
+        socketService.getSocket()?.off("connect", onConnect);
+      };
+      socketService.getSocket()?.on("connect", onConnect);
+    }
 
     return () => {
       cancelled = true;

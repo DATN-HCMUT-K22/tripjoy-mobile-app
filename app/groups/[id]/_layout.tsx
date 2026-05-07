@@ -12,6 +12,8 @@ export default function GroupDetailLayout() {
       <Stack.Screen name="info" options={{ headerShown: false }} />
       <Stack.Screen name="members" options={{ headerShown: false }} />
       <Stack.Screen name="edit" options={{ headerShown: false }} />
+      <Stack.Screen name="itineraries" options={{ headerShown: false }} />
+      <Stack.Screen name="suggestions" options={{ headerShown: false }} />
     </Stack>
   );
 }

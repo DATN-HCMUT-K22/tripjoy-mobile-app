@@ -16,6 +16,8 @@ export interface Location {
   /** WGS84 — dùng khi gửi API / bản đồ */
   latitude?: number;
   longitude?: number;
+  provider?: string;
+  provider_id?: string;
 }
 
 export interface TripSetup {

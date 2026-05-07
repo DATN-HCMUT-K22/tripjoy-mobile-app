@@ -25,8 +25,10 @@ import type { ExternalPlaceSnapshot } from "@/types/places";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
 import { locationSearchHitToExternalSnapshot } from "@/utils/mapLocationDtoToTrip";
 import { showErrorToast } from "@/utils/toast";
+import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useCreateLocationSuggestion } from "@/hooks/useLocationSuggestions";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -60,10 +62,12 @@ type ListRow = {
 export default function AddLocationScreen() {
   const router = useRouter();
   const { exitToHome } = useCreateTripExitToHome();
-  const { dayKey, fromScreen, draftLocationIds } = useLocalSearchParams<{
+  const { dayKey, fromScreen, draftLocationIds, groupId, mode } = useLocalSearchParams<{
     dayKey: string;
     fromScreen?: string;
     draftLocationIds?: string;
+    groupId?: string;
+    mode?: string;
   }>();
   const { addLocationsToDay, selectedLocationsByDay, upsertExternalPlaces } =
     useItinerary();
@@ -71,8 +75,13 @@ export default function AddLocationScreen() {
   const { tripData } = useTripSetup();
   const [searchText, setSearchText] = useState("");
 
+  const createSuggestionMutation = useCreateLocationSuggestion(groupId);
+
   const isFromEdit = fromScreen === "adjust";
+  const isSuggestionMode = mode === "suggestion" && !!groupId;
+
   const initialLocationIds = useMemo(() => {
+    if (isSuggestionMode) return [];
     if (isFromEdit && draftLocationIds) {
       try {
         return JSON.parse(draftLocationIds);
@@ -81,7 +90,7 @@ export default function AddLocationScreen() {
       }
     }
     return dayKey ? selectedLocationsByDay[dayKey] || [] : [];
-  }, [isFromEdit, draftLocationIds, dayKey, selectedLocationsByDay]);
+  }, [isFromEdit, draftLocationIds, dayKey, selectedLocationsByDay, isSuggestionMode]);
 
   const [selectedLocationIds, setSelectedLocationIds] =
     useState<string[]>(initialLocationIds);
@@ -105,7 +114,7 @@ export default function AddLocationScreen() {
   }, [searchText]);
 
   const hasGooglePlaces = isGooglePlacesConfigured();
-  const useLiveApi = Boolean(center) && !EXPO_PUBLIC_MOCK_DATA;
+  const useLiveApi = Boolean(center);
   // Backend API first strategy - tránh gọi Google Places trực tiếp để tiết kiệm phí
   const useGooglePlaces = false;
   const useBackendApi = useLiveApi;
@@ -164,10 +173,16 @@ export default function AddLocationScreen() {
           lng: center.longitude,
         });
         if (!isLocationApiSuccess(autocompleteRes.code)) return [];
-        return normalizeAutocompletePayload(autocompleteRes.data);
+        
+        // Filter out administrative regions from autocomplete
+        const raw = normalizeAutocompletePayload(autocompleteRes.data);
+        return raw.filter(h => {
+          const type = h.primary_type || h.maki || "";
+          return !["locality", "political", "administrative_area_level_1", "administrative_area_level_2", "country"].includes(type);
+        });
       }
 
-      const nearbyRes = await nearbyLocations({
+        const nearbyRes = await nearbyLocations({
         lat: center.latitude,
         lng: center.longitude,
         radius: 30000,
@@ -176,7 +191,10 @@ export default function AddLocationScreen() {
       });
       if (isLocationApiSuccess(nearbyRes.code)) {
         const nearbyHits = normalizeSearchPagePayload(nearbyRes.data);
-        return nearbyHits;
+        return nearbyHits.filter(h => {
+          const type = h.location_type || h.maki || "";
+          return type !== "PROVINCE" && type !== "COUNTRY" && !["locality", "political"].includes(type);
+        });
       }
 
       const res = await searchLocations({
@@ -189,7 +207,11 @@ export default function AddLocationScreen() {
         size: 200,
       });
       if (!isLocationApiSuccess(res.code)) return [];
-      return normalizeSearchPagePayload(res.data);
+      const searchHits = normalizeSearchPagePayload(res.data);
+      return searchHits.filter(h => {
+        const type = h.location_type || h.maki || "";
+        return type !== "PROVINCE" && type !== "COUNTRY" && !["locality", "political"].includes(type);
+      });
     },
     enabled: useBackendApi,
     staleTime: 60_000,
@@ -211,7 +233,7 @@ export default function AddLocationScreen() {
       return (
         !suggestion.location_id &&
         suggestion.source === "GOOGLE_MAPS" &&
-        suggestion.provider_id &&
+        !!suggestion.provider_id &&
         typeof suggestion.latitude === "number" &&
         typeof suggestion.longitude === "number"
       );
@@ -293,20 +315,6 @@ export default function AddLocationScreen() {
   }, [tripData.location?.id, searchText]);
 
   const listRows: ListRow[] = useMemo(() => {
-    if (EXPO_PUBLIC_MOCK_DATA || !useLiveApi) {
-      return filteredMockAttractions.map((a) => ({
-        id: a.id,
-        name: a.name,
-        subtitle: a.subtitle,
-        imageUrl: a.image,
-        latitude: a.latitude,
-        longitude: a.longitude,
-        types: [a.category],
-        source: "mock",
-        fromMock: true,
-      }));
-    }
-
     // Backend API data mapping
     return apiHits.map((h) => {
       const isAutocompleteHit = "provider_id" in h;
@@ -325,10 +333,13 @@ export default function AddLocationScreen() {
           providerId: suggestion.provider_id,
           name: suggestion.name,
           subtitle: suggestion.full_address || suggestion.secondary_text || "",
-          imageUrl: "",
+          imageUrl: buildStaticMapImageUrl(
+            [{ latitude: suggestion.latitude, longitude: suggestion.longitude }],
+            { width: 400, height: 400, zoom: 16 }
+          ),
           latitude: suggestion.latitude,
           longitude: suggestion.longitude,
-          types: suggestion.primary_type ? [suggestion.primary_type] : ["point_of_interest"],
+          types: suggestion.primary_type ? [suggestion.primary_type] : ["tourist_attraction"],
           source: "tripjoy",
           fromMock: false,
           sourceLabel: suggestion.source === "DB" ? "TripJoy DB" : (resolvedId ? "Google Maps (đã lưu)" : "Google Maps"),
@@ -347,9 +358,10 @@ export default function AddLocationScreen() {
         imageUrl: snap.imageUrl,
         latitude: snap.latitude,
         longitude: snap.longitude,
-        types: snap.types,
+        types: snap.types && snap.types.length > 0 ? snap.types : ["tourist_attraction"],
         source: "tripjoy",
         fromMock: false,
+        sourceLabel: "TripJoy DB",
       };
     });
   }, [
@@ -370,6 +382,73 @@ export default function AddLocationScreen() {
   };
 
   const handleAddLocations = async () => {
+    if (isSuggestionMode) {
+      try {
+        const selectedRows = listRows.filter(r => selectedLocationIds.includes(r.id));
+        const promises = selectedRows.map(async (row) => {
+          let finalLocationId = row.locationId;
+
+          // Thử resolve nếu chưa có locationId
+          if (
+            !finalLocationId &&
+            (row.providerId || row.fromMock) &&
+            typeof row.latitude === "number" &&
+            typeof row.longitude === "number"
+          ) {
+            try {
+              const resolveRes = await resolveLocation({
+                name: row.name,
+                latitude: row.latitude,
+                longitude: row.longitude,
+                full_address: row.subtitle || undefined,
+                // Nếu là mock hoặc không có source, dùng MAPBOX làm fallback an toàn hơn
+                provider: row.resolveSource || (row.fromMock ? "MAPBOX" : "GOOGLE_MAPS"),
+                provider_id: row.providerId || row.id,
+                maki: row.types?.[0],
+              });
+              if (
+                isLocationApiSuccess(resolveRes.code) &&
+                resolveRes.data &&
+                typeof resolveRes.data.id === "string"
+              ) {
+                finalLocationId = resolveRes.data.id;
+              }
+            } catch (err) {
+              console.warn(`Failed to resolve location ${row.name} for suggestion:`, err);
+            }
+          }
+
+          // Chuẩn bị payload theo docs: chỉ gửi 1 trong 2 trường
+          const payload: any = {
+            notes: undefined,
+          };
+
+          if (finalLocationId) {
+            payload.location_id = finalLocationId;
+          } else {
+            payload.location_data = {
+              provider: row.resolveSource || (row.fromMock ? "MAPBOX" : "GOOGLE_MAPS"),
+              provider_id: row.providerId || row.id,
+              name: row.name,
+              latitude: row.latitude!,
+              longitude: row.longitude!,
+              full_address: row.subtitle,
+              location_type: row.types?.[0] || "POI",
+            };
+          }
+
+          return createSuggestionMutation.mutateAsync(payload);
+        });
+
+        await Promise.all(promises);
+        showSuccessToast("Đã thêm địa điểm gợi ý vào nhóm!");
+        router.back();
+      } catch (err) {
+        showErrorToast("Không thể thêm gợi ý", err);
+      }
+      return;
+    }
+
     const snaps: Record<string, ExternalPlaceSnapshot> = {};
     let idsToCommit = [...selectedLocationIds];
 
@@ -425,7 +504,7 @@ export default function AddLocationScreen() {
           imageUrl: row.imageUrl || "",
           latitude: row.latitude,
           longitude: row.longitude,
-          types: row.types?.length ? row.types : ["point_of_interest"],
+          types: row.types?.length ? row.types : ["tourist_attraction"],
         };
       }
       if (remappedIds.size > 0) {
@@ -459,9 +538,9 @@ export default function AddLocationScreen() {
       return "Không tải được dữ liệu. Vuốt xuống hoặc thử lại sau.";
     }
     if (debouncedSearch.trim()) {
-      return "Không tìm thấy địa điểm phù hợp.";
+      return "Không tìm thấy địa điểm du lịch phù hợp.";
     }
-    return "Chưa có địa điểm nào cho điểm đến này.";
+    return "Chưa có địa điểm gợi ý cho điểm đến này.";
   }, [
     EXPO_PUBLIC_MOCK_DATA,
     useLiveApi,
@@ -470,174 +549,182 @@ export default function AddLocationScreen() {
     debouncedSearch,
   ]);
 
-  const hintUnderSearch =
-    EXPO_PUBLIC_MOCK_DATA || !useLiveApi
-      ? null
-      : "Không nhập từ khóa: Nearby. Nhập từ khóa >= 2 ký tự: Autocomplete (DB/Google).";
-
   return (
     <SafeAreaView
       className="flex-1 bg-white"
       edges={["top", "left", "right", "bottom"]}
     >
-      <View className="flex-row items-center border-b border-gray-200 px-2 py-3">
+      <View className="flex-row items-center border-b border-gray-100 px-4 py-3">
         <TouchableOpacity
           onPress={() => router.back()}
-          className="h-10 w-12 items-center justify-center"
+          className="h-10 w-10 items-center justify-center rounded-full bg-gray-50"
           activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="arrow-back-outline" size={24} color="#000" />
+          <Ionicons name="chevron-back" size={24} color="#333" />
         </TouchableOpacity>
-        <View className="min-w-0 flex-1 items-center justify-center px-1">
-          <Text
-            className="text-center text-xl font-bold text-black"
-            numberOfLines={1}
-          >
+        <View className="flex-1 items-center">
+          <Text className="text-lg font-bold text-gray-900">
             Thêm địa điểm
           </Text>
         </View>
         <TouchableOpacity
           onPress={exitToHome}
-          className="h-10 w-12 items-center justify-center"
+          className="h-10 w-10 items-center justify-center rounded-full bg-emerald-50"
           activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="home-outline" size={22} color="#34B27D" />
+          <Ionicons name="home" size={20} color="#34B27D" />
         </TouchableOpacity>
       </View>
 
-      <View className="px-4 py-3 border-b border-gray-200">
-        <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2.5">
-          <Ionicons name="search-outline" size={20} color="#666" />
+      <View className="px-4 py-4">
+        <View className="flex-row items-center bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 shadow-sm">
+          <Ionicons name="search" size={20} color="#999" />
           <TextInput
-            className="flex-1 ml-2 text-base text-gray-800"
-            placeholder="Lọc theo tên…"
+            className="flex-1 ml-3 text-base text-gray-800"
+            placeholder="Tìm địa điểm du lịch..."
             placeholderTextColor="#999"
             value={searchText}
             onChangeText={setSearchText}
             returnKeyType="search"
           />
+          {searchText.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchText("")}>
+              <Ionicons name="close-circle" size={20} color="#ccc" />
+            </TouchableOpacity>
+          )}
         </View>
-      
-        {!useLiveApi && !EXPO_PUBLIC_MOCK_DATA ? (
-          <Text className="text-xs text-gray-500 mt-2">
-            Điểm đến chưa có tọa độ — đang dùng danh sách mẫu theo tỉnh.
-          </Text>
-        ) : null}
       </View>
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="px-4 py-2">
-          {useLiveApi && tripjoyLoading && listRows.length === 0 ? (
-            <View className="py-16 items-center">
-              <ActivityIndicator size="large" color="#34B27D" />
-              <Text className="text-gray-500 mt-3 text-center">
-                Đang tải địa điểm…
-              </Text>
+      <ScrollView 
+        className="flex-1" 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+      >
+        {useLiveApi && tripjoyLoading && listRows.length === 0 ? (
+          <View className="py-20 items-center">
+            <ActivityIndicator size="large" color="#34B27D" />
+            <Text className="text-gray-400 mt-4 font-medium">Đang tìm kiếm...</Text>
+          </View>
+        ) : listRows.length === 0 ? (
+          <View className="py-20 items-center">
+            <View className="bg-gray-50 p-6 rounded-full">
+              <Ionicons name="map-outline" size={48} color="#ddd" />
             </View>
-          ) : listRows.length === 0 ? (
-            <View className="py-8 items-center px-2">
-              <Ionicons name="location-outline" size={48} color="#ccc" />
-              <Text className="text-gray-500 mt-4 text-center">
-                {emptyMessage}
-              </Text>
-              {useLiveApi && poiIsError ? (
-                <TouchableOpacity
-                  className="mt-4 px-5 py-2 rounded-full bg-emerald-50 border border-emerald-200"
-                  onPress={() => void refetchPoi()}
-                  activeOpacity={0.8}
-                >
-                  <Text className="text-sm font-semibold text-emerald-700">
-                    Thử lại
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : (
-            listRows.map((row) => {
-              const isSelected = selectedLocationIds.includes(row.id);
-              return (
-                <TouchableOpacity
-                  key={row.fromMock ? `mock-${row.id}` : row.id}
-                  activeOpacity={0.7}
-                  onPress={() => toggleLocation(row.id)}
-                  className="flex-row items-center py-3 border-b border-gray-100"
-                >
+            <Text className="text-gray-500 mt-6 text-center text-lg font-medium px-10 leading-6">
+              {emptyMessage}
+            </Text>
+            {useLiveApi && poiIsError ? (
+              <TouchableOpacity
+                className="mt-6 px-8 py-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200"
+                onPress={() => void refetchPoi()}
+                activeOpacity={0.8}
+              >
+                <Text className="text-white font-bold">Thử lại</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : (
+          listRows.map((row) => {
+            const isSelected = selectedLocationIds.includes(row.id);
+            const primaryType = row.types?.[0]?.replace(/_/g, " ") || "Địa điểm";
+            
+            return (
+              <TouchableOpacity
+                key={row.fromMock ? `mock-${row.id}` : row.id}
+                activeOpacity={0.85}
+                onPress={() => toggleLocation(row.id)}
+                className={`flex-row items-center p-3 mb-3 rounded-2xl border ${
+                  isSelected 
+                    ? "bg-emerald-50/50 border-emerald-200 shadow-sm" 
+                    : "bg-white border-gray-100 shadow-sm shadow-gray-100"
+                }`}
+              >
+                <View className="relative">
                   {row.imageUrl ? (
                     <Image
                       source={expoImageSourceForGoogleRaster(row.imageUrl)}
-                      style={{ width: 80, height: 80, borderRadius: 8 }}
+                      style={{ width: 84, height: 84, borderRadius: 16 }}
                       contentFit="cover"
                     />
                   ) : (
                     <View
-                      className="bg-gray-100 items-center justify-center rounded-lg"
-                      style={{ width: 80, height: 80 }}
+                      className="bg-gray-50 items-center justify-center rounded-2xl"
+                      style={{ width: 84, height: 84 }}
                     >
-                      <Ionicons
-                        name="image-outline"
-                        size={28}
-                        color="#ccc"
-                      />
+                      <Ionicons name="image" size={32} color="#eee" />
                     </View>
                   )}
-
-                  <View className="flex-1 ml-3 min-w-0">
-                    <Text
-                      className="text-base font-bold text-black mb-1"
-                      numberOfLines={2}
-                    >
-                      {row.name}
-                    </Text>
-                    <Text
-                      className="text-sm text-gray-600"
-                      numberOfLines={2}
-                    >
-                      {row.subtitle}
-                    </Text>
-                    <View className="mt-1 flex-row items-center">
-                      <View
-                        className={`rounded-full px-2 py-0.5 ${
-                          row.source === "google"
-                            ? "bg-emerald-50"
-                            : row.source === "tripjoy"
-                              ? "bg-sky-50"
-                              : "bg-gray-100"
-                        }`}
-                      >
-                      
-                      </View>
+                  {isSelected && (
+                    <View className="absolute -top-1 -right-1 bg-emerald-500 rounded-full border-2 border-white p-0.5">
+                      <Ionicons name="checkmark" size={14} color="white" />
                     </View>
-                  </View>
+                  )}
+                </View>
 
-                  <View className="ml-3">
-                    {isSelected ? (
-                      <View className="w-10 h-10 rounded-full bg-primary items-center justify-center">
-                        <Ionicons name="checkmark" size={20} color="#ffffff" />
-                      </View>
-                    ) : (
-                      <View className="w-10 h-10 rounded-full bg-[#D1FAE5] items-center justify-center">
-                        <Ionicons name="add" size={20} color="#34B27D" />
-                      </View>
+                <View className="flex-1 ml-4 py-1">
+                  <Text
+                    className={`text-[16px] font-bold mb-1 ${isSelected ? "text-emerald-900" : "text-gray-900"}`}
+                    numberOfLines={1}
+                  >
+                    {row.name}
+                  </Text>
+                  <Text
+                    className="text-xs text-gray-500 mb-2 leading-4"
+                    numberOfLines={2}
+                  >
+                    {row.subtitle}
+                  </Text>
+                  
+                  <View className="flex-row items-center">
+                    <View className="bg-gray-100 px-2 py-0.5 rounded-md mr-2">
+                      <Text className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                        {primaryType}
+                      </Text>
+                    </View>
+                    {row.sourceLabel && (
+                      <Text className="text-[10px] text-gray-400">
+                        {row.sourceLabel}
+                      </Text>
                     )}
                   </View>
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </View>
+                </View>
+
+                <View className="ml-2">
+                  <View className={`w-10 h-10 rounded-full items-center justify-center ${
+                    isSelected ? "bg-emerald-500" : "bg-gray-50"
+                  }`}>
+                    <Ionicons 
+                      name={isSelected ? "checkmark" : "add"} 
+                      size={20} 
+                      color={isSelected ? "white" : "#34B27D"} 
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
       </ScrollView>
 
-      <View className="px-4 py-4 border-t border-gray-200 bg-white">
+      <View className="px-6 py-5 border-t border-gray-100 bg-white">
         <TouchableOpacity
-          activeOpacity={0.8}
-          className="bg-primary rounded-full py-4 items-center justify-center"
+          activeOpacity={0.9}
+          className={`rounded-2xl py-4 items-center justify-center shadow-lg ${
+            selectedLocationIds.length > 0 ? "bg-emerald-500 shadow-emerald-200" : "bg-gray-200 shadow-none"
+          }`}
           onPress={handleAddLocations}
+          disabled={selectedLocationIds.length === 0}
         >
-          <Text className="text-white text-base font-semibold">
-            Thêm địa điểm
-          </Text>
+          <View className="flex-row items-center">
+            <Text className="text-white text-base font-bold">
+              {selectedLocationIds.length > 0 
+                ? `Thêm ${selectedLocationIds.length} địa điểm` 
+                : "Chọn địa điểm"}
+            </Text>
+            {selectedLocationIds.length > 0 && (
+              <Ionicons name="arrow-forward" size={18} color="white" style={{ marginLeft: 8 }} />
+            )}
+          </View>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

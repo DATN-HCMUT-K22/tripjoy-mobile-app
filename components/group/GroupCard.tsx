@@ -16,7 +16,7 @@ interface GroupCardProps {
 export const GroupCard: React.FC<GroupCardProps> = ({ group, conversation }) => {
   const router = useRouter();
   const memberCount = (group as any).memberCount ?? group.members?.length ?? 0;
-  const itineraryCount = (group as any).itineraryCount ?? 0;
+  const itineraryCount = group.iti_count ?? (group as any).itineraryCount ?? 0;
   const hasData = itineraryCount > 0 || memberCount > 0;
   const initial = group.name.charAt(0).toUpperCase();
   const avatarUri = normalizeAvatarUri(group.avatar);

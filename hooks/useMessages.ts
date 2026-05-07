@@ -1,11 +1,9 @@
 import { messageService } from "@/services/messages";
 import { socketService } from "@/services/socket/socketService";
 import { useAppSelector } from "@/store/hooks";
-import {
-  ChatMessageResponse,
-  TypingUser,
-  getChatSenderId,
-} from "@/types/message";
+import { localUnpinnedCache } from "./usePinnedMessages";
+import { ChatMessageResponse, TypingUser, getChatSenderId } from "@/types/message";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
@@ -31,6 +29,7 @@ interface UseMessagesReturn {
     messageType?: "TEXT" | "IMAGE" | "VIDEO" | "SHARE_POST";
     mediaUrl?: string;
     sharePostUrl?: string;
+    sharedPostId?: string;
     parentMessageId?: string;
   }) => Promise<ChatMessageResponse | null>;
   /**
@@ -59,6 +58,7 @@ interface UseMessagesReturn {
 export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
   const { conversationId, autoLoad = true, pageSize = 20 } = options;
   const currentUser = useAppSelector((state) => state.auth.user);
+  const queryClient = useQueryClient();
 
   const [messages, setMessages] = useState<ChatMessageResponse[]>([]);
   const [loading, setLoading] = useState(false);
@@ -272,6 +272,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         messageType?: "TEXT" | "IMAGE" | "VIDEO" | "SHARE_POST";
         mediaUrl?: string;
         sharePostUrl?: string;
+        sharedPostId?: string;
         parentMessageId?: string;
       }
     ): Promise<ChatMessageResponse | null> => {
@@ -285,6 +286,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         message_content: content,
         media_url: options?.mediaUrl,
         share_post_url: options?.sharePostUrl,
+        shared_post_id: options?.sharedPostId,
         is_bot: false,
         status: "SENDING",
         sender_id: currentUser?.id || "",
@@ -316,6 +318,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
           message_type: options?.messageType || "TEXT",
           media_url: options?.mediaUrl,
           share_post_url: options?.sharePostUrl,
+          shared_post_id: options?.sharedPostId,
           parent_message_id: options?.parentMessageId,
         };
 
@@ -502,7 +505,24 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
       try {
         const response = await messageService.pinMessage(messageId, conversationId);
         if (response.code === 1000 || response.code === 0) {
-          // Refetch pinned do Screen gọi usePinnedMessages.refetch
+          // Xóa khỏi local unpinned cache nếu có
+          localUnpinnedCache.delete(messageId);
+          
+          // 🔥 Optimistic: Thêm tin nhắn vào cache danh sách đã ghim ngay lập tức
+          const msgToPin = messagesRef.current.find(m => m.id === messageId);
+          if (msgToPin) {
+            queryClient.setQueryData<ChatMessageResponse[]>(
+              ["pinned-messages", conversationId],
+              (prev) => {
+                const list = Array.isArray(prev) ? prev : [];
+                if (list.some(m => m.id === messageId)) return list;
+                return [msgToPin, ...list];
+              }
+            );
+          }
+          
+          // Vẫn gọi invalidate để BE sync lại khi cache của họ hết hạn
+          queryClient.invalidateQueries({ queryKey: ["pinned-messages", conversationId] });
         } else {
           setMessages((prev) =>
             prev.map((m) =>
@@ -532,12 +552,26 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
       try {
         const response = await messageService.unpinMessage(messageId, conversationId);
         if (response.code === 1000 || response.code === 0) {
+          // Thêm vào local unpinned cache để bypass BE cache
+          localUnpinnedCache.add(messageId);
+
+          // 🔥 Optimistic: Xóa tin nhắn khỏi cache danh sách đã ghim ngay lập tức
+          queryClient.setQueryData<ChatMessageResponse[]>(
+            ["pinned-messages", conversationId],
+            (prev) => {
+              if (!Array.isArray(prev)) return prev;
+              return prev.filter(m => m.id !== messageId);
+            }
+          );
+
           // Cập nhật local state; realtime qua socket update_pin sẽ đồng bộ thêm
           setMessages((prev) =>
             prev.map((m) =>
               m.id === messageId ? { ...m, is_pinned: false } : m
             )
           );
+          
+          queryClient.invalidateQueries({ queryKey: ["pinned-messages", conversationId] });
         } else {
           throw new Error(response.message || "Failed to unpin message");
         }
@@ -568,37 +602,25 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
     console.log(`[useMessages] Setting up socket for conversation: ${conversationId}`);
     console.log(`[useMessages] Socket connected: ${socketService.isConnected()}`);
 
-    // Join conversation khi mount hoặc khi socket vừa connect
     const ensureJoinConversation = () => {
       const isConnected = socketService.isConnected();
-      console.log(`[useMessages] ensureJoinConversation called, socket connected: ${isConnected}`);
       if (isConnected && conversationId) {
         console.log(`[useMessages] Calling joinConversation for: ${conversationId}`);
         socketService.joinConversation(conversationId);
-      } else {
-        console.warn(`[useMessages] Cannot join conversation - socket not connected or no conversationId`);
       }
     };
 
     if (socketService.isConnected()) {
-      console.log("[useMessages] Socket already connected, joining conversation immediately");
       ensureJoinConversation();
     } else {
-      console.log("[useMessages] Socket not connected, connecting first...");
-      socketService
-        .connect()
-        .then(() => {
-          console.log("[useMessages] Socket connected successfully, joining conversation");
-          ensureJoinConversation();
-        })
-        .catch((err) => {
-          console.error("[useMessages] Failed to connect socket:", err);
-        });
+      console.log("[useMessages] Socket not connected, waiting for global initialization to join conversation...");
+      // The 'onSocketConnect' listener below will handle joining when connected
     }
 
-    // Re-join room khi socket reconnect (để thiết bị kia vẫn nhận typing)
+    // Re-join room khi socket reconnect hoặc connect lần đầu
     const sock = socketService.getSocket();
     const onSocketConnect = () => {
+      console.log("[useMessages] Socket connected event, joining conversation");
       ensureJoinConversation();
     };
     if (sock) {
@@ -606,7 +628,16 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
     }
 
     // Handler cho message mới
-    const handleReceiveMessage = (message: ChatMessageResponse) => {
+    const handleReceiveMessage = (rawMessage: any) => {
+      // Chuẩn hóa dữ liệu (BE có thể trả camelCase hoặc snake_case)
+      const message: ChatMessageResponse = {
+        ...rawMessage,
+        id: rawMessage.id || rawMessage.messageId,
+        conversation_id: rawMessage.conversation_id || rawMessage.conversationId,
+        sender_id: rawMessage.sender_id || rawMessage.senderId,
+        is_bot: rawMessage.is_bot ?? rawMessage.isBot ?? false,
+      };
+
       // Chỉ thêm message nếu thuộc conversation hiện tại
       if (message.conversation_id === conversationIdRef.current) {
         setMessages((prev) => {

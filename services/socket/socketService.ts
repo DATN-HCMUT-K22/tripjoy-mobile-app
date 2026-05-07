@@ -1,1002 +1,363 @@
+import { io, Socket } from "socket.io-client";
 import { EXPO_PUBLIC_API_URL } from "@/config/env";
 import { store } from "@/store";
-import { ChatMessageResponse, ConversationResponse } from "@/types/message";
 import { storage } from "@/utils/storage";
-import { io, Socket } from "socket.io-client";
 import { setConnectionStatus } from "@/store/slices/conversationSlice";
+import { handleRefreshToken } from "@/services/http/client";
 
+// Define event interfaces for better type safety
 export interface ServerToClientEvents {
-  receive_message: (message: ChatMessageResponse) => void;
-  user_typing: (payload: string | { userId: string; conversationId?: string }) => void;
-  user_stop_typing: (payload: string | { userId: string; conversationId?: string }) => void;
+  receive_message: (message: any) => void;
+  notification: (notification: any) => void;
+  new_conversation: (payload: any) => void;
+  user_typing: (userId: string) => void;
+  user_stop_typing: (userId: string) => void;
   update_like: (messageId: string, userId: string, isLiked: boolean) => void;
   update_pin: (messageId: string, userId: string, isPinned: boolean) => void;
-  notification: (notification: NotificationObject) => void;
-  /** Khi được thêm vào hội thoại DIRECT mới */
-  new_conversation: (conversation: ConversationResponse) => void;
-  /** Khi có người like post */
-  post_liked: (payload: PostLikedEvent) => void;
-  /** Khi post được update (like/comment count changes) */
-  post_updated: (payload: PostUpdatedEvent) => void;
-  error: (error: ErrorResponse) => void;
+  error: (error: any) => void;
 }
 
 export interface ClientToServerEvents {
   join_conversation: (conversationId: string) => void;
   leave_conversation: (conversationId: string) => void;
+  join_room: (room: string) => void;
+  leave_room: (room: string) => void;
+  send_message: (message: any) => void;
   typing: (conversationId: string) => void;
   stop_typing: (conversationId: string) => void;
 }
 
-export interface ErrorResponse {
-  type: string;
-  message: string;
-  timestamp: number;
-}
-
 export interface NotificationObject {
   id: string;
-  type: string;
   title: string;
   message: string;
-  data?: Record<string, any>;
-  created_at: string;
+  data?: any;
+  type?: string;
 }
-
-export interface PostLikedEvent {
-  postId: string;
-  likerId: string;
-  likerName: string;
-  likerAvatar: string | null;
-  postCreatorId: string;
-  totalLikes: number;
-}
-
-export interface PostUpdatedEvent {
-  postId: string;
-  likes: number;
-  comments: number;
-  shares: number;
-}
-
-// Re-export ChatMessageResponse từ types
-export type { ChatMessageResponse };
 
 class SocketService {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
   private isConnecting = false;
-  private reconnectAttempts = 0;
+  private connectionPromise: Promise<void> | null = null;
+  private authRetryCount = 0; 
   private maxReconnectAttempts = Infinity;
-  
-  // Callback arrays để quản lý nhiều listeners cho từng event
-  private messageCallbacks: Set<(message: ChatMessageResponse) => void> = new Set();
-  private typingCallbacks: Set<(userId: string, conversationId?: string) => void> = new Set();
-  private stopTypingCallbacks: Set<(userId: string, conversationId?: string) => void> = new Set();
-  private likeUpdateCallbacks: Set<
-    (messageId: string, userId: string, isLiked: boolean) => void
-  > = new Set();
-  private pinUpdateCallbacks: Set<
-    (messageId: string, userId: string, isPinned: boolean) => void
-  > = new Set();
-  private notificationCallbacks: Set<(notification: NotificationObject) => void> = new Set();
-  private newConversationCallbacks: Set<(conversation: ConversationResponse) => void> = new Set();
-  private postLikedCallbacks: Set<(payload: PostLikedEvent) => void> = new Set();
-  private postUpdatedCallbacks: Set<(payload: PostUpdatedEvent) => void> = new Set();
-
-  // Flags để đảm bảo chỉ đăng ký socket listener một lần
-  private isMessageListenerRegistered = false;
-  private isTypingListenerRegistered = false;
-  private isStopTypingListenerRegistered = false;
-  private isLikeUpdateListenerRegistered = false;
-  private isPinUpdateListenerRegistered = false;
-  private isNotificationListenerRegistered = false;
-  private isNewConversationListenerRegistered = false;
-  private isPostLikedListenerRegistered = false;
-  private isPostUpdatedListenerRegistered = false;
+  private currentToken: string | null = null;
 
   /**
    * Kết nối với Socket.IO server
    */
   async connect(): Promise<void> {
-    // Tránh kết nối nhiều lần
+    // Lấy token và user info mới nhất từ Store/Storage
+    const state = store.getState();
+    const accessToken = state.auth.accessToken || (await storage.getAccessToken());
+    const userId = state.auth.user?.id;
+
+    // NẾU KHÔNG CÓ TOKEN: Ngừng ngay
+    if (!accessToken || !userId) {
+      console.warn("⚠️ [SOCKET] Connection aborted: No access token or userId found.");
+      this.isConnecting = false;
+      store.dispatch(setConnectionStatus('disconnected'));
+      return;
+    }
+
+    // TRƯỜNG HỢP TOKEN THAY ĐỔI (Ví dụ: sau khi Refresh Token từ HTTP request)
+    if (this.socket && this.currentToken !== accessToken) {
+      console.log("🔄 [SOCKET] Token changed, updating socket configuration...");
+      this.currentToken = accessToken;
+      this.socket.io.opts.query = { 
+        ...this.socket.io.opts.query, 
+        token: accessToken 
+      };
+      
+      // Nếu đang kết nối, force reconnect với token mới
+      if (this.socket.connected) {
+        // socket.io-client sẽ tự dùng opts mới khi reconnect
+        this.socket.disconnect().connect();
+      }
+      return;
+    }
+
+    // Tránh kết nối nhiều lần khi đã connected và token không đổi
     if (this.socket?.connected) {
-      console.log("Socket already connected");
-      store.dispatch(setConnectionStatus("connected"));
-      return;
-    }
-    if (this.isConnecting) {
-      console.log("Socket is connecting...");
       return;
     }
 
-    let connectUrl = "N/A";
-    try {
-      this.isConnecting = true;
+    // Nếu đang có một tiến trình kết nối diễn ra, hãy đợi nó
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
 
-      // Lấy token và user info từ Redux hoặc storage
-      const state = store.getState();
-      const accessToken = state.auth.accessToken || (await storage.getAccessToken());
-      const userId = state.auth.user?.id;
-
-      if (!accessToken) {
-        throw new Error("No access token found. Please login first.");
-      }
-
-      if (!userId) {
-        throw new Error("No user ID found. Please login first.");
-      }
-
-      // Parse API URL để lấy base URL (bỏ /api/v1)
-      const baseUrl = EXPO_PUBLIC_API_URL.replace(/\/api\/v1$/, "");
-      
-      if (!baseUrl) {
-        throw new Error("EXPO_PUBLIC_API_URL is not set");
-      }
-
-      // Sử dụng URL constructor để parse đúng
-      let apiUrl: URL;
+    // Khởi tạo tiến trình kết nối mới
+    this.connectionPromise = (async () => {
       try {
-        apiUrl = new URL(baseUrl);
-      } catch {
-        throw new Error(`Invalid API URL format: ${baseUrl}`);
-      }
+        this.isConnecting = true;
+        this.currentToken = accessToken;
 
-      // Tạo WebSocket URL từ HTTP URL
-      // Socket.IO chạy trên port 8085 (theo API doc)
-      const protocol = apiUrl.protocol === "https:" ? "wss" : "ws";
-      const host = apiUrl.hostname;
-      const socketPort = "8085";
-      
-      // Tạo connect URL
-      connectUrl = `${protocol}://${host}:${socketPort}`;
-
-      const timestamp = new Date().toISOString();
-      console.log("\n========== SOCKET.IO CONNECTION ==========");
-      console.log(`[${timestamp}] Connecting to Socket.IO server`);
-      console.log(`Connect URL: ${connectUrl}`);
-      console.log(`Base API URL: ${baseUrl}`);
-      console.log(`Protocol: ${protocol}`);
-      console.log(`Host: ${host}`);
-      console.log(`Port: ${socketPort}`);
-      console.log(`Token: ${accessToken.substring(0, 20)}...`);
-      console.log(`User ID: ${userId}`);
-      console.log("==========================================\n");
-
-      // Tạo socket connection với query params
-      this.socket = io(connectUrl, {
-        query: {
-          token: accessToken,
-          userId: userId,
-        },
-        transports: ["websocket", "polling"], // Theo API doc
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        reconnectionAttempts: this.maxReconnectAttempts,
-        timeout: 20000,
-      });
-
-      // Setup event listeners
-      this.setupEventListeners();
-
-      // Đợi kết nối thành công
-      await new Promise<void>((resolve, reject) => {
-        if (!this.socket) {
-          reject(new Error("Socket is null"));
-          return;
+        // Cleanup existing socket before creating a new one to prevent zombie connections
+        if (this.socket) {
+          console.log("[SOCKET] Cleaning up existing socket instance...");
+          this.socket.removeAllListeners();
+          this.socket.disconnect();
+          this.socket = null;
         }
 
-        const timeout = setTimeout(() => {
-          reject(new Error("Connection timeout"));
-        }, 20000);
+        const baseUrl = EXPO_PUBLIC_API_URL.replace(/\/api\/v1$/, "");
+        const apiUrl = new URL(baseUrl);
+        const socketProtocol = apiUrl.protocol === "https:" ? "https" : "http";
+        const host = apiUrl.hostname;
+        const socketPort = "8085";
+        const connectUrl = `${socketProtocol}://${host}:${socketPort}`;
 
-        this.socket.on("connect", () => {
-          clearTimeout(timeout);
-          const timestamp = new Date().toISOString();
-          console.log("\n✅ [SOCKET] Connection Success");
-          console.log(`[${timestamp}] Socket ID: ${this.socket?.id}`);
-          console.log(`Connect URL: ${connectUrl}`);
-          console.log("==========================================\n");
-          this.reconnectAttempts = 0;
-          this.isConnecting = false;
-          
-          // Update Redux state
-          store.dispatch(setConnectionStatus('connected'));
-          
-          resolve();
+        console.log(`[SOCKET] Connecting to: ${connectUrl}`);
+        console.log(`[SOCKET] User ID: ${userId}`);
+        console.log(`[SOCKET] Token Preview: ${accessToken.substring(0, 15)}...`);
+
+        // Khởi tạo socket
+        this.socket = io(connectUrl, {
+          query: {
+            token: accessToken,
+            userId: userId,
+          },
+          transports: ["websocket"], // Skip polling for better performance and to avoid XHR polling errors
+          forceNew: true,
+          reconnection: true,
+          reconnectionDelay: 2000,
+          reconnectionDelayMax: 10000,
+          reconnectionAttempts: 5,
+          timeout: 20000,
         });
 
-        this.socket.on("connect_error", (error) => {
-          clearTimeout(timeout);
-          const timestamp = new Date().toISOString();
-          console.error("\n❌ [SOCKET] Connection Error");
-          console.error(`[${timestamp}] Error Message:`, error.message);
-          console.error(`Error Name:`, error.name);
-          console.error(`Error Type:`, (error as any).type);
-          console.error(`Error Description:`, (error as any).description);
-          console.error(`Connect URL:`, connectUrl);
-          console.error(`Full Error:`, error);
-          console.error("==========================================\n");
-          this.isConnecting = false;
-          reject(error);
+        // Setup event listeners
+        this.setupEventListeners();
+
+        // Đợi kết nối thành công
+        await new Promise<void>((resolve, reject) => {
+          if (!this.socket) return reject(new Error("Socket is null"));
+
+          const timeoutId = setTimeout(() => {
+            reject(new Error("Connection timeout"));
+          }, 25000);
+
+          this.socket.on("connect", () => {
+            clearTimeout(timeoutId);
+            console.log("✅ [SOCKET] Connected successfully!");
+            this.authRetryCount = 0;
+            this.isConnecting = false;
+            store.dispatch(setConnectionStatus('connected'));
+            resolve();
+          });
+
+          this.socket.on("connect_error", async (error) => {
+            console.error("❌ [SOCKET] Connect Error:", error.message);
+            
+            const isAuthError = this.checkIsAuthError(error);
+            if (isAuthError) {
+              if (this.authRetryCount < 3) {
+                console.log(`⚠️ [SOCKET] Auth failed (attempt ${this.authRetryCount + 1}), refreshing token...`);
+                try {
+                  this.authRetryCount++;
+                  const newToken = await handleRefreshToken();
+                  if (this.socket) {
+                    this.currentToken = newToken;
+                    this.socket.io.opts.query = { ...this.socket.io.opts.query, token: newToken };
+                    this.socket.connect();
+                    return; 
+                  }
+                } catch (refreshError) {
+                  console.error("❌ [SOCKET] Token refresh failed:", refreshError);
+                }
+              } else {
+                console.error("⛔ [SOCKET] Fatal Auth Error: Giving up to avoid server spam.");
+                this.socket?.disconnect();
+                this.isConnecting = false;
+                store.dispatch(setConnectionStatus('disconnected'));
+                clearTimeout(timeoutId);
+                reject(error);
+                return;
+              }
+            }
+          });
         });
-      });
-    } catch (error: any) {
-      this.isConnecting = false;
-      const timestamp = new Date().toISOString();
-      console.error("\n❌ [SOCKET] Failed to connect");
-      console.error(`[${timestamp}] Error Name:`, error.name);
-      console.error(`Error Message:`, error.message);
-      console.error(`Error Stack:`, error.stack);
-      console.error("==========================================\n");
-      throw error;
-    }
+      } catch (error: any) {
+        this.isConnecting = false;
+        console.error("❌ [SOCKET] Connection failed:", error.message);
+        throw error;
+      } finally {
+        this.connectionPromise = null;
+      }
+    })();
+
+    return this.connectionPromise;
   }
 
-  /**
-   * Setup các event listeners cơ bản
-   */
   private setupEventListeners(): void {
     if (!this.socket) return;
 
-    // Kết nối thành công
-    this.socket.on("connect", () => {
-      const timestamp = new Date().toISOString();
-      console.log(`\n✅ [SOCKET] Connected [${timestamp}]`);
-      console.log(`Socket ID: ${this.socket?.id}`);
-      console.log("==========================================\n");
-      this.reconnectAttempts = 0;
-      store.dispatch(setConnectionStatus('connected'));
-    });
-
-    // Ngắt kết nối
     this.socket.on("disconnect", (reason) => {
-      const timestamp = new Date().toISOString();
-      console.log(`\n⚠️ [SOCKET] Disconnected [${timestamp}]`);
-      console.log(`Reason: ${reason}`);
-
-      // Update Redux state
+      console.log(`⚠️ [SOCKET] Disconnected. Reason: ${reason}`);
       store.dispatch(setConnectionStatus('disconnected'));
-
-      // Nếu disconnect do lỗi, thử reconnect
+      
       if (reason === "io server disconnect") {
-        // Server force disconnect, không reconnect tự động
-        console.log("Type: Server force disconnected");
-      } else if (reason === "io client disconnect") {
-        // Client tự disconnect, không reconnect
-        console.log("Type: Client disconnected");
-      } else {
-        // Lỗi khác, sẽ tự động reconnect
-        console.log("Type: Connection lost, will reconnect...");
+        console.warn("[SOCKET] Server kicked the client. Manual reconnect might be required.");
       }
-      console.log("==========================================\n");
     });
 
-    // Lỗi kết nối
-    this.socket.on("connect_error", (error) => {
-      this.reconnectAttempts++;
-      const timestamp = new Date().toISOString();
-      console.error(`\n❌ [SOCKET] Connection Error [${timestamp}]`);
-      console.error(`Attempt: ${this.reconnectAttempts}`);
-      console.error(`Error Message:`, error.message);
-      console.error(`Error Name:`, error.name);
-      
-      // Update status to connecting if it's not already
-      store.dispatch(setConnectionStatus('connecting'));
-      
-      console.error("==========================================\n");
-    });
-
-    // Lỗi từ server
-    this.socket.on("error", (error: ErrorResponse) => {
-      const timestamp = new Date().toISOString();
-      console.error(`\n❌ [SOCKET] Server Error [${timestamp}]`);
-      console.error(`Error Type:`, error.type);
-      console.error(`Error Message:`, error.message);
-      console.error(`Timestamp:`, error.timestamp);
-      console.error("==========================================\n");
-    });
-
-    // Reconnect attempt
-    this.socket.on("reconnect_attempt" as any, () => {
-      console.log("[SOCKET] Reconnecting...");
-      store.dispatch(setConnectionStatus("connecting"));
+    this.socket.on("error", (error) => {
+      console.error("[SOCKET] Global Error:", error);
     });
   }
 
+  private checkIsAuthError(error: any): boolean {
+    const msg = error.message?.toLowerCase() || "";
+    return (
+      msg.includes("unauthorized") || 
+      msg.includes("login") || 
+      msg.includes("auth") ||
+      msg.includes("token") ||
+      msg.includes("need to login")
+    );
+  }
+
+  joinRoom(room: string): void {
+    if (this.socket?.connected) {
+      this.socket.emit("join_room", room);
+    }
+  }
+
+  leaveRoom(room: string): void {
+    if (this.socket?.connected) {
+      this.socket.emit("leave_room", room);
+    }
+  }
+
   /**
-   * Ngắt kết nối
+   * Gửi sự kiện đang soạn tin nhắn
    */
+  sendTyping(conversationId: string): void {
+    if (this.socket?.connected) {
+      this.socket.emit("typing", conversationId);
+    }
+  }
+
+  /**
+   * Gửi sự kiện dừng soạn tin nhắn
+   */
+  sendStopTyping(conversationId: string): void {
+    if (this.socket?.connected) {
+      this.socket.emit("stop_typing", conversationId);
+    }
+  }
+
+  /**
+   * Gửi tin nhắn qua socket (nếu BE hỗ trợ)
+   */
+  sendMessage(message: any): void {
+    if (this.socket?.connected) {
+      console.log(`\n📤 [SOCKET] Emitting send_message:`, JSON.stringify(message, null, 2));
+      this.socket.emit("send_message", message);
+    } else {
+      console.warn("⚠️ [SOCKET] Cannot emit send_message: socket not connected");
+    }
+  }
+
+  joinConversation(conversationId: string): void {
+    if (this.socket?.connected) {
+      console.log(`\n🏠 [SOCKET] Joining conversation: ${conversationId}`);
+      this.socket.emit("join_conversation", conversationId);
+    }
+  }
+
+  leaveConversation(conversationId: string): void {
+    if (this.socket?.connected) {
+      this.socket.emit("leave_conversation", conversationId);
+    }
+  }
+
+  onReceiveMessage(callback: (message: any) => void): void {
+    this.socket?.on("receive_message", (message) => {
+      console.log("\n📥 [SOCKET] Received message:", JSON.stringify(message, null, 2));
+      callback(message);
+    });
+  }
+
+  offReceiveMessage(callback: (message: any) => void): void {
+    this.socket?.off("receive_message", callback);
+  }
+
+  onNotification(callback: (notification: any) => void): void {
+    this.socket?.on("notification", callback);
+  }
+
+  offNotification(callback: (notification: any) => void): void {
+    this.socket?.off("notification", callback);
+  }
+
+  onNewConversation(callback: (payload: any) => void): void {
+    this.socket?.on("new_conversation", callback);
+  }
+
+  offNewConversation(callback: (payload: any) => void): void {
+    this.socket?.off("new_conversation", callback);
+  }
+
+  onUserTyping(callback: (userId: string) => void): void {
+    this.socket?.on("user_typing", callback);
+  }
+
+  offUserTyping(callback: (userId: string) => void): void {
+    this.socket?.off("user_typing", callback);
+  }
+
+  onUserStopTyping(callback: (userId: string) => void): void {
+    this.socket?.on("user_stop_typing", callback);
+  }
+
+  offUserStopTyping(callback: (userId: string) => void): void {
+    this.socket?.off("user_stop_typing", callback);
+  }
+
+  onUpdateLike(callback: (messageId: string, userId: string, isLiked: boolean) => void): void {
+    this.socket?.on("update_like", (messageId, userId, isLiked) => {
+      console.log(`\n❤️ [SOCKET] Update like: messageId=${messageId}, userId=${userId}, isLiked=${isLiked}`);
+      callback(messageId, userId, isLiked);
+    });
+  }
+
+  offUpdateLike(callback: (messageId: string, userId: string, isLiked: boolean) => void): void {
+    this.socket?.off("update_like", callback);
+  }
+
+  onUpdatePin(callback: (messageId: string, userId: string, isPinned: boolean) => void): void {
+    this.socket?.on("update_pin", (messageId, userId, isPinned) => {
+      console.log(`\n📌 [SOCKET] Update pin: messageId=${messageId}, userId=${userId}, isPinned=${isPinned}`);
+      callback(messageId, userId, isPinned);
+    });
+  }
+
+  offUpdatePin(callback: (messageId: string, userId: string, isPinned: boolean) => void): void {
+    this.socket?.off("update_pin", callback);
+  }
+
   disconnect(): void {
     if (this.socket) {
-      console.log("Disconnecting Socket.IO...");
       this.socket.disconnect();
       this.socket = null;
       this.isConnecting = false;
-      
-      // Reset tất cả callbacks và flags
-      this.messageCallbacks.clear();
-      this.typingCallbacks.clear();
-      this.stopTypingCallbacks.clear();
-      this.likeUpdateCallbacks.clear();
-      this.pinUpdateCallbacks.clear();
-      this.notificationCallbacks.clear();
-      this.newConversationCallbacks.clear();
-      this.postLikedCallbacks.clear();
-      this.postUpdatedCallbacks.clear();
-      this.isMessageListenerRegistered = false;
-      this.isTypingListenerRegistered = false;
-      this.isStopTypingListenerRegistered = false;
-      this.isLikeUpdateListenerRegistered = false;
-      this.isPinUpdateListenerRegistered = false;
-      this.isNotificationListenerRegistered = false;
-      this.isNewConversationListenerRegistered = false;
-      this.isPostLikedListenerRegistered = false;
-      this.isPostUpdatedListenerRegistered = false;
+      this.authRetryCount = 0;
+      this.currentToken = null;
+      this.connectionPromise = null;
+      store.dispatch(setConnectionStatus('disconnected'));
+      console.log("[SOCKET] Disconnected manually.");
     }
   }
 
-  /**
-   * Hội thoại DIRECT mới (BE: `new_conversation` → ConversationResponse)
-   */
-  onNewConversation(
-    callback: (conversation: ConversationResponse) => void
-  ): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen new_conversation - socket not initialized\n");
-      return;
-    }
-
-    this.newConversationCallbacks.add(callback);
-
-    if (!this.isNewConversationListenerRegistered) {
-      this.isNewConversationListenerRegistered = true;
-      this.socket.on("new_conversation", (conversation: ConversationResponse) => {
-        this.newConversationCallbacks.forEach((cb) => {
-          try {
-            cb(conversation);
-          } catch (error) {
-            console.error("Error in new_conversation callback:", error);
-          }
-        });
-      });
-    }
-  }
-
-  offNewConversation(
-    callback?: (conversation: ConversationResponse) => void
-  ): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      this.newConversationCallbacks.delete(callback);
-      if (this.newConversationCallbacks.size === 0 && this.isNewConversationListenerRegistered) {
-        this.socket.off("new_conversation");
-        this.isNewConversationListenerRegistered = false;
-      }
-    } else {
-      this.newConversationCallbacks.clear();
-      if (this.isNewConversationListenerRegistered) {
-        this.socket.off("new_conversation");
-        this.isNewConversationListenerRegistered = false;
-      }
-    }
-  }
-
-  /**
-   * Kiểm tra trạng thái kết nối
-   */
   isConnected(): boolean {
     return this.socket?.connected || false;
   }
 
-  /**
-   * Lấy socket instance (để dùng trong components)
-   */
   getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> | null {
     return this.socket;
   }
-
-  /**
-   * Join vào conversation room
-   */
-  joinConversation(conversationId: string): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot join conversation - socket not initialized");
-      console.warn(`Conversation ID: ${conversationId}`);
-      console.warn("==========================================\n");
-      return;
-    }
-    
-    if (!this.socket.connected) {
-      console.warn("\n⚠️ [SOCKET] Cannot join conversation - not connected");
-      console.warn(`Conversation ID: ${conversationId}`);
-      console.warn(`Socket ID: ${this.socket.id || "N/A"}`);
-      console.warn("==========================================\n");
-      return;
-    }
-
-    const timestamp = new Date().toISOString();
-    console.log(`\n📥 [SOCKET] Joining conversation [${timestamp}]`);
-    console.log(`Conversation ID: ${conversationId}`);
-    console.log(`Socket ID: ${this.socket.id}`);
-    console.log(`Socket connected: ${this.socket.connected}`);
-    console.log("==========================================\n");
-    this.socket.emit("join_conversation", conversationId);
-  }
-
-  /**
-   * Leave conversation room
-   */
-  leaveConversation(conversationId: string): void {
-    if (!this.socket?.connected) {
-      return;
-    }
-
-    const timestamp = new Date().toISOString();
-    console.log(`\n📤 [SOCKET] Leaving conversation [${timestamp}]`);
-    console.log(`Conversation ID: ${conversationId}`);
-    console.log("==========================================\n");
-    this.socket.emit("leave_conversation", conversationId);
-  }
-
-  /**
-   * Gửi typing indicator
-   */
-  sendTyping(conversationId: string): void {
-    if (!this.socket?.connected) {
-      return;
-    }
-
-    // Log ít hơn để tránh spam (chỉ log mỗi 5 lần)
-    if (Math.random() < 0.2) {
-      console.log(`[SOCKET] Typing: ${conversationId}`);
-    }
-    this.socket.emit("typing", conversationId);
-  }
-
-  /**
-   * Gửi stop typing indicator
-   */
-  sendStopTyping(conversationId: string): void {
-    if (!this.socket?.connected) {
-      return;
-    }
-
-    console.log(`[SOCKET] Stop typing: ${conversationId}`);
-    this.socket.emit("stop_typing", conversationId);
-  }
-
-  /**
-   * Listen event: Nhận message mới
-   * Sử dụng pattern listener array để tránh duplicate listeners
-   */
-  onReceiveMessage(callback: (message: ChatMessageResponse) => void): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
-      console.warn("==========================================\n");
-      return;
-    }
-
-    // Thêm callback vào set
-    this.messageCallbacks.add(callback);
-
-    // Chỉ đăng ký socket listener một lần
-    if (!this.isMessageListenerRegistered) {
-      this.isMessageListenerRegistered = true;
-      this.socket.on("receive_message", (message: ChatMessageResponse) => {
-        const timestamp = new Date().toISOString();
-        console.log(`\n📨 [SOCKET] Received message [${timestamp}]`);
-        console.log(`Message ID: ${message.id}`);
-        console.log(`Conversation ID: ${message.conversation_id}`);
-        console.log(`Sender ID: ${message.sender_id ?? (message.sender as { id?: string } | undefined)?.id}`);
-        console.log(`Message Type: ${message.message_type}`);
-        console.log(`Content: ${(message.message_content ?? "").substring(0, 50)}...`);
-        console.log(`Callbacks count: ${this.messageCallbacks.size}`);
-        
-        // Gọi tất cả callbacks
-        let callbackIndex = 0;
-        this.messageCallbacks.forEach((cb) => {
-          try {
-            callbackIndex++;
-            console.log(`[SOCKET] Calling callback #${callbackIndex}...`);
-            cb(message);
-            console.log(`[SOCKET] ✅ Callback #${callbackIndex} completed`);
-          } catch (error) {
-            console.error(`[SOCKET] ❌ Error in callback #${callbackIndex}:`, error);
-            console.error("Error stack:", (error as Error).stack);
-          }
-        });
-        console.log("==========================================\n");
-      });
-    }
-  }
-
-  /**
-   * Listen event: User đang typing
-   * Hỗ trợ payload: string (userId) hoặc object { userId, conversationId? }
-   * Backend cần broadcast "user_typing" tới tất cả client trong cùng conversation room.
-   */
-  onUserTyping(callback: (userId: string, conversationId?: string) => void): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
-      console.warn("==========================================\n");
-      return;
-    }
-
-    this.typingCallbacks.add(callback);
-
-    if (!this.isTypingListenerRegistered) {
-      this.isTypingListenerRegistered = true;
-      this.socket.on("user_typing", (payload: string | { userId: string; conversationId?: string }) => {
-        const userId = typeof payload === "string" ? payload : payload?.userId;
-        const conversationId = typeof payload === "object" && payload && "conversationId" in payload ? payload.conversationId : undefined;
-        if (!userId) return;
-        console.log(`[SOCKET] User typing: ${userId}` + (conversationId ? ` conversation: ${conversationId}` : ""));
-        this.typingCallbacks.forEach((cb) => {
-          try {
-            cb(userId, conversationId);
-          } catch (error) {
-            console.error("Error in typing callback:", error);
-          }
-        });
-      });
-    }
-  }
-
-  /**
-   * Remove listener: receive_message
-   */
-  offReceiveMessage(callback?: (message: ChatMessageResponse) => void): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      // Remove callback khỏi set
-      this.messageCallbacks.delete(callback);
-      
-      // Nếu không còn callback nào, remove socket listener
-      if (this.messageCallbacks.size === 0 && this.isMessageListenerRegistered) {
-        this.socket.off("receive_message");
-        this.isMessageListenerRegistered = false;
-      }
-    } else {
-      // Remove tất cả
-      this.messageCallbacks.clear();
-      if (this.isMessageListenerRegistered) {
-        this.socket.off("receive_message");
-        this.isMessageListenerRegistered = false;
-      }
-    }
-  }
-
-  /**
-   * Remove listener: user_typing
-   */
-  offUserTyping(callback?: (userId: string, conversationId?: string) => void): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      // Remove callback khỏi set
-      this.typingCallbacks.delete(callback);
-      
-      // Nếu không còn callback nào, remove socket listener
-      if (this.typingCallbacks.size === 0 && this.isTypingListenerRegistered) {
-        this.socket.off("user_typing");
-        this.isTypingListenerRegistered = false;
-      }
-    } else {
-      // Remove tất cả
-      this.typingCallbacks.clear();
-      if (this.isTypingListenerRegistered) {
-        this.socket.off("user_typing");
-        this.isTypingListenerRegistered = false;
-      }
-    }
-  }
-
-  /**
-   * Listen event: User ngừng typing
-   * Hỗ trợ payload: string (userId) hoặc object { userId, conversationId? }
-   */
-  onUserStopTyping(callback: (userId: string, conversationId?: string) => void): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
-      console.warn("==========================================\n");
-      return;
-    }
-
-    this.stopTypingCallbacks.add(callback);
-
-    if (!this.isStopTypingListenerRegistered) {
-      this.isStopTypingListenerRegistered = true;
-      this.socket.on("user_stop_typing", (payload: string | { userId: string; conversationId?: string }) => {
-        const userId = typeof payload === "string" ? payload : payload?.userId;
-        const conversationId = typeof payload === "object" && payload && "conversationId" in payload ? payload.conversationId : undefined;
-        if (!userId) return;
-        console.log(`[SOCKET] User stop typing: ${userId}`);
-        this.stopTypingCallbacks.forEach((cb) => {
-          try {
-            cb(userId, conversationId);
-          } catch (error) {
-            console.error("Error in stop typing callback:", error);
-          }
-        });
-      });
-    }
-  }
-
-  /**
-   * Remove listener: user_stop_typing
-   */
-  offUserStopTyping(callback?: (userId: string, conversationId?: string) => void): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      // Remove callback khỏi set
-      this.stopTypingCallbacks.delete(callback);
-      
-      // Nếu không còn callback nào, remove socket listener
-      if (this.stopTypingCallbacks.size === 0 && this.isStopTypingListenerRegistered) {
-        this.socket.off("user_stop_typing");
-        this.isStopTypingListenerRegistered = false;
-      }
-    } else {
-      // Remove tất cả
-      this.stopTypingCallbacks.clear();
-      if (this.isStopTypingListenerRegistered) {
-        this.socket.off("user_stop_typing");
-        this.isStopTypingListenerRegistered = false;
-      }
-    }
-  }
-
-  /**
-   * Listen event: Update like (update_like)
-   * Backend emit: update_like(messageId, userId, isLiked)
-   */
-  onUpdateLike(
-    callback: (messageId: string, userId: string, isLiked: boolean) => void
-  ): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
-      console.warn("==========================================\n");
-      return;
-    }
-
-    // Thêm callback vào set
-    this.likeUpdateCallbacks.add(callback);
-
-    // Chỉ đăng ký socket listener một lần
-    // Doc: payload là 3 tham số (messageId, userId, isLiked); một số BE gửi 1 object → hỗ trợ cả hai
-    if (!this.isLikeUpdateListenerRegistered) {
-      this.isLikeUpdateListenerRegistered = true;
-      this.socket.on("update_like", (...args: unknown[]) => {
-        let messageId: string;
-        let userId: string;
-        let isLiked: boolean;
-        if (args.length >= 3 && typeof args[0] === "string" && typeof args[1] === "string" && typeof args[2] === "boolean") {
-          [messageId, userId, isLiked] = args as [string, string, boolean];
-        } else if (args.length === 1 && args[0] && typeof args[0] === "object" && "messageId" in (args[0] as object)) {
-          const o = args[0] as { messageId: string; userId: string; isLiked: boolean };
-          messageId = o.messageId;
-          userId = o.userId;
-          isLiked = o.isLiked;
-        } else {
-          console.warn("[SOCKET] update_like: unexpected payload", args);
-          return;
-        }
-        console.log(`\n❤️ [SOCKET] update_like messageId=${messageId} userId=${userId} isLiked=${isLiked}\n`);
-
-        this.likeUpdateCallbacks.forEach((cb) => {
-          try {
-            cb(messageId, userId, isLiked);
-          } catch (error) {
-            console.error("Error in like update callback:", error);
-          }
-        });
-      });
-    }
-  }
-
-  /**
-   * Remove listener: update_like
-   */
-  offUpdateLike(
-    callback?: (messageId: string, userId: string, isLiked: boolean) => void
-  ): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      // Remove callback khỏi set
-      this.likeUpdateCallbacks.delete(callback);
-
-      // Nếu không còn callback nào, remove socket listener
-      if (this.likeUpdateCallbacks.size === 0 && this.isLikeUpdateListenerRegistered) {
-        this.socket.off("update_like");
-        this.isLikeUpdateListenerRegistered = false;
-      }
-    } else {
-      // Remove tất cả
-      this.likeUpdateCallbacks.clear();
-      if (this.isLikeUpdateListenerRegistered) {
-        this.socket.off("update_like");
-        this.isLikeUpdateListenerRegistered = false;
-      }
-    }
-  }
-
-  /**
-   * Listen event: Update pin (update_pin)
-   * Backend emit: update_pin(messageId, userId, isPinned)
-   */
-  onUpdatePin(
-    callback: (messageId: string, userId: string, isPinned: boolean) => void
-  ): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
-      console.warn("==========================================\n");
-      return;
-    }
-
-    this.pinUpdateCallbacks.add(callback);
-
-    // Doc: payload 3 tham số (messageId, userId, isPinned); hỗ trợ cả 1 object
-    if (!this.isPinUpdateListenerRegistered) {
-      this.isPinUpdateListenerRegistered = true;
-      this.socket.on("update_pin", (...args: unknown[]) => {
-        let messageId: string;
-        let userId: string;
-        let isPinned: boolean;
-        if (args.length >= 3 && typeof args[0] === "string" && typeof args[1] === "string" && typeof args[2] === "boolean") {
-          [messageId, userId, isPinned] = args as [string, string, boolean];
-        } else if (args.length === 1 && args[0] && typeof args[0] === "object" && "messageId" in (args[0] as object)) {
-          const o = args[0] as { messageId: string; userId: string; isPinned: boolean };
-          messageId = o.messageId;
-          userId = o.userId;
-          isPinned = o.isPinned;
-        } else {
-          console.warn("[SOCKET] update_pin: unexpected payload", args);
-          return;
-        }
-        console.log(`\n📌 [SOCKET] update_pin messageId=${messageId} userId=${userId} isPinned=${isPinned}\n`);
-
-        this.pinUpdateCallbacks.forEach((cb) => {
-          try {
-            cb(messageId, userId, isPinned);
-          } catch (error) {
-            console.error("Error in pin update callback:", error);
-          }
-        });
-      });
-    }
-  }
-
-  /**
-   * Remove listener: update_pin
-   */
-  offUpdatePin(
-    callback?: (messageId: string, userId: string, isPinned: boolean) => void
-  ): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      this.pinUpdateCallbacks.delete(callback);
-      if (this.pinUpdateCallbacks.size === 0 && this.isPinUpdateListenerRegistered) {
-        this.socket.off("update_pin");
-        this.isPinUpdateListenerRegistered = false;
-      }
-    } else {
-      this.pinUpdateCallbacks.clear();
-      if (this.isPinUpdateListenerRegistered) {
-        this.socket.off("update_pin");
-        this.isPinUpdateListenerRegistered = false;
-      }
-    }
-  }
-
-  /**
-   * Listen event: Notification
-   */
-  onNotification(callback: (notification: NotificationObject) => void): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
-      console.warn("==========================================\n");
-      return;
-    }
-
-    // Thêm callback vào set
-    this.notificationCallbacks.add(callback);
-
-    // Chỉ đăng ký socket listener một lần
-    if (!this.isNotificationListenerRegistered) {
-      this.isNotificationListenerRegistered = true;
-      this.socket.on("notification", (notification: NotificationObject) => {
-        const timestamp = new Date().toISOString();
-        console.log(`\n🔔 [SOCKET] Notification event received [${timestamp}]`);
-        console.log(`Notification ID: ${notification.id}`);
-        console.log(`Type: ${notification.type}`);
-        console.log(`Title: ${notification.title}`);
-        console.log(`Message: ${notification.message}`);
-        console.log(`Data:`, notification.data);
-        console.log(`Callbacks count: ${this.notificationCallbacks.size}`);
-        
-        // Gọi tất cả callbacks
-        let callbackIndex = 0;
-        this.notificationCallbacks.forEach((cb) => {
-          try {
-            callbackIndex++;
-            console.log(`[SOCKET] Calling notification callback #${callbackIndex}...`);
-            cb(notification);
-            console.log(`[SOCKET] ✅ Notification callback #${callbackIndex} completed`);
-          } catch (error) {
-            console.error(`[SOCKET] ❌ Error in notification callback #${callbackIndex}:`, error);
-            console.error("Error stack:", (error as Error).stack);
-          }
-        });
-        console.log("==========================================\n");
-      });
-    }
-  }
-
-  /**
-   * Remove listener: notification
-   */
-  offNotification(callback?: (notification: NotificationObject) => void): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      // Remove callback khỏi set
-      this.notificationCallbacks.delete(callback);
-
-      // Nếu không còn callback nào, remove socket listener
-      if (this.notificationCallbacks.size === 0 && this.isNotificationListenerRegistered) {
-        this.socket.off("notification");
-        this.isNotificationListenerRegistered = false;
-      }
-    } else {
-      // Remove tất cả
-      this.notificationCallbacks.clear();
-      if (this.isNotificationListenerRegistered) {
-        this.socket.off("notification");
-        this.isNotificationListenerRegistered = false;
-      }
-    }
-  }
-
-  /**
-   * Listen event: Post Liked
-   * Fired when someone likes a post
-   */
-  onPostLiked(callback: (payload: PostLikedEvent) => void): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
-      console.warn("==========================================\n");
-      return;
-    }
-
-    // Thêm callback vào set
-    this.postLikedCallbacks.add(callback);
-
-    // Chỉ đăng ký socket listener một lần
-    if (!this.isPostLikedListenerRegistered) {
-      this.isPostLikedListenerRegistered = true;
-      this.socket.on("post_liked", (payload: PostLikedEvent) => {
-        const timestamp = new Date().toISOString();
-        console.log(`\n❤️ [SOCKET] Post Liked event received [${timestamp}]`);
-        console.log(`Post ID: ${payload.postId}`);
-        console.log(`Liker ID: ${payload.likerId}`);
-        console.log(`Liker Name: ${payload.likerName}`);
-        console.log(`Post Creator ID: ${payload.postCreatorId}`);
-        console.log(`Total Likes: ${payload.totalLikes}`);
-        console.log(`Callbacks count: ${this.postLikedCallbacks.size}`);
-
-        // Gọi tất cả callbacks
-        let callbackIndex = 0;
-        this.postLikedCallbacks.forEach((cb) => {
-          try {
-            callbackIndex++;
-            console.log(`[SOCKET] Calling post_liked callback #${callbackIndex}...`);
-            cb(payload);
-            console.log(`[SOCKET] ✅ Post liked callback #${callbackIndex} completed`);
-          } catch (error) {
-            console.error(`[SOCKET] ❌ Error in post_liked callback #${callbackIndex}:`, error);
-            console.error("Error stack:", (error as Error).stack);
-          }
-        });
-        console.log("==========================================\n");
-      });
-    }
-  }
-
-  /**
-   * Remove listener: post_liked
-   */
-  offPostLiked(callback?: (payload: PostLikedEvent) => void): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      this.postLikedCallbacks.delete(callback);
-      if (this.postLikedCallbacks.size === 0 && this.isPostLikedListenerRegistered) {
-        this.socket.off("post_liked");
-        this.isPostLikedListenerRegistered = false;
-      }
-    } else {
-      this.postLikedCallbacks.clear();
-      if (this.isPostLikedListenerRegistered) {
-        this.socket.off("post_liked");
-        this.isPostLikedListenerRegistered = false;
-      }
-    }
-  }
-
-  /**
-   * Listen event: Post Updated
-   * Fired when post counts (likes/comments/shares) change
-   */
-  onPostUpdated(callback: (payload: PostUpdatedEvent) => void): void {
-    if (!this.socket) {
-      console.warn("\n⚠️ [SOCKET] Cannot listen - socket not initialized");
-      console.warn("==========================================\n");
-      return;
-    }
-
-    // Thêm callback vào set
-    this.postUpdatedCallbacks.add(callback);
-
-    // Chỉ đăng ký socket listener một lần
-    if (!this.isPostUpdatedListenerRegistered) {
-      this.isPostUpdatedListenerRegistered = true;
-      this.socket.on("post_updated", (payload: PostUpdatedEvent) => {
-        const timestamp = new Date().toISOString();
-        console.log(`\n🔄 [SOCKET] Post Updated event received [${timestamp}]`);
-        console.log(`Post ID: ${payload.postId}`);
-        console.log(`Likes: ${payload.likes}`);
-        console.log(`Comments: ${payload.comments}`);
-        console.log(`Shares: ${payload.shares}`);
-        console.log(`Callbacks count: ${this.postUpdatedCallbacks.size}`);
-
-        // Gọi tất cả callbacks
-        let callbackIndex = 0;
-        this.postUpdatedCallbacks.forEach((cb) => {
-          try {
-            callbackIndex++;
-            console.log(`[SOCKET] Calling post_updated callback #${callbackIndex}...`);
-            cb(payload);
-            console.log(`[SOCKET] ✅ Post updated callback #${callbackIndex} completed`);
-          } catch (error) {
-            console.error(`[SOCKET] ❌ Error in post_updated callback #${callbackIndex}:`, error);
-            console.error("Error stack:", (error as Error).stack);
-          }
-        });
-        console.log("==========================================\n");
-      });
-    }
-  }
-
-  /**
-   * Remove listener: post_updated
-   */
-  offPostUpdated(callback?: (payload: PostUpdatedEvent) => void): void {
-    if (!this.socket) return;
-
-    if (callback) {
-      this.postUpdatedCallbacks.delete(callback);
-      if (this.postUpdatedCallbacks.size === 0 && this.isPostUpdatedListenerRegistered) {
-        this.socket.off("post_updated");
-        this.isPostUpdatedListenerRegistered = false;
-      }
-    } else {
-      this.postUpdatedCallbacks.clear();
-      if (this.isPostUpdatedListenerRegistered) {
-        this.socket.off("post_updated");
-        this.isPostUpdatedListenerRegistered = false;
-      }
-    }
-  }
 }
 
-// Export singleton instance
 export const socketService = new SocketService();
-
-
-

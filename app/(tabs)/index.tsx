@@ -21,9 +21,11 @@ import {
   usePosts,
   useSharePost,
 } from "@/hooks/useSocial";
+import { useTripSetup } from "@/contexts/TripSetupContext";
+import { useItinerary } from "@/contexts/ItineraryContext";
 import { TabType, type Post } from "@/types/social";
 import { useAppSelector } from "@/store/hooks";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, router } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -37,11 +39,13 @@ import { trackEvent, trackPostView } from "@/utils/analytics";
 import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen() {
-  const router = useRouter();
+  // const router = useRouter();
   const { requireAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
   const { isGuest } = useGuestMode();
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const { resetTripData } = useTripSetup();
+  const { resetItinerary } = useItinerary();
   /** Chỉ gọi API cần đăng nhập khi thật sự có phiên (không chỉ "không phải guest" — tránh 401 ở màn login / trước khi đăng nhập). */
   const shouldLoadAuthenticatedData =
     isGuest === false && (isAuthenticated || !!accessToken);
@@ -54,8 +58,7 @@ export default function HomeScreen() {
 
   useAuthLogger("HomeScreen");
 
-  // Subscribe to real-time post updates
-  usePostRealtimeUpdates();
+
 
   const [activeTab, setActiveTab] = useState<TabType>("popular");
   const [refreshing, setRefreshing] = useState(false);
@@ -65,16 +68,10 @@ export default function HomeScreen() {
     if (activeTab === "popular") {
       return [...filteredPosts].sort((a, b) => b.likes - a.likes);
     }
-    const parseTimeAgo = (timeAgo: string): number => {
-      if (timeAgo.includes("phút")) return parseInt(timeAgo) || 0;
-      if (timeAgo.includes("giờ")) return (parseInt(timeAgo) || 0) * 60;
-      if (timeAgo.includes("ngày")) return (parseInt(timeAgo) || 0) * 60 * 24;
-      return 0;
-    };
     return [...filteredPosts].sort((a, b) => {
-      const timeA = parseTimeAgo(a.timeAgo);
-      const timeB = parseTimeAgo(b.timeAgo);
-      return timeA - timeB;
+      const timeA = new Date(a.created_at).getTime();
+      const timeB = new Date(b.created_at).getTime();
+      return timeB - timeA; // Mới nhất lên đầu
     });
   }, [activeTab, filteredPosts]);
   const [activeIcon, setActiveIcon] = useState<
@@ -119,7 +116,7 @@ export default function HomeScreen() {
 
   const handleLike = async (postId: string) => {
     const result = await requireAuth(async () => {
-      await likePostMutation.mutateAsync(postId);
+      await likePostMutation.mutateAsync({ postId });
       return true;
     });
     return result;
@@ -148,19 +145,13 @@ export default function HomeScreen() {
 
   const handleBookmark = async (postId: string) => {
     const result = await requireAuth(async () => {
-      await bookmarkPostMutation.mutateAsync(postId);
+      await bookmarkPostMutation.mutateAsync({ postId });
       return true;
     });
     return result;
   };
 
-  const handleDownload = async (postId: string) => {
-    await requireAuth(async () => {
-      // TODO: Call API download post
-      console.log("Download post:", postId);
-      // await downloadPost(postId);
-    });
-  };
+
 
   const handleReport = async (postId: string) => {
     await requireAuth(async () => {
@@ -171,14 +162,7 @@ export default function HomeScreen() {
     });
   };
 
-  const handleDownloadPost = async (postId: string) => {
-    await requireAuth(async () => {
-      // TODO: Call API download post
-      console.log("Download post:", postId);
-      trackEvent('post_downloaded', { postId });
-      // await downloadPost(postId);
-    });
-  };
+
 
   // Pull to refresh handler
   const onRefresh = useCallback(async () => {
@@ -202,7 +186,7 @@ export default function HomeScreen() {
         onComment={handleComment}
         onShare={handleShare}
         onBookmark={handleBookmark}
-        onDownload={handleDownloadPost}
+
         onReport={handleReport}
       />
     );
@@ -286,6 +270,8 @@ export default function HomeScreen() {
           }}
           onCreatePress={async () => {
             await requireAuth(async () => {
+              resetTripData();
+              resetItinerary();
               router.push("/create");
             });
           }}

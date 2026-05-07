@@ -34,6 +34,7 @@ export function MessageActionSheet({
   onDismiss,
   onPin,
   onUnpin,
+  onReply,
 }: MessageActionSheetProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -129,12 +130,25 @@ export function MessageActionSheet({
                   </Text>
                 </View>
               </Pressable>
-              {/* Chuẩn bị mở rộng: Reply, Forward, Delete */}
-              {/* <Pressable style={styles.actionRow} onPress={() => onReply?.(message!)}>
-                <Ionicons name="arrow-undo" size={22} color="#111827" />
-                <Text style={styles.actionText}>Phản hồi</Text>
+              {/* Reply action */}
+              <Pressable 
+                style={({ pressed }) => [
+                  styles.actionRow,
+                  pressed && styles.actionRowPressed,
+                ]} 
+                onPress={() => {
+                  if (message) onReply?.(message);
+                  onDismiss();
+                }}
+              >
+                <View style={styles.actionIconText}>
+                  <Ionicons name="arrow-undo" size={22} color="#111827" style={styles.actionIcon} />
+                  <Text style={styles.actionText}>Phản hồi</Text>
+                </View>
               </Pressable>
-              <Pressable style={styles.actionRow} onPress={() => onForward?.(message!)}>
+
+              {/* Forward and Delete (still commented for now if not requested) */}
+              {/* <Pressable style={styles.actionRow} onPress={() => onForward?.(message!)}>
                 <Ionicons name="share-outline" size={22} color="#111827" />
                 <Text style={styles.actionText}>Chuyển tiếp</Text>
               </Pressable>

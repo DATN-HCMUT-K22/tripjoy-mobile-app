@@ -5,7 +5,7 @@ import { groupService, isGroupApiSuccess } from "@/services/groups";
 import { useAppSelector } from "@/store/hooks";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import React, { useState } from "react";
 import {
   ScrollView,
@@ -19,7 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 type TabType = "overview" | "members" | "chat";
 
 export default function GroupDetailScreen() {
-  const router = useRouter();
+  // const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const currentUser = useAppSelector((state) => state.auth.user);
   const [activeTab, setActiveTab] = useState<TabType>("overview");
@@ -152,23 +152,17 @@ export default function GroupDetailScreen() {
             />
 
             <QuickAccessCard
-              icon="location"
+              icon="location-outline"
               title="Địa điểm gợi ý"
-              subtitle="Lên kế hoạch điểm đến"
-              action="Xem tất cả →"
-              onPress={() => {
-                // TODO: Navigate to locations
-              }}
+              subtitle="Khám phá các điểm đến phù hợp"
+              onPress={() => router.push(`/groups/${group.id}/suggestions` as any)}
             />
 
             <QuickAccessCard
-              icon="calendar"
+              icon="calendar-outline"
               title="Lịch trình du lịch"
-              subtitle="Xem và tạo chuyến đi"
-              action="Xem tất cả →"
-              onPress={() => {
-                // TODO: Navigate to itineraries
-              }}
+              subtitle="Xem và quản lý kế hoạch chuyến đi"
+              onPress={() => router.push(`/groups/${group.id}/itineraries` as any)}
             />
 
             {/* Group Info Section */}

@@ -1,10 +1,11 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import type { CommentResponse } from "@/types/comment";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { formatNumber } from "@/utils/format";
+import { useCommentReplies } from "@/hooks/useComments";
 
 interface CommentItemProps {
   comment: CommentResponse;
@@ -25,6 +26,36 @@ export const CommentItem: React.FC<CommentItemProps> = ({
 }) => {
   const isOwnComment = currentUserId === comment.created_by_user.id;
   const [avatarError, setAvatarError] = React.useState(false);
+  const [showReplies, setShowReplies] = React.useState(false);
+
+  // Fetch replies when expanded
+  const { data: repliesData, isLoading: isRepliesLoading } = useCommentReplies(
+    comment.id,
+    showReplies && !isNested
+  );
+
+  const allReplies = React.useMemo(() => {
+    const fetchedReplies = repliesData?.content || [];
+    const previewReplies = comment.latest_replies || [];
+    
+    // Combine and remove duplicates by ID
+    const merged = [...previewReplies, ...fetchedReplies];
+    const uniqueMap = new Map();
+    merged.forEach(item => {
+      uniqueMap.set(item.id, item);
+    });
+    
+    return Array.from(uniqueMap.values()).sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+  }, [repliesData, comment.latest_replies]);
+
+  // Auto-show replies if a new one is added optimistically
+  React.useEffect(() => {
+    if (comment.latest_replies && comment.latest_replies.some(r => r.id.startsWith('temp-'))) {
+      setShowReplies(true);
+    }
+  }, [comment.latest_replies]);
 
   // Format timestamp
   const formatTimeAgo = (dateString: string) => {
@@ -48,8 +79,8 @@ export const CommentItem: React.FC<CommentItemProps> = ({
         <Image
           source={{
             uri: resolveUserAvatarUri(
-              comment.created_by_user.avatar,
-              comment.created_by_user.name
+              comment.created_by_user.avatarUrl || undefined,
+              comment.created_by_user.fullName
             ),
           }}
           style={styles.avatar}
@@ -60,7 +91,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
       ) : (
         <View style={styles.avatarFallback}>
           <Text style={styles.avatarFallbackText}>
-            {comment.created_by_user.name.charAt(0).toUpperCase()}
+            {comment.created_by_user.fullName.charAt(0).toUpperCase()}
           </Text>
         </View>
       )}
@@ -69,7 +100,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
       <View style={styles.content}>
         {/* Header: Username + Time */}
         <View style={styles.header}>
-          <Text style={styles.username}>{comment.created_by_user.name}</Text>
+          <Text style={styles.username}>{comment.created_by_user.fullName}</Text>
           <Text style={styles.timestamp}>{formatTimeAgo(comment.created_at)}</Text>
         </View>
 
@@ -96,13 +127,15 @@ export const CommentItem: React.FC<CommentItemProps> = ({
           </TouchableOpacity>
 
           {/* Reply */}
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => onReply(comment)}
-          >
-            <Ionicons name="arrow-undo-outline" size={16} color="#666" />
-            <Text style={styles.actionText}>Trả lời</Text>
-          </TouchableOpacity>
+          {!isNested && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => onReply(comment)}
+            >
+              <Ionicons name="arrow-undo-outline" size={16} color="#666" />
+              <Text style={styles.actionText}>Trả lời</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Delete (only for own comments) */}
           {isOwnComment && onDelete && (
@@ -117,19 +150,39 @@ export const CommentItem: React.FC<CommentItemProps> = ({
         </View>
 
         {/* Nested replies preview */}
-        {!isNested && comment.latest_replies && comment.latest_replies.length > 0 && (
+        {!isNested && comment.reply_count > 0 && (
           <View style={styles.repliesContainer}>
-            {comment.latest_replies.map((reply) => (
-              <CommentItem
-                key={reply.id}
-                comment={reply}
-                onLike={onLike}
-                onReply={onReply}
-                onDelete={onDelete}
-                currentUserId={currentUserId}
-                isNested={true}
-              />
-            ))}
+            <TouchableOpacity 
+              style={styles.showRepliesButton}
+              onPress={() => setShowReplies(!showReplies)}
+            >
+              <View style={styles.showRepliesLine} />
+              <Text style={styles.showRepliesText}>
+                {showReplies 
+                  ? "Ẩn phản hồi" 
+                  : `Xem ${comment.reply_count} phản hồi...`}
+              </Text>
+            </TouchableOpacity>
+
+            {showReplies && (
+              <>
+                {isRepliesLoading && allReplies.length === 0 ? (
+                  <ActivityIndicator size="small" color="#34B27D" style={{ marginVertical: 10 }} />
+                ) : (
+                  allReplies.map((reply) => (
+                    <CommentItem
+                      key={reply.id}
+                      comment={reply}
+                      onLike={onLike}
+                      onReply={onReply}
+                      onDelete={onDelete}
+                      currentUserId={currentUserId}
+                      isNested={true}
+                    />
+                  ))
+                )}
+              </>
+            )}
           </View>
         )}
       </View>
@@ -216,5 +269,22 @@ const styles = StyleSheet.create({
   },
   repliesContainer: {
     marginTop: 8,
+  },
+  showRepliesButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  showRepliesLine: {
+    width: 24,
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginRight: 12,
+  },
+  showRepliesText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6B7280",
   },
 });

@@ -3,6 +3,7 @@ import {
   createReply,
   deleteComment,
   getPostComments,
+  getCommentReplies,
   likeComment,
   unlikeComment,
 } from "@/services/comment";
@@ -10,6 +11,20 @@ import type { CommentResponse, PageCommentResponse } from "@/types/comment";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppSelector } from "@/store/hooks";
+
+/**
+ * Hook to fetch replies for a specific comment
+ */
+export const useCommentReplies = (commentId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["comments", commentId, "replies"],
+    queryFn: async () => {
+      const response = await getCommentReplies(commentId);
+      return response.data;
+    },
+    enabled,
+    staleTime: 5000,
+  });
 
 /**
  * Hook to fetch comments for a post with polling
@@ -59,8 +74,8 @@ export const useCreateComment = () => {
                   post_id: newComment.postId,
                   created_by_user: {
                     id: currentUser?.id || "unknown",
-                    name: currentUser?.fullName || "You",
-                    avatar: currentUser?.avatarUrl,
+                    fullName: currentUser?.fullName || "Bạn",
+                    avatarUrl: currentUser?.avatarUrl,
                   },
                   created_at: new Date().toISOString(),
                   like_count: 0,
@@ -80,8 +95,8 @@ export const useCreateComment = () => {
                 post_id: newComment.postId,
                 created_by_user: {
                   id: currentUser?.id || "unknown",
-                  name: currentUser?.fullName || "You",
-                  avatar: currentUser?.avatarUrl,
+                  fullName: currentUser?.fullName || "Bạn",
+                  avatarUrl: currentUser?.avatarUrl,
                 },
                 created_at: new Date().toISOString(),
                 like_count: 0,
@@ -93,6 +108,29 @@ export const useCreateComment = () => {
           };
         }
       );
+
+      // Optimistically update comment count in posts cache
+      queryClient.setQueriesData({ queryKey: ["posts"] }, (old: any) => {
+        if (Array.isArray(old)) {
+          return old.map((p) =>
+            p.id === newComment.postId
+              ? {
+                  ...p,
+                  comments: (p.comments || 0) + 1,
+                  comment_count: (p.comment_count || 0) + 1,
+                }
+              : p
+          );
+        }
+        if (old && old.id === newComment.postId) {
+          return {
+            ...old,
+            comments: (old.comments || 0) + 1,
+            comment_count: (old.comment_count || 0) + 1,
+          };
+        }
+        return old;
+      });
 
       return { previousComments };
     },
@@ -108,6 +146,9 @@ export const useCreateComment = () => {
       // Refetch to get server truth
       queryClient.invalidateQueries({ queryKey: ["posts", variables.postId, "comments"] });
       queryClient.invalidateQueries({ queryKey: ["posts"] }); // Update comment count on post list
+      if (!error) {
+        showSuccessToast("Đã đăng bình luận");
+      }
     },
   });
 };
@@ -145,8 +186,8 @@ export const useCreateReply = () => {
             parent_comment_id: newReply.commentId,
             created_by_user: {
               id: currentUser?.id || "unknown",
-              name: currentUser?.fullName || "You",
-              avatar: currentUser?.avatarUrl,
+              fullName: currentUser?.fullName || "Bạn",
+              avatarUrl: currentUser?.avatarUrl,
             },
             created_at: new Date().toISOString(),
             like_count: 0,
@@ -186,6 +227,12 @@ export const useCreateReply = () => {
       queryClient.invalidateQueries({
         queryKey: ["posts", variables.postId, "comments"],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["posts"],
+      });
+      if (!error) {
+        showSuccessToast("Đã gửi phản hồi");
+      }
     },
   });
 };
@@ -210,55 +257,75 @@ export const useLikeComment = (postId: string) => {
       return await likeComment(commentId);
     },
     onMutate: async ({ commentId, isLiked }) => {
+      // Cancel relevant queries
       await queryClient.cancelQueries({ queryKey: ["posts", postId, "comments"] });
+      await queryClient.cancelQueries({ queryKey: ["comments"] });
 
-      const previousComments = queryClient.getQueryData<PageCommentResponse>([
+      const previousPostComments = queryClient.getQueryData<PageCommentResponse>([
         "posts",
         postId,
         "comments",
       ]);
 
-      // Optimistically toggle like
+      const updateCommentInList = (comment: CommentResponse): CommentResponse => {
+        if (comment.id === commentId) {
+          return {
+            ...comment,
+            is_liked: !isLiked,
+            like_count: isLiked
+              ? Math.max(0, comment.like_count - 1)
+              : comment.like_count + 1,
+          };
+        }
+        if (comment.latest_replies) {
+          return {
+            ...comment,
+            latest_replies: comment.latest_replies.map(updateCommentInList),
+          };
+        }
+        return comment;
+      };
+
+      // 1. Update main posts comments cache
       queryClient.setQueryData<PageCommentResponse>(
         ["posts", postId, "comments"],
         (old) => {
           if (!old) return old;
-
-          const updateComment = (comment: CommentResponse): CommentResponse => {
-            if (comment.id === commentId) {
-              return {
-                ...comment,
-                is_liked: !isLiked,
-                like_count: isLiked
-                  ? Math.max(0, comment.like_count - 1)
-                  : comment.like_count + 1,
-              };
-            }
-            // Check in nested replies
-            if (comment.latest_replies) {
-              return {
-                ...comment,
-                latest_replies: comment.latest_replies.map(updateComment),
-              };
-            }
-            return comment;
-          };
-
           return {
             ...old,
-            content: old.content.map(updateComment),
+            content: old.content.map(updateCommentInList),
           };
         }
       );
 
-      return { previousComments };
+      // 2. Update all replies caches
+      queryClient.setQueriesData<PageCommentResponse>(
+        { queryKey: ["comments"] },
+        (old) => {
+          if (!old || !old.content) return old;
+          return {
+            ...old,
+            content: old.content.map(updateCommentInList),
+          };
+        }
+      );
+
+      return { previousPostComments };
     },
     onError: (err, variables, context) => {
-      queryClient.setQueryData(
-        ["posts", postId, "comments"],
-        context?.previousComments
-      );
+      if (context?.previousPostComments) {
+        queryClient.setQueryData(
+          ["posts", postId, "comments"],
+          context.previousPostComments
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: ["posts", postId, "comments"] });
+      queryClient.invalidateQueries({ queryKey: ["comments"] });
       showErrorToast("Thao tác thất bại", err);
+    },
+    onSettled: () => {
+      // Optional: refetch to ensure consistency
+      // queryClient.invalidateQueries({ queryKey: ["posts", postId, "comments"] });
     },
   });
 };
@@ -271,13 +338,72 @@ export const useDeleteComment = (postId: string) => {
 
   return useMutation({
     mutationFn: deleteComment,
+    onMutate: async (commentId) => {
+      // Cancel outgoing queries
+      await queryClient.cancelQueries({ queryKey: ["posts", postId, "comments"] });
+      await queryClient.cancelQueries({ queryKey: ["posts"] });
+
+      // 1. Update comment list cache
+      const previousComments = queryClient.getQueryData<PageCommentResponse>([
+        "posts",
+        postId,
+        "comments",
+      ]);
+
+      queryClient.setQueryData<PageCommentResponse>(
+        ["posts", postId, "comments"],
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            content: old.content.filter((c) => c.id !== commentId),
+            total_elements: old.total_elements ? old.total_elements - 1 : undefined,
+          };
+        }
+      );
+
+      // 2. Update post comment count cache
+      queryClient.setQueriesData({ queryKey: ["posts"] }, (old: any) => {
+        if (Array.isArray(old)) {
+          return old.map((p) =>
+            p.id === postId
+              ? {
+                  ...p,
+                  comments: Math.max(0, (p.comments || 0) - 1),
+                  comment_count: Math.max(0, (p.comment_count || 0) - 1),
+                }
+              : p
+          );
+        }
+        if (old && old.id === postId) {
+          return {
+            ...old,
+            comments: Math.max(0, (old.comments || 0) - 1),
+            comment_count: Math.max(0, (old.comment_count || 0) - 1),
+          };
+        }
+        return old;
+      });
+
+      return { previousComments };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["posts", postId, "comments"] });
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
       showSuccessToast("Đã xóa bình luận");
     },
-    onError: (err) => {
+    onError: (err, variables, context) => {
+      // Rollback comment list
+      if (context?.previousComments) {
+        queryClient.setQueryData(
+          ["posts", postId, "comments"],
+          context.previousComments
+        );
+      }
       showErrorToast("Xóa thất bại", err);
+    },
+    onSettled: () => {
+      // Refetch to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ["posts", postId, "comments"] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
     },
   });
 };

@@ -81,7 +81,7 @@ export const login = async (payload: LoginPayload) => {
     };
   }
 
-  throw new Error("Login failed");
+  throw new Error(response.message || "Login failed");
 };
 
 export const register = (payload: RegisterPayload) =>

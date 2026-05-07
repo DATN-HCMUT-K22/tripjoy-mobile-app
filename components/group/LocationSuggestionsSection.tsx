@@ -4,12 +4,13 @@ import {
   useDeleteLocationSuggestion,
   useLocationSuggestions,
 } from "@/hooks/useLocationSuggestions";
-import { fetchLocationsList } from "@/services/locations";
+import { autocompleteLocations, normalizeAutocompletePayload, LocationAutocompleteSuggestionDto, resolveLocation, ResolveLocationProvider } from "@/services/locations";
 import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import React, { useMemo, useState } from "react";
+import { LocationImage } from "@/components/location/LocationImage";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -19,11 +20,6 @@ import {
   View,
 } from "react-native";
 
-type ExistingLocation = {
-  id: string;
-  name: string;
-  address?: string;
-};
 
 interface Props {
   groupId: string;
@@ -31,13 +27,7 @@ interface Props {
   currentUserRole?: "LEADER" | "CO_LEADER" | "MEMBER";
 }
 
-const buildLocationPreview = (lat?: number, lng?: number) => {
-  if (typeof lat !== "number" || typeof lng !== "number") return null;
-  return buildStaticMapImageUrl(
-    [{ latitude: lat, longitude: lng }],
-    { width: 240, height: 160, zoom: 13 }
-  );
-};
+// Removed buildLocationPreview in favor of LocationImage component
 
 const formatDateTime = (iso?: string) => {
   if (!iso) return "";
@@ -60,9 +50,9 @@ export function LocationSuggestionsSection({
   const [showAddForm, setShowAddForm] = useState(false);
   const [notes, setNotes] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
-  const [availableLocations, setAvailableLocations] = useState<ExistingLocation[]>([]);
+  const [availableLocations, setAvailableLocations] = useState<LocationAutocompleteSuggestionDto[]>([]);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<LocationAutocompleteSuggestionDto | null>(null);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -72,32 +62,31 @@ export function LocationSuggestionsSection({
 
   const canModerate = currentUserRole === "LEADER" || currentUserRole === "CO_LEADER";
 
-  const selectedLocation = useMemo(
-    () => availableLocations.find((item) => item.id === selectedLocationId) || null,
-    [availableLocations, selectedLocationId]
-  );
-
-  const loadLocations = async () => {
-    try {
-      setIsLoadingLocations(true);
-      const raw = await fetchLocationsList();
-      const mapped = raw.map((item) => ({
-        id: item.id,
-        name: item.name,
-        address:
-          item.place_formatted || item.full_address || item.address || undefined,
-      }));
-      setAvailableLocations(mapped);
-    } catch {
-      showErrorToast("Lỗi", "Không thể tải danh sách địa điểm có sẵn.");
-    } finally {
-      setIsLoadingLocations(false);
+  useEffect(() => {
+    if (!showAddForm || !locationQuery.trim()) {
+      setAvailableLocations([]);
+      return;
     }
-  };
+
+    const timeoutId = setTimeout(async () => {
+      setIsLoadingLocations(true);
+      try {
+        const res = await autocompleteLocations({ q: locationQuery.trim() });
+        setAvailableLocations(normalizeAutocompletePayload(res.data));
+      } catch (e) {
+        console.warn("Autocomplete error", e);
+      } finally {
+        setIsLoadingLocations(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [locationQuery, showAddForm]);
 
   const resetForm = () => {
     setNotes("");
-    setSelectedLocationId(null);
+    setSelectedLocation(null);
+    setLocationQuery("");
   };
 
   const handleSubmit = async () => {
@@ -107,17 +96,55 @@ export function LocationSuggestionsSection({
       return;
     }
 
-    if (!selectedLocationId) {
-      showErrorToast("Thiếu thông tin", "Vui lòng chọn một địa điểm có sẵn.");
+    if (!selectedLocation) {
+      showErrorToast("Thiếu thông tin", "Vui lòng chọn một địa điểm từ danh sách gợi ý.");
       return;
     }
 
-    const payload = {
-      location_id: selectedLocationId,
-      notes: trimmedNotes || undefined,
-    };
+    let payload: any = { notes: trimmedNotes || undefined };
 
     try {
+      if (selectedLocation.location_id) {
+        // Option 1: DB location
+        payload.location_id = selectedLocation.location_id;
+      } else {
+        // Option 2: Resolve first (để lấy ID chuẩn nếu được)
+        try {
+          const resolveRes = await resolveLocation({
+            name: selectedLocation.name,
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+            full_address: selectedLocation.full_address || selectedLocation.secondary_text,
+            provider: (selectedLocation.source as ResolveLocationProvider) || "MAPBOX",
+            provider_id: selectedLocation.provider_id,
+          });
+
+          if (resolveRes.data?.id) {
+            payload.location_id = resolveRes.data.id;
+          } else {
+            payload.location_data = {
+              provider: (selectedLocation.source as ResolveLocationProvider) || "MAPBOX",
+              provider_id: selectedLocation.provider_id,
+              name: selectedLocation.name,
+              latitude: selectedLocation.latitude,
+              longitude: selectedLocation.longitude,
+              full_address: selectedLocation.full_address || selectedLocation.secondary_text,
+              location_type: "POI",
+            };
+          }
+        } catch (e) {
+          payload.location_data = {
+            provider: (selectedLocation.source as ResolveLocationProvider) || "MAPBOX",
+            provider_id: selectedLocation.provider_id,
+            name: selectedLocation.name,
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+            full_address: selectedLocation.full_address || selectedLocation.secondary_text,
+            location_type: "POI",
+          };
+        }
+      }
+
       await createMutation.mutateAsync(payload);
       resetForm();
       setShowAddForm(false);
@@ -129,8 +156,8 @@ export function LocationSuggestionsSection({
         error?.response?.data?.code === 1003
       ) {
         showErrorToast(
-          "Module chưa sẵn sàng",
-          "Backend chưa mở endpoint location-suggestions cho nhóm này. Vui lòng kiểm tra lại BE route/permission."
+          "Không tìm thấy nhóm",
+          "Không tìm thấy thông tin nhóm hoặc bạn không có quyền thực hiện hành động này (404/1003)."
         );
         return;
       }
@@ -198,12 +225,9 @@ export function LocationSuggestionsSection({
       {expanded && (
         <View style={{ marginTop: 14 }}>
           <TouchableOpacity
-            onPress={async () => {
+            onPress={() => {
               const next = !showAddForm;
               setShowAddForm(next);
-              if (next && availableLocations.length === 0) {
-                await loadLocations();
-              }
             }}
             activeOpacity={0.8}
             style={{
@@ -231,8 +255,7 @@ export function LocationSuggestionsSection({
               }}
             >
               <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
-                Chọn địa điểm từ danh sách hệ thống (API yêu cầu{" "}
-                <Text style={{ fontWeight: "700" }}>location_id</Text>).
+                Tìm kiếm địa điểm (nhà hàng, khách sạn, điểm tham quan...).
               </Text>
               <TextInput
                 placeholder="Tìm địa điểm..."
@@ -269,26 +292,24 @@ export function LocationSuggestionsSection({
                     nestedScrollEnabled
                     showsVerticalScrollIndicator
                   >
-                    {availableLocations
-                      .filter((item) =>
-                        item.name.toLowerCase().includes(locationQuery.trim().toLowerCase())
-                      )
-                      .map((item) => (
+                    {availableLocations.map((item, idx) => {
+                      const key = item.location_id || item.provider_id || `loc-${idx}`;
+                      const isSelected = selectedLocation?.provider_id === item.provider_id;
+                      return (
                         <TouchableOpacity
-                          key={item.id}
-                          onPress={() => setSelectedLocationId(item.id)}
+                          key={key}
+                          onPress={() => setSelectedLocation(item)}
                           style={{
                             paddingVertical: 10,
                             paddingHorizontal: 8,
                             borderBottomWidth: 1,
                             borderBottomColor: "#F3F4F6",
-                            backgroundColor:
-                              selectedLocationId === item.id ? "#EDE9FE" : "transparent",
+                            backgroundColor: isSelected ? "#EDE9FE" : "transparent",
                           }}
                         >
                           <Text
                             style={{
-                              fontWeight: selectedLocationId === item.id ? "700" : "500",
+                              fontWeight: isSelected ? "700" : "500",
                               color: "#111827",
                               maxWidth: "100%",
                             }}
@@ -296,16 +317,17 @@ export function LocationSuggestionsSection({
                           >
                             {item.name}
                           </Text>
-                          {!!item.address && (
+                          {(item.full_address || item.secondary_text) && (
                             <Text
                               style={{ color: "#6B7280", fontSize: 12, marginTop: 2, maxWidth: "100%" }}
                               numberOfLines={2}
                             >
-                              {item.address}
+                              {item.full_address || item.secondary_text}
                             </Text>
                           )}
                         </TouchableOpacity>
-                      ))}
+                      );
+                    })}
                   </ScrollView>
                 )}
               </View>
@@ -376,7 +398,6 @@ export function LocationSuggestionsSection({
               {suggestions.map((item, index) => {
                 const canDelete = canModerate || item.suggested_by?.id === currentUserId;
                 const location = item.location;
-                const previewUri = buildLocationPreview(location?.lat, location?.lng);
                 const addressLine =
                   location?.place_formatted ||
                   location?.full_address ||
@@ -396,19 +417,17 @@ export function LocationSuggestionsSection({
                   >
                     <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
                       <View style={{ flex: 1 }}>
-                        {previewUri ? (
-                          <Image
-                            source={{ uri: previewUri }}
-                            style={{
-                              width: "100%",
-                              height: 110,
-                              borderRadius: 10,
-                              backgroundColor: "#E5E7EB",
-                              marginBottom: 8,
-                            }}
-                            contentFit="cover"
-                          />
-                        ) : null}
+                        <LocationImage
+                          location={location}
+                          style={{
+                            width: "100%",
+                            height: 140,
+                            borderRadius: 10,
+                          }}
+                          containerStyle={{
+                            marginBottom: 8,
+                          }}
+                        />
                         <Text style={{ fontWeight: "700", color: "#111827" }}>
                           {location?.name ?? "Địa điểm"}
                         </Text>
