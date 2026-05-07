@@ -1,5 +1,6 @@
 import {
   ChatMessageResponse,
+  ParentMessage,
   getChatSenderId,
   getSenderAvatarParts,
   getSenderLabel,
@@ -8,9 +9,10 @@ import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -19,6 +21,7 @@ import {
   useColorScheme,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { SharedPostCard } from "./SharedPostCard";
 
 // Layout constants (tránh magic numbers)
 const AVATAR_SIZE = 40;
@@ -28,10 +31,15 @@ const MAX_BUBBLE_WIDTH_PERCENT = "75%";
 const MIN_BUBBLE_WIDTH = 60;
 
 // Bot Premium Colors
-const BOT_PRIMARY = "#A855F7"; 
-const BOT_BG = "#F3E8FF";      
+const BOT_PRIMARY = "#A855F7";
+const BOT_BG = "#F3E8FF";
 const BOT_BORDER = "#D8B4FE";
 const BOT_TEXT = "#111827";
+
+// Highlight animation constants
+const HIGHLIGHT_FADE_IN_DURATION = 200;
+const HIGHLIGHT_FADE_OUT_DURATION = 1800;
+const HIGHLIGHT_DISPLAY_TIME = 2000;
 
 interface ChatMessageProps {
   message: ChatMessageResponse;
@@ -41,6 +49,7 @@ interface ChatMessageProps {
   onLike?: (messageId: string) => void;
   onShowLikes?: (messageId: string) => void;
   onReply?: (message: ChatMessageResponse) => void;
+  onReplyPress?: (messageId: string) => void;
   onLongPress?: () => void;
   onImagePress?: (imageUrl: string) => void;
   isHighlighted?: boolean;
@@ -66,16 +75,50 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   onLike,
   onShowLikes,
   onReply,
+  onReplyPress,
   onLongPress,
   onImagePress,
   isHighlighted = false,
 }) => {
+  const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const router = useRouter();
-  
+
   // Khởi tạo aspect ratio từ cache nếu đã có, tránh nhảy layout
   const initialRatio = (message.media_url && imageRatioCache.get(message.media_url)) || 1;
   const [imgAspectRatio, setImgAspectRatio] = React.useState<number>(initialRatio);
+
+  // Highlight animation for thread navigation
+  const highlightAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isHighlighted) {
+      const animation = Animated.sequence([
+        Animated.timing(highlightAnim, {
+          toValue: 1,
+          duration: HIGHLIGHT_FADE_IN_DURATION,
+          useNativeDriver: false,
+        }),
+        Animated.timing(highlightAnim, {
+          toValue: 0,
+          duration: HIGHLIGHT_FADE_OUT_DURATION,
+          useNativeDriver: false,
+        }),
+      ]);
+      animation.start();
+
+      // Cleanup animation on unmount or when isHighlighted changes
+      return () => {
+        animation.stop();
+        highlightAnim.setValue(0);
+      };
+    }
+  }, [isHighlighted, highlightAnim]);
+
+  const highlightColor = highlightAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["rgba(255,255,255,0)", "rgba(251,191,36,0.3)"],
+  });
   
   const isMe = getChatSenderId(message) === currentUserId;
   
@@ -201,34 +244,93 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     </View>
   );
 
+  // Render parent message preview with media thumbnails
+  const renderParentMessagePreview = (parent: ChatMessageResponse | ParentMessage) => {
+    const parentMessage = parent as ChatMessageResponse;
+    const messageType = parentMessage.message_type;
+
+    // IMAGE: Show 40x40 thumbnail
+    if (messageType === "IMAGE" && parentMessage.media_url) {
+      return (
+        <View style={styles.replyMediaRow}>
+          <Image
+            source={{ uri: parentMessage.media_url }}
+            style={styles.replyThumbnail}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+          <Text style={[styles.replyMediaLabel, { color: replyPreviewColor }]}>
+            Photo
+          </Text>
+        </View>
+      );
+    }
+
+    // VIDEO: Show play icon
+    if (messageType === "VIDEO" && parentMessage.media_url) {
+      return (
+        <View style={styles.replyMediaRow}>
+          <View style={styles.replyVideoThumbnail}>
+            <Ionicons name="play-circle" size={24} color="#FFF" />
+          </View>
+          <Text style={[styles.replyMediaLabel, { color: replyPreviewColor }]}>
+            Video
+          </Text>
+        </View>
+      );
+    }
+
+    // SHARE_POST: Show document icon
+    if (messageType === "SHARE_POST") {
+      return (
+        <View style={styles.replyMediaRow}>
+          <Ionicons name="document-text" size={20} color="#34B27D" />
+          <Text style={[styles.replyMediaLabel, { color: replyPreviewColor }]}>
+            Shared a post
+          </Text>
+        </View>
+      );
+    }
+
+    // TEXT: Keep existing behavior (backwards compatible)
+    return (
+      <Text style={[styles.replyPreviewText, { color: replyPreviewColor }]} numberOfLines={1}>
+        {parent.message_content || ""}
+      </Text>
+    );
+  };
+
   // Reply preview (bar bên trong bubble)
   const replyPreview =
     message.parent_message && (
-      <View style={[styles.replyPreviewContainer, { backgroundColor: replyBarBackground }]}>
-        <View style={styles.replyHeaderRow}>
-          <Ionicons
-            name="arrow-back"
-            size={12}
-            color={replyMetaColor}
-          />
-          <Text
-            style={[styles.replySenderText, { color: replyMetaColor }]}
-            numberOfLines={1}
-          >
-            {message.parent_message.sender?.fullName ||
-              message.parent_message.sender?.username ||
-              "Thành viên"}
-          </Text>
+      <TouchableOpacity
+        onPress={() => {
+          if (onReplyPress && message.parent_message_id) {
+            onReplyPress(message.parent_message_id);
+          }
+        }}
+        activeOpacity={0.7}
+        disabled={!onReplyPress}
+      >
+        <View style={[styles.replyPreviewContainer, { backgroundColor: replyBarBackground }]}>
+          <View style={styles.replyHeaderRow}>
+            <Ionicons
+              name="arrow-back"
+              size={12}
+              color={replyMetaColor}
+            />
+            <Text
+              style={[styles.replySenderText, { color: replyMetaColor }]}
+              numberOfLines={1}
+            >
+              {message.parent_message.sender?.fullName ||
+                message.parent_message.sender?.username ||
+                "Thành viên"}
+            </Text>
+          </View>
+          {renderParentMessagePreview(message.parent_message)}
         </View>
-        {message.parent_message.message_content ? (
-          <Text
-            style={[styles.replyPreviewText, { color: replyPreviewColor }]}
-            numberOfLines={1}
-          >
-            {message.parent_message.message_content}
-          </Text>
-        ) : null}
-      </View>
+      </TouchableOpacity>
     );
 
   const botReplyTarget = React.useMemo(() => {
@@ -324,41 +426,24 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       </View>
     ) : message.message_type === "SHARE_POST" ? (
       <View style={styles.bubbleWrapper}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            const postId = message.shared_post_id;
-            if (postId) {
-              router.push(`/post/${postId}` as any);
-            }
-          }}
-          style={[
-            styles.sharePostBubble,
-            {
-              backgroundColor: isDark ? "#1F2937" : "#F3F4F6",
-              borderColor: isDark ? "#374151" : "#E5E7EB",
-            },
-          ]}
-        >
-          <View style={styles.sharePostHeader}>
-            <View style={styles.sharePostIcon}>
-              <Ionicons name="share-social" size={16} color="#34B27D" />
-            </View>
-            <Text style={[styles.sharePostHeaderText, { color: isDark ? "#9CA3AF" : "#6B7280" }]}>
-              Đã chia sẻ một bài viết
+        {message.shared_post ? (
+          <SharedPostCard
+            post={message.shared_post}
+            onPress={() => {
+              if (message.shared_post_id) {
+                // Navigate to post detail - expo-router handles string paths
+                router.push(`/post/${message.shared_post_id}`);
+              }
+            }}
+          />
+        ) : (
+          <View style={styles.fallbackCard}>
+            <Ionicons name="alert-circle-outline" size={24} color="#9CA3AF" />
+            <Text style={[styles.fallbackText, { color: isDark ? "#9CA3AF" : "#6B7280" }]}>
+              Post không khả dụng
             </Text>
           </View>
-          
-          <View style={styles.sharePostContent}>
-            <Text style={[styles.sharePostTitle, { color: isDark ? "#F3F4F6" : "#111827" }]} numberOfLines={2}>
-              {message.message_content || "Xem bài viết chi tiết"}
-            </Text>
-            <View style={styles.sharePostFooter}>
-              <Text style={styles.sharePostLink}>Xem chi tiết</Text>
-              <Ionicons name="chevron-forward" size={14} color="#34B27D" />
-            </View>
-          </View>
-        </TouchableOpacity>
+        )}
       </View>
     ) : (
       <View style={styles.bubbleWrapper}>
@@ -450,7 +535,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const containerStyle = [
     styles.container,
     isMe ? styles.containerRight : styles.containerLeft,
-    isHighlighted && styles.containerHighlighted,
   ];
 
   const Inner = (
@@ -471,16 +555,18 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   if (onLongPress) {
     return (
-      <Pressable
-        onLongPress={onLongPress}
-        delayLongPress={400}
-        style={containerStyle}
-      >
-        {Inner}
-      </Pressable>
+      <Animated.View style={[containerStyle, { backgroundColor: highlightColor }]}>
+        <Pressable
+          onLongPress={onLongPress}
+          delayLongPress={400}
+          style={{ flex: 1 }}
+        >
+          {Inner}
+        </Pressable>
+      </Animated.View>
     );
   }
-  return <View style={containerStyle}>{Inner}</View>;
+  return <Animated.View style={[containerStyle, { backgroundColor: highlightColor }]}>{Inner}</Animated.View>;
 };
 
 // Giữ export cũ để không phá vỡ import hiện tại
@@ -497,10 +583,6 @@ const styles = StyleSheet.create({
   },
   containerLeft: {
     justifyContent: "flex-start",
-  },
-  containerHighlighted: {
-    backgroundColor: "rgba(52, 179, 125, 0.2)",
-    borderRadius: 12,
   },
   avatarContainer: {
     marginHorizontal: 8,
@@ -600,6 +682,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
+  replyMediaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 2,
+  },
+  replyThumbnail: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.1)",
+  },
+  replyVideoThumbnail: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  replyMediaLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    flex: 1,
+  },
   replyDivider: {
     height: 1,
     marginBottom: 8,
@@ -670,52 +777,19 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "500",
   },
-  // Share post styles
-  sharePostBubble: {
-    borderRadius: 16,
-    borderWidth: 1,
-    width: 240,
-    overflow: "hidden",
-    alignSelf: "flex-start",
-  },
-  sharePostHeader: {
+  // Fallback card for unavailable shared post
+  fallbackCard: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
-    gap: 8,
-  },
-  sharePostIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(52, 179, 125, 0.1)",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: "rgba(156, 163, 175, 0.1)",
+    width: 240,
   },
-  sharePostHeaderText: {
-    fontSize: 12,
+  fallbackText: {
+    fontSize: 13,
     fontWeight: "500",
-  },
-  sharePostContent: {
-    padding: 12,
-  },
-  sharePostTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  sharePostFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  sharePostLink: {
-    fontSize: 12,
-    color: "#34B27D",
-    fontWeight: "600",
   },
 });

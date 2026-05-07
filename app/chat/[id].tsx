@@ -28,6 +28,7 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import Toast from "react-native-toast-message";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -498,6 +499,43 @@ export default function ChatScreen() {
     setHighlightMessageId(msg.id);
   }, []);
 
+  // Scroll to parent message when reply preview is tapped
+  const scrollToMessage = useCallback((messageId: string) => {
+    const index = listData.findIndex(
+      (item) => item.type === "message" && item.message.id === messageId
+    );
+
+    if (index === -1) {
+      Toast.show({
+        type: "info",
+        text1: "Tin nhắn không có sẵn",
+        text2: "Cuộn lên để tải tin nhắn cũ hơn",
+        position: "top",
+        visibilityTime: 3000,
+      });
+      return;
+    }
+
+    try {
+      flashListRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.5,
+      });
+
+      setHighlightMessageId(messageId);
+      // Clear highlight after animation completes (matches ChatBubble animation duration)
+      setTimeout(() => setHighlightMessageId(null), 2000);
+    } catch (error) {
+      console.error("Scroll to message error:", error);
+      Toast.show({
+        type: "error",
+        text1: "Không thể cuộn đến tin nhắn",
+        position: "top",
+      });
+    }
+  }, [listData]);
+
   const handleActionSheetDismiss = useCallback(() => {
     setActionSheetVisible(false);
     setSelectedMessage(null);
@@ -565,10 +603,11 @@ export default function ChatScreen() {
         onLike={handleLike}
         onShowLikes={handleShowLikes}
         onLongPress={() => handleLongPress(item.message)}
+        onReplyPress={scrollToMessage}
         isHighlighted={highlightMessageId === item.message.id}
       />
     );
-  }, [currentUser?.id, handleLike, handleShowLikes, highlightMessageId, handleLongPress]);
+  }, [currentUser?.id, handleLike, handleShowLikes, highlightMessageId, handleLongPress, scrollToMessage]);
 
   const keyExtractor = useCallback((item: any) => item.key, []);
   
@@ -733,27 +772,11 @@ export default function ChatScreen() {
             )
           }
           ListFooterComponent={
-            typingUsersRedux.length > 0 ? (
-              <TypingIndicatorBubble
-                usernames={typingUsersRedux.map(u => u.username)}
-              />
-            ) : null
-          }
-          ListFooterComponent={
             <>
-              {typingUsers.length > 0 && (
-                <View style={styles.typingWrapper}>
-                  <View style={styles.typingRow}>
-                    <View style={styles.typingAvatar}>
-                      <ActivityIndicator size="small" color="#9CA3AF" />
-                    </View>
-                    <Text className="text-gray-500 text-sm font-medium">
-                      {typingUsers.length === 1
-                        ? "Đang gõ..."
-                        : `${typingUsers.length} người đang gõ...`}
-                    </Text>
-                  </View>
-                </View>
+              {typingUsersRedux.length > 0 && (
+                <TypingIndicatorBubble
+                  usernames={typingUsersRedux.map(u => u.username)}
+                />
               )}
               {loading && messages.length > 0 && (
                 <View className="py-4 items-center">
