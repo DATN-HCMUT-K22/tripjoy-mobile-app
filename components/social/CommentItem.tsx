@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -6,6 +6,8 @@ import type { CommentResponse } from "@/types/comment";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { formatNumber } from "@/utils/format";
 import { useCommentReplies } from "@/hooks/useComments";
+import { ReportModal } from "./ReportModal";
+import { ContentType } from "@/types/report";
 
 interface CommentItemProps {
   comment: CommentResponse;
@@ -27,6 +29,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
   const isOwnComment = currentUserId === comment.created_by_user.id;
   const [avatarError, setAvatarError] = React.useState(false);
   const [showReplies, setShowReplies] = React.useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Fetch replies when expanded
   const { data: repliesData, isLoading: isRepliesLoading } = useCommentReplies(
@@ -147,7 +150,26 @@ export const CommentItem: React.FC<CommentItemProps> = ({
               <Text style={[styles.actionText, styles.deleteText]}>Xóa</Text>
             </TouchableOpacity>
           )}
+
+          {/* Report (only for others' comments) */}
+          {!isOwnComment && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => setShowReportModal(true)}
+            >
+              <Ionicons name="flag-outline" size={16} color="#ef4444" />
+              <Text style={[styles.actionText, styles.reportText]}>Báo cáo</Text>
+            </TouchableOpacity>
+          )}
         </View>
+
+        <ReportModal
+          visible={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          contentId={comment.id}
+          contentType={ContentType.COMMENT}
+          contentTitle={comment.content?.substring(0, 50)}
+        />
 
         {/* Nested replies preview */}
         {!isNested && comment.reply_count > 0 && (
@@ -265,6 +287,9 @@ const styles = StyleSheet.create({
     color: "#ef4444",
   },
   deleteText: {
+    color: "#ef4444",
+  },
+  reportText: {
     color: "#ef4444",
   },
   repliesContainer: {
