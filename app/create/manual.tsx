@@ -1,23 +1,31 @@
 import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
+import { LocationImage } from "@/components/location/LocationImage";
 import TimePickerModal from "@/components/TimePickerModal";
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { BUDGET_CUSTOM_ID, budgetOptions } from "@/data/budgetOptions";
-import { formatCurrencyVND } from "@/utils/format";
 import { mockAttractions } from "@/data/mockAttractions";
 import { mockItineraryItems } from "@/data/mockItineraryItems";
 import { tripTypeOptions } from "@/data/tripTypeOptions";
+import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
+import { useManualUserLocation } from "@/hooks/useManualUserLocation";
 import { ItineraryItem } from "@/types/itinerary";
+import { formatCurrencyVND } from "@/utils/format";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
+import { fetchPlacePhotoUrls } from "@/utils/googlePlacePhoto";
+import {
+  buildManualDestinationRows,
+  computeTravelTimesForManual,
+} from "@/utils/manualTravelTimes";
 import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
+import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
-import { showErrorToast } from "@/utils/toast";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 import { Ionicons } from "@expo/vector-icons";
-import { LocationImage } from "@/components/location/LocationImage";
+import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
-import { fetchPlacePhotoUrl } from "@/utils/googlePlacePhoto";
-import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -27,13 +35,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
-import { useManualUserLocation } from "@/hooks/useManualUserLocation";
-import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
-import {
-  buildManualDestinationRows,
-  computeTravelTimesForManual,
-} from "@/utils/manualTravelTimes";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -126,12 +127,14 @@ function ItineraryItemCard({
   index,
   totalItems,
   onEditTime,
+  onDelete,
   travelFromUser,
 }: {
   item: ItineraryItem;
   index: number;
   totalItems: number;
   onEditTime: (item: ItineraryItem) => void;
+  onDelete: (item: ItineraryItem) => void;
   travelFromUser?: ItineraryItem["transportation"];
 }) {
   const { externalPlacesById } = useItinerary();
@@ -224,12 +227,14 @@ function ItineraryItemCard({
               {item.name}
             </Text>
             <View className="flex-row items-center gap-2 ml-2">
-              {/* Icon 1: Dịch vụ ăn uống */}
-              <Ionicons name="restaurant-outline" size={20} color="#666" />
-              {/* Icon 2: Chỗ ở */}
-              <Ionicons name="home-outline" size={20} color="#666" />
-              {/* Icon 3: Di chuyển */}
-              <Ionicons name="car-outline" size={22} color="#666" />
+              <TouchableOpacity
+                onPress={() => onDelete(item)}
+                activeOpacity={0.7}
+                className="p-1"
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="trash-outline" size={22} color="#EF4444" />
+              </TouchableOpacity>
             </View>
           </View>
           
@@ -245,10 +250,10 @@ function ItineraryItemCard({
               </Text>
               <TouchableOpacity
                 onPress={() => onEditTime(item)}
-                className="ml-2 px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200"
+                className="ml-2 px-2 py-1 rounded-full bg-blue-50 border border-blue-200"
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
-                <Ionicons name="calendar-outline" size={14} color="#34B27D" />
+                <Ionicons name="pencil" size={14} color="#2563EB" />
               </TouchableOpacity>
             </View>
             <View className="flex-row items-center mb-2">
@@ -313,6 +318,10 @@ export default function ManualItineraryScreen() {
 
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
+
+  // State for delete confirmation
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<ItineraryItem | null>(null);
 
   // Lưu snapshot của state trước khi điều hướng để có thể revert khi back
   const snapshotRef = useRef<{
@@ -395,7 +404,7 @@ export default function ManualItineraryScreen() {
     setTimePickerVisible(true);
   };
 
-  const handleSaveTime = (timeRange: { start: string; end: string }) => {
+  const handleSaveTime = (timeRange: { start: string; end: string }, duration?: number) => {
     if (!selectedDay || !editingItem) return;
     if (isInvalidSameDayTimeRange(timeRange.start, timeRange.end)) {
       showErrorToast(
@@ -405,11 +414,37 @@ export default function ManualItineraryScreen() {
       return;
     }
     const updated = (itineraryItemsByDay[selectedDay.key] || []).map((it) =>
-      it.id === editingItem.id ? { ...it, timeRange } : it
+      it.id === editingItem.id ? { ...it, timeRange, duration } : it
     );
     addItineraryItemsToDay(selectedDay.key, updated);
     setTimePickerVisible(false);
     setEditingItem(null);
+  };
+
+  const handleDeleteItem = (item: ItineraryItem) => {
+    setItemToDelete(item);
+    setDeleteConfirmVisible(true);
+  };
+
+  const confirmDeleteItem = () => {
+    if (!selectedDay || !itemToDelete) return;
+    const dayKey = selectedDay.key;
+    const item = itemToDelete;
+
+    // Cập nhật itinerary items
+    const currentItems = itineraryItemsByDay[dayKey] || [];
+    const updatedItems = currentItems.filter((it) => it.id !== item.id);
+    addItineraryItemsToDay(dayKey, updatedItems);
+
+    // Cập nhật selected locations
+    const currentLocations = selectedLocationsByDay[dayKey] || [];
+    const updatedLocations = currentLocations.filter(
+      (id) => id !== item.locationId
+    );
+    addLocationsToDay(dayKey, updatedLocations);
+
+    setDeleteConfirmVisible(false);
+    setItemToDelete(null);
   };
 
   const locationsForSelectedDay = useMemo(() => {
@@ -469,7 +504,7 @@ export default function ManualItineraryScreen() {
       const rawName = destinationLocation?.name ?? destinationLocation?.nameEn;
       const locationName =
         typeof rawName === "string" ? rawName.trim() || undefined : undefined;
-      const photoUrl = await fetchPlacePhotoUrl(lat!, lon!, locationName, 800, 30_000);
+      const photoUrl = await fetchPlacePhotoUrls(lat!, lon!, locationName, 800, 30_000);
       if (cancelled) return;
 
       if (photoUrl) {
@@ -739,7 +774,7 @@ export default function ManualItineraryScreen() {
             >
               {/* Icon AI riêng */}
               <Image
-                source={require("@/assets/images/ai-logo.jpg")}
+                source={require("../../assets/images/ai-logo.jpg")}
                 style={{ width: 26, height: 26, marginRight: 8 }}
                 contentFit="contain"
               />
@@ -808,6 +843,7 @@ export default function ManualItineraryScreen() {
                   index={index}
                   totalItems={itineraryItemsForDay.length}
                   onEditTime={openTimePicker}
+                  onDelete={handleDeleteItem}
                   travelFromUser={travelByLocationId?.[item.locationId]}
                 />
               ))}
@@ -923,6 +959,26 @@ export default function ManualItineraryScreen() {
           setEditingItem(null);
         }}
         onSave={handleSaveTime}
+        selectedDate={editingItem?.timeRange.start}
+      />
+
+      <AppDialogModal
+        visible={deleteConfirmVisible}
+        variant="warning"
+        title="Xác nhận xóa"
+        message={`Bạn có chắc chắn muốn xóa "${itemToDelete?.name}" khỏi lịch trình?`}
+        primaryLabel="Xóa"
+        primaryDestructive
+        onPrimaryPress={confirmDeleteItem}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => {
+          setDeleteConfirmVisible(false);
+          setItemToDelete(null);
+        }}
+        onRequestClose={() => {
+          setDeleteConfirmVisible(false);
+          setItemToDelete(null);
+        }}
       />
     </SafeAreaView>
   );

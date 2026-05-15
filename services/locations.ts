@@ -50,6 +50,8 @@ export type LocationSearchHitDto = {
   rating?: number;
   operationalStatus?: string;
   operational_status?: string;
+  provider?: string;
+  provider_id?: string;
 };
 
 export type LocationSearchPage = {

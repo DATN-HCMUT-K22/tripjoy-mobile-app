@@ -33,7 +33,25 @@ export type AnalyticsEvent =
   | 'saved_posts_opened'
   // Error events
   | 'api_error'
-  | 'upload_failed';
+  | 'upload_failed'
+  // Group events
+  | 'group_created'
+  | 'group_viewed'
+  | 'group_updated'
+  | 'group_deleted'
+  | 'group_joined'
+  | 'group_left'
+  | 'member_added'
+  | 'member_removed'
+  | 'member_role_updated'
+  | 'leadership_transferred'
+  // Itinerary apply events
+  | 'apply_itinerary_group_selected'
+  | 'apply_itinerary_initiated'
+  | 'itinerary_applied'
+  | 'report_submitted'
+  | 'report_handled'
+  | 'content_reported';
 
 export interface AnalyticsMetadata {
   // Post-related
@@ -188,7 +206,7 @@ class AnalyticsBatcher {
   private queue: Array<{ event: AnalyticsEvent; metadata?: AnalyticsMetadata }> = [];
   private batchSize = 10;
   private flushInterval = 5000; // 5 seconds
-  private timer: NodeJS.Timeout | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   track(event: AnalyticsEvent, metadata?: AnalyticsMetadata): void {
     this.queue.push({ event, metadata });
@@ -215,6 +233,37 @@ class AnalyticsBatcher {
     console.log('[ANALYTICS] Batch flush:', batch.length, 'events');
     batch.forEach(({ event, metadata }) => trackEvent(event, metadata));
   }
+}
+
+/**
+ * Track group creation
+ */
+export function trackGroupCreated(groupId: string, metadata?: AnalyticsMetadata): void {
+  trackEvent('group_created', {
+    groupId,
+    ...metadata,
+  });
+}
+
+/**
+ * Track group interaction
+ */
+export function trackGroupInteraction(
+  action: 'joined' | 'left' | 'updated' | 'deleted',
+  groupId: string,
+  metadata?: AnalyticsMetadata
+): void {
+  const eventMap = {
+    joined: 'group_joined',
+    left: 'group_left',
+    updated: 'group_updated',
+    deleted: 'group_deleted',
+  } as const;
+
+  trackEvent(eventMap[action], {
+    groupId,
+    ...metadata,
+  });
 }
 
 export const analyticsBatcher = new AnalyticsBatcher();

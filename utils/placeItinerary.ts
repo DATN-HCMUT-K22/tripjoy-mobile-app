@@ -67,6 +67,7 @@ export function buildItineraryItemForLocationId(
     return {
       id: uniqueId,
       locationId,
+      providerId: attraction.providerId,
       name: attraction.name,
       image: attraction.image,
       timeRange: {
@@ -116,6 +117,7 @@ export function buildItineraryItemForLocationId(
   return {
     id: uniqueId,
     locationId,
+    providerId: undefined,
     name: "Địa điểm",
     image: "",
     timeRange: {
@@ -148,6 +150,7 @@ export function buildItineraryItemFromExternalSnapshot(
   return {
     id: uniqueId,
     locationId,
+    providerId: snap.providerId,
     name: snap.name,
     image: snap.imageUrl || "",
     timeRange: {

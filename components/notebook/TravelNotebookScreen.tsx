@@ -7,6 +7,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNotebook, useGenerateNotebook, useRegenerateNotebook } from "@/hooks/useNotebook";
@@ -89,8 +90,9 @@ export function TravelNotebookScreen({
   // STATE 1: Loading (initial fetch)
   if (isLoading && !notebook) {
     return (
-      <View style={styles.centerContainer}>
-        <NotebookGeneratingState isGenerating={false} />
+      <View className="flex-1 items-center justify-center bg-gray-50">
+        <ActivityIndicator size="large" color="#10B981" />
+        <Text className="mt-4 text-gray-500 font-medium">Đang tải hướng dẫn...</Text>
       </View>
     );
   }

@@ -1,21 +1,24 @@
 import { DraggableApiItineraryItemCard } from "@/components/itinerary/DraggableApiItineraryItemCard";
+import TimePickerModal from "@/components/TimePickerModal";
 import ItineraryRouteMap, {
   type ItineraryMapLocation,
 } from "@/components/itinerary/ItineraryRouteMap";
 import {
-  ITINERARY_STATUS,
   useAiModifyItinerary,
   useAiSuggestLocation,
+  useDeleteTripItem,
   useItineraryDetail,
   useItineraryTripItems,
   useUpdateItinerary,
   useUpdateTripItem
 } from "@/hooks/useItineraries";
-import type {
-  LocationResponse,
-  TripItemResponse,
+import { AppDialogModal } from "@/components/common/AppDialogModal";
+import {
+  ITINERARY_STATUS,
+  type LocationResponse,
+  type TripItemResponse,
 } from "@/services/itineraries";
-import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
+import { parseItineraryDateToDayOnly, tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
 import { LocationForMap } from "@/utils/mapLocations";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,6 +31,8 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { LocationImage } from "@/components/location/LocationImage";
+import { setLocationImageSession } from "@/utils/locationImageCache";
 import {
   ActivityIndicator,
   Modal,
@@ -143,15 +148,18 @@ function getKeywordFallbackImage(note?: string): string {
 }
 
 function placeIdFromTripItem(row: TripItemResponse): string | undefined {
-  // 1. Try location.id
+  // 1. Priority: Google Place ID (provider_id) - Required for AI Modify
+  const googleId = row.location?.provider_id;
+  if (googleId != null && String(googleId).trim().length > 0) return String(googleId).trim();
+
+  // 2. Fallback: Internal location id (UUID)
   const nid = row.location?.id;
   if (nid != null && String(nid).trim().length > 0) return String(nid).trim();
 
-  // 2. Try flat location_id
+  // 3. Fallback: Flat location_id
   const flat = row.location_id;
   if (flat != null && String(flat).trim().length > 0) return String(flat).trim();
-  
-  // 3. Last fallback: use the TripItem ID itself
+  // 4. Final fallback: TripItem internal ID
   if (row.id != null && String(row.id).trim().length > 0) return String(row.id).trim();
   
   return undefined;
@@ -166,14 +174,26 @@ function formatHeaderDate(iso?: string): string {
 }
 
 export default function ItineraryDetailScreen() {
-  // const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id: rawId } = useLocalSearchParams<{ id?: string }>();
   const itineraryId = typeof rawId === "string" ? rawId : undefined;
   const aiModifyMutation = useAiModifyItinerary();
   const updateItineraryMutation = useUpdateItinerary();
+  const deleteTripItemMutation = useDeleteTripItem();
 
   const [adjustModalVisible, setAdjustModalVisible] = useState(false);
+  
+  // State for delete confirmation
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ dayKey: string; id?: string; index?: number; name?: string } | null>(null);
+
+  // Set session ID for image cache
+  useEffect(() => {
+    if (itineraryId) {
+      setLocationImageSession(itineraryId);
+    }
+  }, [itineraryId]);
+
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [selectedUnwantedIds, setSelectedUnwantedIds] = useState<string[]>([]);
   const [draftItemsByDay, setDraftItemsByDay] = useState<
@@ -188,6 +208,39 @@ export default function ItineraryDetailScreen() {
 
   const aiSuggestMutation = useAiSuggestLocation();
   const updateTripItemMutation = useUpdateTripItem();
+
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [editingTimeSlot, setEditingTimeSlot] = useState<{
+    dayKey: string;
+    item: TripItemResponse;
+  } | null>(null);
+
+  const openTimePicker = useCallback((dayKey: string, item: TripItemResponse) => {
+    setEditingTimeSlot({ dayKey, item });
+    setTimePickerVisible(true);
+  }, []);
+
+  const handleSaveTime = useCallback((timeRange: { start: string; end: string }, duration?: number) => {
+    if (!editingTimeSlot) return;
+    const { dayKey, item } = editingTimeSlot;
+    
+    setDraftItemsByDay((prev) => {
+      const rows = [...(prev[dayKey] || [])];
+      const i = rows.findIndex((x) => x.id === item.id);
+      if (i < 0) return prev;
+      
+      const updated = { 
+        ...rows[i], 
+        start_time: tripPickerDateToItineraryDateTime(dayKey, timeRange.start),
+        duration: duration ?? rows[i].duration
+      };
+      rows[i] = updated;
+      return { ...prev, [dayKey]: rows };
+    });
+    
+    setTimePickerVisible(false);
+    setEditingTimeSlot(null);
+  }, [editingTimeSlot]);
 
   const {
     data: detail,
@@ -208,19 +261,26 @@ export default function ItineraryDetailScreen() {
     itineraryStatus: detail?.status,
   });
 
-  // Log dữ liệu để kiểm tra trong terminal
-  useEffect(() => {
-    if (tripItems && tripItems.length > 0) {
-      console.log(`[DEBUG] Itinerary ${itineraryId} có ${tripItems.length} địa điểm.`);
-      console.log(`[DEBUG] Địa điểm đầu tiên: ${tripItems[0].location?.name || tripItems[0].note?.substring(0, 20)}`);
+  const itemsByDay = useMemo(() => {
+    const map: Record<string, TripItemResponse[]> = {};
+    for (const row of tripItems) {
+      const k = dayKeyFromItem(row);
+      if (!map[k]) map[k] = [];
+      map[k].push(row);
     }
-  }, [tripItems, itineraryId]);
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) => {
+        const ta = Date.parse(a.start_time || "") || 0;
+        const tb = Date.parse(b.start_time || "") || 0;
+        return ta - tb;
+      });
+    }
+    return map;
+  }, [tripItems]);
 
   useEffect(() => {
-    if (tripItems && tripItems.length > 0) {
-      setDraftItemsByDay(itemsByDay);
-    }
-  }, [itemsByDay, tripItems]);
+    setDraftItemsByDay(itemsByDay);
+  }, [itemsByDay]);
 
   const prevDetailStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -244,7 +304,6 @@ export default function ItineraryDetailScreen() {
     }, [itineraryId, refetchDetail, refetchItems]),
   );
 
-  // Fetch images from Google Places API for trip items
   useEffect(() => {
     if (tripItems.length === 0) return;
 
@@ -255,7 +314,6 @@ export default function ItineraryDetailScreen() {
         const itemId = item.id || item.location?.id || item.location_id || "";
         if (!itemId || imageUrlCache[String(itemId)]) continue;
 
-        // Nếu location null nhưng có id, thử dùng id đó như là google place id (theo thông tin từ user)
         let locToFetch = item.location;
         if (!locToFetch && item.id) {
           locToFetch = { 
@@ -279,23 +337,6 @@ export default function ItineraryDetailScreen() {
     fetchImages();
   }, [tripItems]);
 
-  const itemsByDay = useMemo(() => {
-    const map: Record<string, TripItemResponse[]> = {};
-    for (const row of tripItems) {
-      const k = dayKeyFromItem(row);
-      if (!map[k]) map[k] = [];
-      map[k].push(row);
-    }
-    for (const k of Object.keys(map)) {
-      map[k].sort((a, b) => {
-        const ta = Date.parse(a.start_time || "") || 0;
-        const tb = Date.parse(b.start_time || "") || 0;
-        return ta - tb;
-      });
-    }
-    return map;
-  }, [tripItems]);
-
   const dayKeys = useMemo(() => {
     const keys = Object.keys(itemsByDay);
     keys.sort((a, b) => {
@@ -306,7 +347,6 @@ export default function ItineraryDetailScreen() {
     return keys;
   }, [itemsByDay]);
 
-  // Helper to get image URL from cache or fallback to sync version
   const getItemImageUrl = (row: TripItemResponse): string | undefined => {
     const itemId = row.id || row.location?.id || row.location_id || "";
     const cached = imageUrlCache[String(itemId)];
@@ -315,13 +355,8 @@ export default function ItineraryDetailScreen() {
     const locImg = getLocationImageUrl(row.location);
     if (locImg) return locImg;
 
-    // Fallback to keyword-based image if no location or coordinates
     return getKeywordFallbackImage(row.note);
   };
-
-  useEffect(() => {
-    setDraftItemsByDay(itemsByDay);
-  }, [itemsByDay]);
 
   const placesForAiModify = useMemo(() => {
     const map = new Map<
@@ -365,7 +400,6 @@ export default function ItineraryDetailScreen() {
   const handleSaveManualChanges = useCallback(async () => {
     if (!itineraryId || !detail) return;
     
-    // Flatten all items from all days into a single array for the API
     const allItems: TripItemResponse[] = [];
     dayKeys.forEach(dk => {
       const dayItems = draftItemsByDay[dk] || [];
@@ -377,8 +411,8 @@ export default function ItineraryDetailScreen() {
         itineraryId,
         payload: {
           name: detail.title || "",
-          start_date: detail.start_date || "",
-          end_date: detail.end_date || "",
+          start_date: tripPickerDateToItineraryDateTime(detail.start_date, "start"),
+          end_date: tripPickerDateToItineraryDateTime(detail.end_date || detail.start_date, "end"),
           status: detail.status,
           trip_items: allItems.map(item => ({
             start_time: item.start_time || "",
@@ -389,9 +423,7 @@ export default function ItineraryDetailScreen() {
           })),
         },
       });
-    } catch (err) {
-      // Error handled by mutation hook
-    }
+    } catch (err) {}
   }, [itineraryId, detail, dayKeys, draftItemsByDay, updateItineraryMutation]);
 
   const handleSubmitAiModify = useCallback(async () => {
@@ -402,13 +434,18 @@ export default function ItineraryDetailScreen() {
         payload: { unwantedPlaceIds: selectedUnwantedIds },
       });
       closeAdjustModal();
-    } catch {
-      /* lỗi đã toast trong hook */
-    }
+    } catch {}
   }, [aiModifyMutation, itineraryId, selectedUnwantedIds, closeAdjustModal]);
 
   const handleOpenAiSuggest = useCallback(async (item: TripItemResponse) => {
-    if (!itineraryId || !item.id) return;
+    const unwantedPlaceId = placeIdFromTripItem(item);
+    console.log(`[AI SUGGEST] Selected for replacement: ${item.location?.name}, ID: ${unwantedPlaceId}`);
+
+    if (!itineraryId || !unwantedPlaceId) {
+      showErrorToast("Không thể xác định địa điểm để gợi ý");
+      return;
+    }
+
     setActiveTripItem(item);
     setAiSuggestions([]);
     setSuggestionModalVisible(true);
@@ -416,20 +453,15 @@ export default function ItineraryDetailScreen() {
     try {
       const suggestions = await aiSuggestMutation.mutateAsync({
         itineraryId,
-        tripItemId: item.id,
+        unwantedPlaceId,
       });
       setAiSuggestions(suggestions);
-    } catch {
-      // Error toast handled in hook
-    }
+    } catch {}
   }, [itineraryId, aiSuggestMutation]);
 
   const handleSelectAiSuggestion = useCallback(async (suggestion: TripItemResponse) => {
-    if (!itineraryId || !activeTripItem?.id) {
-      return;
-    }
+    if (!itineraryId || !activeTripItem?.id) return;
 
-    // AI Suggestion returns TripItemResponse objects with location inside (Clean Mapping)
     const placeId = suggestion.location?.provider_id || (suggestion as any).place_id;
     const locationId = suggestion.location?.id || suggestion.location_id;
 
@@ -446,9 +478,7 @@ export default function ItineraryDetailScreen() {
       });
       setSuggestionModalVisible(false);
       setActiveTripItem(null);
-    } catch {
-      // Toast handled in hook
-    }
+    } catch {}
   }, [itineraryId, activeTripItem, updateTripItemMutation]);
 
   const isGeneratingItinerary =
@@ -479,10 +509,10 @@ export default function ItineraryDetailScreen() {
         detail?.end_date || detail?.start_date,
       )}`
     : "";
-  const coverUri =
-    [detail?.cover_image_url, detail?.thumbnail_url]
-      .map((u) => (typeof u === "string" ? u.trim() : ""))
-      .find((u) => u.length > 0) || "";
+  const firstItemWithCoords = useMemo(() => {
+    return tripItems.find(item => !!coordsFromLocation(item.location));
+  }, [tripItems]);
+
 
   const moveItem = useCallback((dayKey: string, from: number, to: number) => {
     setDraftItemsByDay((prev) => {
@@ -503,19 +533,37 @@ export default function ItineraryDetailScreen() {
   }, []);
 
   const deleteItem = useCallback(
-    (dayKey: string, id?: string, fallbackIndex?: number) => {
-      if (!id && typeof fallbackIndex !== "number") return;
-      setDraftItemsByDay((prev) => {
-        const rows = [...(prev[dayKey] || [])];
-        const next =
-          typeof id === "string" && id.length > 0
-            ? rows.filter((x) => x.id !== id)
-            : rows.filter((_, idx) => idx !== fallbackIndex);
-        return { ...prev, [dayKey]: next };
-      });
+    (dayKey: string, id?: string, fallbackIndex?: number, name?: string) => {
+      setItemToDelete({ dayKey, id, index: fallbackIndex, name });
+      setDeleteConfirmVisible(true);
     },
-    [],
+    []
   );
+
+  const confirmDeleteItem = async () => {
+    if (!itemToDelete || !itineraryId) return;
+    const { id } = itemToDelete;
+
+    if (id) {
+      try {
+        await deleteTripItemMutation.mutateAsync({
+          itineraryId,
+          tripItemId: id
+        });
+      } catch {}
+    }
+
+    setDraftItemsByDay((prev) => {
+      const rows = [...(prev[itemToDelete.dayKey] || [])];
+      const next = itemToDelete.id
+        ? rows.filter((x) => x.id !== itemToDelete.id)
+        : rows.filter((_, idx) => idx !== itemToDelete.index);
+      return { ...prev, [itemToDelete.dayKey]: next };
+    });
+
+    setDeleteConfirmVisible(false);
+    setItemToDelete(null);
+  };
 
   if (!itineraryId) {
     return (
@@ -563,7 +611,7 @@ export default function ItineraryDetailScreen() {
             className="text-center text-xl font-bold text-black"
             numberOfLines={1}
           >
-            Thiết lập lịch trình
+            Điều chỉnh lịch trình
           </Text>
         </View>
         <View className="h-10 w-12 items-center justify-center">
@@ -626,73 +674,8 @@ export default function ItineraryDetailScreen() {
               </View>
             ) : null}
 
-            {/* Thẻ tóm tắt chuyến — giống manual */}
-            <View className="px-4 pt-4">
-              <View className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                {coverUri ? (
-                  <Image
-                    source={{ uri: coverUri }}
-                    style={{ width: "100%", height: 200 }}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <View
-                    className="w-full items-center justify-center bg-gray-200"
-                    style={{ height: 200 }}
-                  >
-                    <Ionicons name="image-outline" size={48} color="#9CA3AF" />
-                  </View>
-                )}
-                    <Text className="border-t border-gray-100 px-4 py-3">
-                      <Text
-                        className="text-base font-bold text-black"
-                        numberOfLines={2}
-                      >
-                        {detail?.title || "Lịch trình"}
-                      </Text>
-                      {dateRangeLabel ? (
-                        <Text className="mt-1 text-xs text-gray-500">
-                          {dateRangeLabel}
-                        </Text>
-                      ) : null}
-                    </Text>
-              </View>
-            </View>
 
-            {/* Cụm nút hành động */}
-            <View className="px-4 pt-4">
-              <TouchableOpacity
-                onPress={() =>
-                  router.push({
-                    pathname: "/itinerary/expenses",
-                    params: { itineraryId: String(itineraryId) },
-                  })
-                }
-                activeOpacity={0.8}
-                className="flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3"
-              >
-                <Ionicons name="wallet-outline" size={20} color="#047857" />
-                <Text className="ml-2 font-semibold text-emerald-800 text-sm">
-                  Quản lý chi phí
-                </Text>
-              </TouchableOpacity>
 
-              {/* Travel Notebook Button */}
-              <TouchableOpacity
-                onPress={() =>
-                  router.push(`/itinerary/notebook?id=${String(itineraryId)}`)
-                }
-                activeOpacity={0.8}
-                className="mt-3 flex-row items-center justify-center rounded-xl border border-purple-200 bg-purple-50 py-3"
-              >
-                <Ionicons name="book-outline" size={20} color="#7C3AED" />
-                <Text className="ml-2 font-semibold text-purple-800 text-sm">
-                  Hướng dẫn du lịch AI
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Status Banner - show once at top */}
             {dayKeys.length > 0 && (
               <View className="px-4 pt-4">
                 <View
@@ -715,7 +698,6 @@ export default function ItineraryDetailScreen() {
               </View>
             )}
 
-            {/* Error loading items - show once */}
             {itemsError && !itemsLoading ? (
               <View className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <Text className="text-sm text-amber-900">
@@ -735,7 +717,6 @@ export default function ItineraryDetailScreen() {
               </View>
             ) : null}
 
-            {/* Loading items */}
             {itemsLoading && tripItems.length === 0 ? (
               <View className="items-center py-10">
                 <ActivityIndicator color="#2BB673" />
@@ -745,16 +726,12 @@ export default function ItineraryDetailScreen() {
               </View>
             ) : null}
 
-            {/* Loop through ALL days */}
             <View className="px-4 pt-4">
               {dayKeys.map((dayKey, dayIndex) => {
                 const itemsForDay = draftItemsByDay[dayKey] || [];
-
-                // Calculate day number and label
                 const dayNumber = dayIndex + 1;
                 const dayLabel = formatDayChipLabel(dayKey);
 
-                // Calculate map pins for this day
                 const mapPinsForDay: ItineraryMapLocation[] = [];
                 for (const row of itemsForDay) {
                   const coords = coordsFromLocation(row.location);
@@ -773,14 +750,12 @@ export default function ItineraryDetailScreen() {
 
                 return (
                   <View key={dayKey} className="mb-6">
-                    {/* Day Header */}
                     <Text className="text-lg font-bold text-black mb-4">
                       {dayKey === "_nodate"
                         ? "Chưa phân ngày"
                         : `Ngày ${dayNumber}: ${dayLabel}`}
                     </Text>
 
-                    {/* Map for this day */}
                     {mapPinsForDay.length > 0 ? (
                       <View className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
                         <ItineraryRouteMap
@@ -791,7 +766,6 @@ export default function ItineraryDetailScreen() {
                       </View>
                     ) : null}
 
-                    {/* Items list */}
                     {itemsForDay.length > 0 ? (
                       <View className="pb-2">
                         {itemsForDay.map((row, index) => {
@@ -805,13 +779,17 @@ export default function ItineraryDetailScreen() {
                               canInteract={canEditItineraryItems}
                               imageUrl={imageUrl}
                               onMove={(from, to) => moveItem(dayKey, from, to)}
-                              onDelete={() => deleteItem(dayKey, row.id, index)}
+                              onDelete={() => {
+                                const name =
+                                  row.location?.name || row.note || "địa điểm này";
+                                deleteItem(dayKey, row.id, index, name);
+                              }}
                               onSuggest={() => handleOpenAiSuggest(row)}
+                              onEdit={() => openTimePicker(dayKey, row)}
                             />
                           );
                         })}
 
-                        {/* Add location button */}
                         {showAddLocationButton ? (
                           <View className="mt-2 flex-row items-center justify-center rounded-lg border border-dashed border-primary bg-[#D1FAE5] py-3">
                             <Ionicons
@@ -819,16 +797,46 @@ export default function ItineraryDetailScreen() {
                               size={18}
                               color="#34B27D"
                             />
-                            {canEditItineraryItems ? (
-                              <TouchableOpacity
-                                onPress={() => openAdjustModal(dayKey)}
-                                activeOpacity={0.7}
-                              >
-                                <Text className="ml-2 text-sm font-semibold text-primary">
-                                  Điều chỉnh AI
-                                </Text>
-                              </TouchableOpacity>
-                            ) : null}
+                            <View className="flex-row items-center gap-2">
+                              {canEditItineraryItems && (
+                                <TouchableOpacity
+                                  onPress={() => openAdjustModal(dayKey)}
+                                  activeOpacity={0.7}
+                                  className="flex-row items-center rounded-lg border border-primary bg-white px-3 py-1.5"
+                                >
+                                  <Ionicons name="sparkles-outline" size={16} color="#34B27D" />
+                                  <Text className="ml-1.5 text-xs font-semibold text-primary">
+                                    Điều chỉnh AI
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+
+                              {canEditItineraryItems && (
+                                <TouchableOpacity
+                                  onPress={() => 
+                                    router.push({
+                                      pathname: "/create/add-location",
+                                      params: {
+                                        itineraryId: String(itineraryId),
+                                        dayKey: dayKey,
+                                        fromScreen: "itinerary-detail",
+                                        latitude: firstItemWithCoords ? coordsFromLocation(firstItemWithCoords.location)?.latitude : undefined,
+                                        longitude: firstItemWithCoords ? coordsFromLocation(firstItemWithCoords.location)?.longitude : undefined,
+                                        cityName: detail?.title || undefined,
+                                      },
+                                    } as any)
+
+                                  }
+                                  activeOpacity={0.7}
+                                  className="flex-row items-center rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-1.5"
+                                >
+                                  <Ionicons name="add" size={16} color="white" />
+                                  <Text className="ml-1 text-xs font-semibold text-white">
+                                    Thêm địa điểm
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
                           </View>
                         ) : null}
                       </View>
@@ -849,7 +857,6 @@ export default function ItineraryDetailScreen() {
               })}
             </View>
 
-            {/* Warning about missing place IDs - show once at bottom */}
             {tripItems.length > 0 &&
             placesForAiModify.length === 0 &&
             !detailBlocking &&
@@ -862,7 +869,6 @@ export default function ItineraryDetailScreen() {
               </View>
             ) : null}
           </ScrollView>
-
         </View>
       )}
 
@@ -913,8 +919,12 @@ export default function ItineraryDetailScreen() {
                     onPress={() => handleSelectAiSuggestion(suggestion)}
                     disabled={updateTripItemMutation.isPending}
                   >
-                    <View className="w-14 h-14 bg-emerald-50 rounded-xl items-center justify-center">
-                      <Ionicons name="location" size={24} color="#34B27D" />
+                    <View className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100">
+                      <LocationImage 
+                        location={suggestion.location} 
+                        style={{ width: 64, height: 64 }}
+                        showAiBadge={false}
+                      />
                     </View>
                     <View className="flex-1 ml-4">
                       <Text className="text-base font-bold text-gray-900">
@@ -982,7 +992,6 @@ export default function ItineraryDetailScreen() {
               (() => {
                 const filtered = selectedDayKey
                   ? placesForAiModify.filter(p => {
-                      // dayHint is something like "Ngày 1", "Ngày 2"...
                       const targetHint = formatDayChipLabel(selectedDayKey);
                       return p.dayHint === targetHint;
                     })
@@ -1017,7 +1026,6 @@ export default function ItineraryDetailScreen() {
                         color={checked ? "#2BB673" : "#9CA3AF"}
                       />
                       
-                      {/* Hình ảnh địa điểm */}
                       <View className="ml-3 rounded-lg overflow-hidden bg-gray-100" style={{ width: 64, height: 44 }}>
                         {p.imageUrl ? (
                           <Image
@@ -1093,6 +1101,40 @@ export default function ItineraryDetailScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+
+      <AppDialogModal
+        visible={deleteConfirmVisible}
+        variant="warning"
+        title="Xác nhận xóa"
+        message={`Bạn có chắc chắn muốn xóa "${
+          itemToDelete?.name || "địa điểm này"
+        }" khỏi lịch trình?`}
+        primaryLabel="Xóa"
+        primaryDestructive
+        onPrimaryPress={confirmDeleteItem}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => {
+          setDeleteConfirmVisible(false);
+          setItemToDelete(null);
+        }}
+        onRequestClose={() => {
+          setDeleteConfirmVisible(false);
+          setItemToDelete(null);
+        }}
+      />
+
+      <TimePickerModal
+        visible={timePickerVisible}
+        onClose={() => setTimePickerVisible(false)}
+        onSave={handleSaveTime}
+        initialStartTime={editingTimeSlot?.item.start_time ? new Date(editingTimeSlot.item.start_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "08:00"}
+        initialEndTime={(() => {
+          const start = editingTimeSlot?.item.start_time ? new Date(editingTimeSlot.item.start_time) : new Date();
+          const dur = editingTimeSlot?.item.duration || 60;
+          const end = new Date(start.getTime() + dur * 60000);
+          return end.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        })()}
+      />
     </SafeAreaView>
   );
 }

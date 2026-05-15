@@ -3,16 +3,21 @@
  * Gradient header for group detail with role-based actions
  */
 
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState, useMemo } from 'react';
 import * as Haptics from 'expo-haptics';
+import { Image as ExpoImage } from 'expo-image';
 import { AppBottomSheet } from '@/components/common/AppBottomSheet';
+import { AppDialogModal } from '@/components/common/AppDialogModal';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { Group } from '@/types/group';
 import { getCurrentUserRole, isGroupLeader, isGroupManager } from '@/utils/roleUtils';
+import { useDeleteGroup, useLeaveGroup } from '@/hooks/useGroups';
+import { showErrorToast } from '@/utils/toast';
+import { normalizeAvatarUri } from '@/utils/image';
 
 interface GroupHeaderProps {
   group: Group;
@@ -29,10 +34,20 @@ interface HeaderAction {
 export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
   // const router = useRouter();
   const [showActionSheet, setShowActionSheet] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const currentUserRole = getCurrentUserRole(group, currentUserId);
   const isManager = isGroupManager(group, currentUserId);
   const isLeader = isGroupLeader(group, currentUserId);
+
+  const { mutate: deleteGroup } = useDeleteGroup();
+  const { mutate: leaveGroup } = useLeaveGroup();
+
+  const handleDeleteGroup = () => {
+    setShowDeleteConfirm(true);
+  };
 
   const headerActions = useMemo((): HeaderAction[] => {
     const actions: HeaderAction[] = [];
@@ -53,7 +68,17 @@ export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
       label: 'Rời nhóm',
       onPress: () => {
         setShowActionSheet(false);
-        // TODO: Leave group confirmation
+        
+        const hasOtherMembers = (group.members?.length ?? 0) > 1;
+        if (isLeader && hasOtherMembers) {
+          showErrorToast(
+            "Không thể rời nhóm ngay",
+            "Bạn đang là Trưởng nhóm. Hãy chuyển quyền trưởng nhóm cho thành viên khác trước khi rời nhóm."
+          );
+          return;
+        }
+        
+        setShowLeaveConfirm(true);
       },
       danger: true,
     });
@@ -64,7 +89,7 @@ export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
         label: 'Xóa nhóm',
         onPress: () => {
           setShowActionSheet(false);
-          // TODO: Delete group confirmation
+          handleDeleteGroup();
         },
         danger: true,
       });
@@ -81,6 +106,8 @@ export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
   const themeColor = group.theme_color || '#0D9488';
   const memberCount = group.members?.length || 0;
   const initial = group.name?.charAt(0)?.toUpperCase() || '?';
+  const avatarUri = normalizeAvatarUri(group.avatar);
+  const isFileUri = !!avatarUri?.startsWith('file://');
 
   return (
     <>
@@ -112,10 +139,29 @@ export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
           <View className="flex-row items-center gap-3">
             {/* Avatar */}
             <View
-              className="bg-white/20 rounded-full items-center justify-center"
+              className="bg-white/20 rounded-full items-center justify-center overflow-hidden border-2 border-white/30"
               style={{ width: 60, height: 60 }}
             >
-              <Text className="text-white font-bold text-2xl">{initial}</Text>
+              {avatarUri && !imageError ? (
+                isFileUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={{ width: "100%", height: "100%" }}
+                    resizeMode="cover"
+                    onError={() => setImageError(true)}
+                  />
+                ) : (
+                  <ExpoImage
+                    source={{ uri: avatarUri }}
+                    style={{ width: "100%", height: "100%" }}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    onError={() => setImageError(true)}
+                  />
+                )
+              ) : (
+                <Text className="text-white font-bold text-2xl">{initial}</Text>
+              )}
             </View>
 
             {/* Name and info */}
@@ -166,6 +212,40 @@ export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
           ))}
         </View>
       </AppBottomSheet>
+      <AppDialogModal
+        visible={showDeleteConfirm}
+        variant="warning"
+        title="Giải tán nhóm"
+        message="Bạn có chắc chắn muốn giải tán nhóm này không? Hành động này không thể hoàn tác."
+        primaryLabel="Giải tán"
+        primaryDestructive
+        onPrimaryPress={() => {
+          setShowDeleteConfirm(false);
+          deleteGroup(group.id);
+        }}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setShowDeleteConfirm(false)}
+        onRequestClose={() => setShowDeleteConfirm(false)}
+      />
+      <AppDialogModal
+        visible={showLeaveConfirm}
+        variant="warning"
+        title="Rời nhóm"
+        message="Bạn có chắc chắn muốn rời khỏi nhóm này? Bạn sẽ không còn nhận được tin nhắn từ nhóm."
+        primaryLabel="Rời nhóm"
+        primaryDestructive
+        onPrimaryPress={() => {
+          setShowLeaveConfirm(false);
+          leaveGroup(group.id, {
+            onSuccess: () => {
+              router.replace('/groups');
+            }
+          });
+        }}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setShowLeaveConfirm(false)}
+        onRequestClose={() => setShowLeaveConfirm(false)}
+      />
     </>
   );
 }

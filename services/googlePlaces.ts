@@ -27,16 +27,14 @@ function extractPlaceId(place: { id?: string; name?: string }): string {
 
 /**
  * URL ảnh Place Photos (New).
- * Không encode cả chuỗi thành một segment (%2F) — Google cần path dạng .../places/ID/photos/REF/media
  */
 function buildPhotoMediaUrl(
   photoResourceName: string,
   apiKey: string,
-  maxWidthPx: number = 800
+  maxHeightPx: number = 800
 ): string {
-  const segments = photoResourceName.split("/").map(encodeURIComponent);
-  const pathInUrl = segments.join("/");
-  return `${PLACES_BASE}/${pathInUrl}/media?maxWidthPx=${maxWidthPx}&key=${encodeURIComponent(
+  // photoResourceName thường có dạng "places/PLACE_ID/photos/PHOTO_ID"
+  return `${PLACES_BASE}/${photoResourceName}/media?maxHeightPx=${maxHeightPx}&key=${encodeURIComponent(
     apiKey
   )}`;
 }
@@ -179,7 +177,6 @@ export function isGooglePlacesConfigured(): boolean {
 
 /**
  * Tìm địa điểm quanh tâm điểm đến (Places API New — searchNearby).
- * Cần bật "Places API (New)" trên Google Cloud và dùng cùng key đã hạn chế đúng app.
  */
 export async function searchNearbyPlacesForTrip(
   center: LatLng,
@@ -219,7 +216,7 @@ export async function searchNearbyPlacesForTrip(
 }
 
 /**
- * Tìm theo chữ người dùng nhập, lệch về vùng điểm đến.
+ * Tìm theo chữ người dùng nhập (Places API New — searchText).
  */
 export async function searchTextPlacesNear(
   textQuery: string,
@@ -270,65 +267,51 @@ function dedupeById(items: GooglePlaceListItem[]): GooglePlaceListItem[] {
 }
 
 /**
- * Lấy thông tin chi tiết của một Place theo ID (bao gồm photos).
- * Place ID format: "ChIJ..." hoặc full resource name "places/ChIJ..."
+ * Lấy thông tin chi tiết của một Place theo ID (Places API New — GET /v1/places/{id}).
  */
 export async function getPlaceDetails(placeId: string): Promise<{
+  id: string;
   photos?: { name: string }[];
   displayName?: { text: string };
   formattedAddress?: string;
+  location?: LatLng;
 } | null> {
   const apiKey = getGoogleMapsApiKey();
   if (!apiKey || !placeId) return null;
 
-  // Normalize place ID to resource name format
+  // Normalize place ID to resource name format (places/ID)
   const resourceName = placeId.startsWith("places/")
     ? placeId
     : `places/${placeId}`;
   
-  console.log(`\n🔍 [GOOGLE PLACES] Fetching details for: ${resourceName}`);
+  console.log(`\n🔍 [GOOGLE PLACES NEW] Fetching details for: ${resourceName}`);
   try {
     const res = await fetch(`${PLACES_BASE}/${resourceName}`, {
       method: "GET",
       headers: {
+        "Accept": "application/json",
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "photos,displayName,formattedAddress",
+        "X-Goog-FieldMask": "id,displayName,formattedAddress,photos,location",
       },
     });
 
-    const text = await res.text();
-    let json: unknown;
-    try {
-      json = text ? JSON.parse(text) : {};
-    } catch {
-      console.warn(`Invalid JSON response for place ${placeId}`);
-      return null;
-    }
-
     if (!res.ok) {
-      const err = json as { error?: { message?: string; status?: string } };
-      console.warn(`Failed to fetch place details: ${err?.error?.message || res.status}`);
+      console.warn(`[GOOGLE PLACES NEW] Details Fetch Failed: HTTP ${res.status}`);
       return null;
     }
 
-    const details = json as {
-      photos?: { name: string }[];
-      displayName?: { text: string };
-      formattedAddress?: string;
-    };
-
-    console.log(`✅ [GOOGLE PLACES] Details received. Photos count: ${details.photos?.length || 0}`);
+    const details = await res.json();
+    console.log(`✅ [GOOGLE PLACES NEW] Details received. Photos count: ${details.photos?.length || 0}`);
     return details;
   } catch (error) {
-    console.warn(`Failed to fetch place details for ${placeId}:`, error);
+    console.error("[GOOGLE PLACES NEW] Details Fetch Failed:", error);
     return null;
   }
 }
 
 /**
- * Lấy URL ảnh đầu tiên của một Place theo ID.
- * Trả về undefined nếu không tìm thấy hoặc có lỗi.
+ * Lấy URL ảnh đầu tiên của một Place theo ID (Places API New).
  */
 export async function getPlacePhotoUrl(placeId: string): Promise<string | undefined> {
   const apiKey = getGoogleMapsApiKey();
@@ -336,21 +319,22 @@ export async function getPlacePhotoUrl(placeId: string): Promise<string | undefi
 
   const details = await getPlaceDetails(placeId);
   if (!details?.photos || details.photos.length === 0) {
-    console.log(`⚠️ [GOOGLE PLACES] No photos found for place: ${placeId}`);
+    console.log(`⚠️ [GOOGLE PLACES NEW] No photos found for place: ${placeId}`);
     return undefined;
   }
 
   const firstPhoto = details.photos[0];
-  const url = buildPhotoMediaUrl(firstPhoto.name, apiKey, 800);
-  console.log(`🖼️ [GOOGLE PLACES] Photo URL resolved (800px): ${url.substring(0, 60)}...`);
+  const url = buildPhotoMediaUrl(firstPhoto.name || "", apiKey, 800);
+  console.log(`🖼️ [GOOGLE PLACES NEW] Photo URL resolved (800px): ${url.substring(0, 60)}...`);
   return url;
 }
 
 /**
- * Build URL ảnh từ photo resource name (public export).
- * Dùng cho trường hợp đã có photo reference từ backend.
+ * Build URL ảnh từ photo resource name (Places API New).
  */
 export function buildPlacePhotoUrl(photoResourceName: string): string {
   const apiKey = getGoogleMapsApiKey();
+  // Ensure photoResourceName is in correct format "places/ID/photos/PHOTO_ID"
+  // If it's just a reference (legacy), this might fail, but the spec says we move to New API.
   return buildPhotoMediaUrl(photoResourceName, apiKey);
 }

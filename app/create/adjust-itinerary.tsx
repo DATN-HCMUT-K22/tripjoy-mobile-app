@@ -12,8 +12,9 @@ import {
 } from "@/utils/mapLocations";
 import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
 import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
-import { showErrorToast } from "@/utils/toast";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import TimePickerModal from "@/components/TimePickerModal";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -54,7 +55,7 @@ function AdjustableItem({
 }: {
   item: ItineraryItem;
   index: number;
-  onDelete: (id: string) => void;
+  onDelete: (dayKey: string, item: ItineraryItem) => void;
   onMove: (from: number, to: number) => void;
   totalItems: number;
   dayKey: string;
@@ -155,13 +156,13 @@ function AdjustableItem({
                 </Text>
                 <TouchableOpacity
                   onPress={() => onEditTime(dayKey, item)}
-                  className="ml-2 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1"
+                  className="ml-2 rounded-full border border-blue-200 bg-blue-50 px-2 py-1"
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
                   <Ionicons
-                    name="calendar-outline"
+                    name="pencil"
                     size={14}
-                    color="#34B27D"
+                    color="#2563EB"
                   />
                 </TouchableOpacity>
               </View>
@@ -171,7 +172,7 @@ function AdjustableItem({
 
         {/* Icon delete - tách ra khỏi gesture */}
         <TouchableOpacity
-          onPress={() => onDelete(item.id)}
+          onPress={() => onDelete(dayKey, item)}
           activeOpacity={0.7}
           className="ml-3"
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -226,7 +227,6 @@ export default function AdjustItineraryScreen() {
   const [draftSelectedLocationsByDay, setDraftSelectedLocationsByDay] =
     useState<Record<string, string[]>>(selectedLocationsByDay);
   const prevSelectedLocationsRef = useRef<string>("");
-  const itineraryItemsByDayRef = useRef(itineraryItemsByDay);
 
   // Snapshot để revert khi nhấn back từ add-location
   const snapshotRef = useRef<{
@@ -249,6 +249,10 @@ export default function AdjustItineraryScreen() {
     item: ItineraryItem;
   } | null>(null);
 
+  // State for delete confirmation
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<ItineraryItem | null>(null);
+
   const openTimePicker = (dayKey: string, item: ItineraryItem) => {
     setEditingTimeSlot({ dayKey, item });
     setTimePickerVisible(true);
@@ -257,7 +261,7 @@ export default function AdjustItineraryScreen() {
   const handleSaveTimeFromAdjust = (timeRange: {
     start: string;
     end: string;
-  }) => {
+  }, duration?: number) => {
     if (!editingTimeSlot) return;
     if (isInvalidSameDayTimeRange(timeRange.start, timeRange.end)) {
       showErrorToast(
@@ -271,17 +275,12 @@ export default function AdjustItineraryScreen() {
       const dayItems = [...(prev[dayKey] || [])];
       const i = dayItems.findIndex((x) => x.id === item.id);
       if (i < 0) return prev;
-      dayItems[i] = { ...dayItems[i], timeRange };
+      dayItems[i] = { ...dayItems[i], timeRange, duration };
       return { ...prev, [dayKey]: dayItems };
     });
     setTimePickerVisible(false);
     setEditingTimeSlot(null);
   };
-
-  // Cập nhật ref khi itineraryItemsByDay thay đổi (nhưng không trigger re-render)
-  useEffect(() => {
-    itineraryItemsByDayRef.current = itineraryItemsByDay;
-  }, [itineraryItemsByDay]);
 
   // Sync từ temp context vào draft state khi quay lại từ add-location
   useFocusEffect(
@@ -358,14 +357,6 @@ export default function AdjustItineraryScreen() {
           snapshotRef.current.contextSelectedLocationsByDay
         );
         const hasChanges = currentSelectedKey !== contextSnapshotKey;
-
-        console.log("Returning from add-location:", {
-          hasChanges,
-          contextSnapshotKey,
-          currentSelectedKey,
-          snapshot: snapshotRef.current.contextSelectedLocationsByDay,
-          current: selectedLocationsByDay,
-        });
 
         // Luôn cập nhật draft state từ context khi quay lại từ add-location
         // Vì context đã được cập nhật bởi add-location screen khi nhấn "Thêm địa điểm"
@@ -573,31 +564,40 @@ export default function AdjustItineraryScreen() {
     ])
   );
 
-  const handleDelete = (dayKey: string, itemId: string) => {
-    // Chỉ cập nhật draft state, không cập nhật context
-    setDraftItemsByDay((prev) => {
-      const currentItems = prev[dayKey] || [];
-      const itemToDelete = currentItems.find((item) => item.id === itemId);
-      const filteredItems = currentItems.filter((item) => item.id !== itemId);
+  const handleHandleDeleteItem = (dayKey: string, item: ItineraryItem) => {
+    setItemToDelete(item);
+    setDeleteConfirmVisible(true);
+  };
 
-      // Cập nhật draft selected locations (xóa locationId tương ứng)
-      if (itemToDelete) {
-        setDraftSelectedLocationsByDay((prevSelected) => {
-          const filtered = (prevSelected[dayKey] || []).filter(
-            (id) => id !== itemToDelete.locationId
-          );
-          return {
-            ...prevSelected,
-            [dayKey]: filtered,
-          };
-        });
+  const confirmDeleteItem = () => {
+    if (!itemToDelete) return;
+    const item = itemToDelete;
+    
+    // Tìm dayKey nơi item đó tồn tại
+    let targetDayKey = "";
+    for (const key of Object.keys(draftItemsByDay)) {
+      if (draftItemsByDay[key].some(it => it.id === item.id)) {
+        targetDayKey = key;
+        break;
       }
+    }
 
-      return {
+    if (targetDayKey) {
+      setDraftItemsByDay((prev) => ({
         ...prev,
-        [dayKey]: filteredItems,
-      };
-    });
+        [targetDayKey]: prev[targetDayKey].filter((it) => it.id !== item.id),
+      }));
+
+      setDraftSelectedLocationsByDay((prev) => ({
+        ...prev,
+        [targetDayKey]: (prev[targetDayKey] || []).filter(
+          (id) => id !== item.locationId
+        ),
+      }));
+    }
+
+    setDeleteConfirmVisible(false);
+    setItemToDelete(null);
   };
 
   const handleMove = (dayKey: string, fromIndex: number, toIndex: number) => {
@@ -659,6 +659,7 @@ export default function AdjustItineraryScreen() {
     // Reset snapshot khi đã lưu
     initialContextSnapshotRef.current = null;
     isInitializedRef.current = false;
+    showSuccessToast("Thành công", "Đã lưu thay đổi lịch trình");
     router.back();
   };
 
@@ -765,7 +766,7 @@ export default function AdjustItineraryScreen() {
                   </Text>
 
                   {dayMapPins.length > 0 ? (
-                    <View className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                    <View className="mb-4">
                       <ItineraryRouteMap
                         locations={dayMapPins}
                         height={220}
@@ -784,13 +785,7 @@ export default function AdjustItineraryScreen() {
                           dayKey={day.key}
                           onEditTime={openTimePicker}
                           index={index}
-                          onDelete={(id) => {
-                            try {
-                              handleDelete(day.key, id);
-                            } catch (error) {
-                              console.error("Error deleting item:", error);
-                            }
-                          }}
+                          onDelete={handleHandleDeleteItem}
                           onMove={(from, to) => {
                             try {
                               handleMove(day.key, from, to);
@@ -815,23 +810,30 @@ export default function AdjustItineraryScreen() {
                     activeOpacity={0.8}
                     className="flex-row items-center justify-center py-3 rounded-lg border border-dashed border-primary bg-[#D1FAE5]"
                     onPress={() => {
-                      // Lấy currentIds từ draft state
-                      const currentIds = (draftItemsByDay[day.key] || []).map(
-                        (i) => i.locationId
-                      );
+                      try {
+                        // Lấy currentIds từ draft state
+                        const currentIds = (draftItemsByDay[day.key] || []).map(
+                          (i) => i.locationId
+                        );
 
-                      // Truyền draft state qua params để add-location biết đã chọn gì
-                      router.push({
-                        pathname: "/create/add-location",
-                        params: {
-                          dayKey: day.key,
-                          fromScreen: "adjust",
-                          draftLocationIds: JSON.stringify(currentIds),
-                        },
-                      } as any);
+                        const routeParams = {
+                          pathname: "/create/add-location" as any,
+                          params: {
+                            dayKey: day.key,
+                            fromScreen: "adjust",
+                            draftLocationIds: JSON.stringify(currentIds),
+                          },
+                        };
+
+                        router.push(routeParams);
+                      } catch (error) {
+                        console.error("Error in Add Location button:", error);
+                        showErrorToast("Lỗi", "Không thể mở màn hình thêm địa điểm");
+                      }
                     }}
                   >
                     <View
+                      pointerEvents="none"
                       style={{
                         position: "relative",
                         width: 20,
@@ -890,6 +892,25 @@ export default function AdjustItineraryScreen() {
             setEditingTimeSlot(null);
           }}
           onSave={handleSaveTimeFromAdjust}
+        />
+
+        <AppDialogModal
+          visible={deleteConfirmVisible}
+          variant="warning"
+          title="Xác nhận xóa"
+          message={`Bạn có chắc chắn muốn xóa "${itemToDelete?.name}" khỏi lịch trình?`}
+          primaryLabel="Xóa"
+          primaryDestructive
+          onPrimaryPress={confirmDeleteItem}
+          secondaryLabel="Hủy"
+          onSecondaryPress={() => {
+            setDeleteConfirmVisible(false);
+            setItemToDelete(null);
+          }}
+          onRequestClose={() => {
+            setDeleteConfirmVisible(false);
+            setItemToDelete(null);
+          }}
         />
       </SafeAreaView>
     </GestureHandlerRootView>

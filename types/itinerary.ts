@@ -3,12 +3,14 @@ import { TripItemResponse } from '@/services/itineraries';
 export interface ItineraryItem {
   id: string;
   locationId: string;
+  providerId?: string;
   name: string;
   image: string;
   timeRange: {
     start: string; // "08:00"
     end: string; // "09:00"
   };
+  duration?: number;
   price: string; // "70.000 VND" hoặc "0 VND" hoặc "80.000 - 120.000 VND"
   googleMapsUrl?: string;
   category: "restaurant" | "attraction" | "hotel" | "activity";
@@ -63,3 +65,35 @@ export type ItineraryTabItem = {
   label: string;
   count: number;
 };
+
+// Apply itinerary to group types
+export interface ApplyItineraryRequest {
+  sourceItineraryId: string;
+  groupId: string;
+  customization?: {
+    name?: string;
+    description?: string;
+  };
+}
+
+export interface ApplyItineraryResponse {
+  success: boolean;
+  generationId: string;
+  newItineraryId?: string; // Available immediately for some cases
+  estimatedCompletionTime?: number; // seconds
+  status: ItineraryGenerationStatus;
+}
+
+export type ItineraryGenerationStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed';
+
+export interface ItineraryGenerationStatusResponse {
+  generationId: string;
+  status: ItineraryGenerationStatus;
+  progress?: number; // 0-100
+  newItineraryId?: string;
+  error?: string;
+}

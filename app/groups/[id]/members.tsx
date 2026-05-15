@@ -1,5 +1,5 @@
 import { AppDialogModal } from "@/components/common/AppDialogModal";
-import { useGroup, useGroupMembers, useAddGroupMember, useUpdateGroupMemberRole, useRemoveGroupMember, useTransferGroupLeadership, useLeaveGroupFromMembers } from "@/hooks/useGroups";
+import { useGroup, useGroupMembers, useAddGroupMember, useUpdateGroupMemberRole, useRemoveGroupMember, useTransferGroupLeadership, useLeaveGroupFromMembers, useDeleteGroup } from "@/hooks/useGroups";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { searchService } from "@/services/search";
 import { Ionicons } from "@expo/vector-icons";
@@ -46,6 +46,7 @@ export default function GroupMembersScreen() {
   const removeMemberMutation = useRemoveGroupMember(groupId);
   const transferLeaderMutation = useTransferGroupLeadership(groupId);
   const leaveGroupMutation = useLeaveGroupFromMembers(groupId);
+  const deleteGroupMutation = useDeleteGroup();
 
   const [memberSearch, setMemberSearch] = useState("");
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
@@ -54,6 +55,7 @@ export default function GroupMembersScreen() {
   const [activeMemberActionId, setActiveMemberActionId] = useState<string | null>(null);
   const [confirmRemoveMemberId, setConfirmRemoveMemberId] = useState<string | null>(null);
   const [leaveGroupDialogVisible, setLeaveGroupDialogVisible] = useState(false);
+  const [deleteGroupDialogVisible, setDeleteGroupDialogVisible] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
 
   const myMembership = useMemo(() => {
@@ -180,6 +182,25 @@ export default function GroupMembersScreen() {
     try {
       await leaveGroupMutation.mutateAsync();
       router.replace("/groups");
+    } catch {
+      // Lỗi đã toast trong hook
+    }
+  };
+
+  const handleDeleteGroup = () => {
+    console.log("[DEBUG] handleDeleteGroup triggered", { groupId, isLeader });
+    if (!groupId || !isLeader) {
+      console.log("[DEBUG] handleDeleteGroup blocked", { groupId, isLeader });
+      return;
+    }
+    setDeleteGroupDialogVisible(true);
+  };
+
+  const confirmDeleteGroup = async () => {
+    setDeleteGroupDialogVisible(false);
+    try {
+      await deleteGroupMutation.mutateAsync(groupId);
+      // Hook tự redirect về /groups
     } catch {
       // Lỗi đã toast trong hook
     }
@@ -559,22 +580,40 @@ export default function GroupMembersScreen() {
 
       {/* Leave group */}
       {myMembership && (
-        <View style={styles.leaveWrap}>
-          <TouchableOpacity
-            style={styles.leaveButton}
-            onPress={handleLeaveGroup}
-            activeOpacity={0.8}
-            disabled={leaveGroupMutation.isPending}
-          >
-            {leaveGroupMutation.isPending ? (
-              <ActivityIndicator size="small" color="#EF4444" />
-            ) : (
-              <>
-                <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-                <Text style={styles.leaveText}>Rời nhóm</Text>
-              </>
-            )}
-          </TouchableOpacity>
+        <View style={styles.actionButtonsWrap}>
+          {isLeader ? (
+            <TouchableOpacity
+              style={[styles.actionButton, styles.deleteButton]}
+              onPress={handleDeleteGroup}
+              activeOpacity={0.8}
+              disabled={deleteGroupMutation.isPending}
+            >
+              {deleteGroupMutation.isPending ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  <Text style={[styles.actionText, styles.deleteText]}>Giải tán nhóm</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleLeaveGroup}
+              activeOpacity={0.8}
+              disabled={leaveGroupMutation.isPending}
+            >
+              {leaveGroupMutation.isPending ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <>
+                  <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+                  <Text style={styles.actionText}>Rời nhóm</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -590,6 +629,20 @@ export default function GroupMembersScreen() {
         primaryDestructive
         onPrimaryPress={() => {
           void confirmLeaveGroup();
+        }}
+      />
+      <AppDialogModal
+        visible={deleteGroupDialogVisible}
+        onRequestClose={() => setDeleteGroupDialogVisible(false)}
+        title="Giải tán nhóm"
+        message="Bạn có chắc chắn muốn giải tán nhóm này không? Mọi dữ liệu và lịch trình sẽ bị xóa và không thể khôi phục."
+        variant="error"
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setDeleteGroupDialogVisible(false)}
+        primaryLabel="Giải tán"
+        primaryDestructive
+        onPrimaryPress={() => {
+          void confirmDeleteGroup();
         }}
       />
     </SafeAreaView>
@@ -1055,27 +1108,37 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
   },
-  leaveWrap: {
+  actionButtonsWrap: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#E5E7EB",
     backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    gap: 12,
   },
-  leaveButton: {
+  actionButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: 999,
+    paddingVertical: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#FCA5A5",
-    backgroundColor: "#FEF2F2",
-    gap: 6,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    gap: 8,
   },
-  leaveText: {
+  deleteButton: {
+    borderColor: "#FECACA",
+    backgroundColor: "#FEF2F2",
+  },
+  actionText: {
     fontSize: 14,
     fontWeight: "600",
+    color: "#6B7280",
+  },
+  deleteText: {
     color: "#EF4444",
   },
 });

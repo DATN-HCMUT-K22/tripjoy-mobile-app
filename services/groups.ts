@@ -2,6 +2,7 @@ import { Group, GroupMember } from "@/types/group";
 import type {
   SuggestLocationRequest,
   SuggestLocationResponse,
+  SuggestionLocationResponse,
 } from "@/types/locationSuggestion";
 import { ApiResponse } from "@/types/user";
 import { httpClient } from "./http/client";
@@ -34,8 +35,9 @@ export interface GroupRequest {
   name: string;
   avatar?: string;
   description?: string;
-  chatbotCount?: number;
-  isPro?: boolean;
+  chatbot_count?: number;
+  is_pro?: boolean;
+  theme?: string;
   theme_color?: string;
   member_ids?: string[];
 }
@@ -50,7 +52,7 @@ export interface UpdateMemberRoleRequest {
 }
 
 export interface TransferLeadershipRequest {
-  newLeaderId: string;
+  new_leader_id: string;
 }
 
 export type ApiResponseVoid = ApiResponse<Record<string, unknown>>;
@@ -123,11 +125,15 @@ export function mapGroupFromApi(raw: unknown): Group {
   const members = Array.isArray(membersRaw)
     ? membersRaw.map((x) => mapGroupMemberFromApi(x))
     : [];
+  
+  // Defensive mapping for avatar from various possible API field names
+  const avatar = (r.avatar ?? r.avatar_url ?? r.avatarUrl ?? r.image ?? null) as string | null;
+
   return {
     id: String(r.id ?? ""),
     name: String(r.name ?? ""),
     description: (r.description as string | null | undefined) ?? null,
-    avatar: (r.avatar as string | null | undefined) ?? null,
+    avatar: avatar,
     theme: (r.theme as string | null | undefined) ?? null,
     theme_color: (r.theme_color as string | null | undefined) ?? null,
     is_pro: Boolean(r.is_pro ?? r.isPro ?? false),
@@ -155,6 +161,8 @@ export function mapLocationFromApi(raw: unknown): SuggestionLocationResponse {
     content: (r.content as string) || undefined,
     full_address: (r.full_address ?? r.fullAddress) as string | undefined,
     place_formatted: (r.place_formatted ?? r.placeFormatted) as string | undefined,
+    provider: (r.provider as string) || undefined,
+    provider_id: (r.provider_id ?? r.providerId) as string | undefined,
   };
 }
 
@@ -162,7 +170,7 @@ export function mapSuggestionFromApi(raw: unknown): SuggestLocationResponse {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
   return {
     id: String(r.id ?? ""),
-    location: mapLocationFromApi(r.location),
+    location: r.location ? mapLocationFromApi(r.location) : undefined,
     notes: (r.notes as string) || undefined,
     created_at: r.created_at as string | undefined,
     created_by: (r.created_by as string) || undefined,

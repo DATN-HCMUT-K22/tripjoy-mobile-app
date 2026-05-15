@@ -8,6 +8,7 @@ import {
   isGooglePlacesConfigured,
   searchNearbyPlacesForTrip,
   searchTextPlacesNear,
+  getPlaceDetails,
   type GooglePlaceListItem,
 } from "@/services/googlePlaces";
 import {
@@ -21,14 +22,20 @@ import {
   type LocationAutocompleteSuggestionDto,
   type LocationSearchHitDto,
 } from "@/services/locations";
+import {
+  useAddTripItem,
+  useItineraryTripItems,
+} from "@/hooks/useItineraries";
 import type { ExternalPlaceSnapshot } from "@/types/places";
 import { expoImageSourceForGoogleRaster } from "@/utils/googlePlaceImageSource";
 import { locationSearchHitToExternalSnapshot } from "@/utils/mapLocationDtoToTrip";
-import { showErrorToast } from "@/utils/toast";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 import { buildStaticMapImageUrl } from "@/utils/staticMapUrl";
 import { Ionicons } from "@expo/vector-icons";
 import { useCreateLocationSuggestion } from "@/hooks/useLocationSuggestions";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { LocationImage } from "@/components/location/LocationImage";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -36,10 +43,10 @@ import {
   ActivityIndicator,
   ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { TextInput } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type ListRow = {
@@ -61,23 +68,32 @@ type ListRow = {
 
 export default function AddLocationScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { exitToHome } = useCreateTripExitToHome();
-  const { dayKey, fromScreen, draftLocationIds, groupId, mode } = useLocalSearchParams<{
+  const { dayKey, fromScreen, draftLocationIds, groupId, mode, itineraryId, latitude, longitude, cityName } = useLocalSearchParams<{
     dayKey: string;
     fromScreen?: string;
     draftLocationIds?: string;
     groupId?: string;
     mode?: string;
+    itineraryId?: string;
+    latitude?: string;
+    longitude?: string;
+    cityName?: string;
   }>();
-  const { addLocationsToDay, selectedLocationsByDay, upsertExternalPlaces } =
+  const { addLocationsToDay, selectedLocationsByDay, upsertExternalPlaces, itineraryItemsByDay } =
     useItinerary();
   const { setPendingLocationIds } = useTempLocation();
   const { tripData } = useTripSetup();
   const [searchText, setSearchText] = useState("");
 
   const createSuggestionMutation = useCreateLocationSuggestion(groupId);
+  const addTripItemMutation = useAddTripItem();
 
-  const isFromEdit = fromScreen === "adjust";
+  // State for confirm modal
+  const [addConfirmVisible, setAddConfirmVisible] = useState(false);
+
+  const isFromEdit = fromScreen === "adjust" || fromScreen === "itinerary-detail";
   const isSuggestionMode = mode === "suggestion" && !!groupId;
 
   const initialLocationIds = useMemo(() => {
@@ -93,19 +109,61 @@ export default function AddLocationScreen() {
   }, [isFromEdit, draftLocationIds, dayKey, selectedLocationsByDay, isSuggestionMode]);
 
   const [selectedLocationIds, setSelectedLocationIds] =
-    useState<string[]>(initialLocationIds);
+    useState<string[]>([]);
+
+  const { data: remoteTripItems = [] } = useItineraryTripItems(itineraryId, {
+    enabled: !!itineraryId,
+  });
+
+  const existingPlaceIdentities = useMemo(() => {
+    const items = dayKey ? itineraryItemsByDay[dayKey] || [] : [];
+    const ids = new Set<string>();
+    const providers = new Set<string>();
+    
+    // Add local items from creation context
+    for (const item of items) {
+      if (item.locationId) ids.add(item.locationId);
+      if (item.providerId) providers.add(item.providerId);
+      if (item.id.startsWith("gmap:")) ids.add(item.id.substring(5));
+    }
+
+    // Add remote items if in itinerary-detail mode
+    if (itineraryId && remoteTripItems.length > 0) {
+      for (const item of remoteTripItems) {
+        if (item.location_id) ids.add(item.location_id);
+        if (item.location?.id) ids.add(item.location.id);
+        if (item.location?.provider_id) providers.add(item.location.provider_id);
+      }
+    }
+
+    return { ids, providers };
+  }, [itineraryItemsByDay, dayKey, itineraryId, remoteTripItems]);
+
+  const newlySelectedCount = selectedLocationIds.length;
+  const hasChanged = selectedLocationIds.length > 0;
 
   const dest = tripData.destinationLocation ?? tripData.location;
-  const center =
-    dest?.latitude != null &&
-    dest?.longitude != null &&
-    !Number.isNaN(dest.latitude) &&
-    !Number.isNaN(dest.longitude)
-      ? { latitude: dest.latitude, longitude: dest.longitude }
-      : null;
+  const center = useMemo(() => {
+    if (
+      dest?.latitude != null &&
+      dest?.longitude != null &&
+      !Number.isNaN(dest.latitude) &&
+      !Number.isNaN(dest.longitude)
+    ) {
+      return { latitude: dest.latitude, longitude: dest.longitude };
+    }
+    if (latitude && longitude) {
+      const lat = parseFloat(latitude);
+      const lng = parseFloat(longitude);
+      if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+        return { latitude: lat, longitude: lng };
+      }
+    }
+    return null;
+  }, [dest, latitude, longitude]);
 
   const cityParam =
-    dest?.nameEn?.trim() || dest?.name?.trim() || undefined;
+    dest?.nameEn?.trim() || dest?.name?.trim() || cityName?.trim() || undefined;
 
   const [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => {
@@ -114,7 +172,7 @@ export default function AddLocationScreen() {
   }, [searchText]);
 
   const hasGooglePlaces = isGooglePlacesConfigured();
-  const useLiveApi = Boolean(center);
+  const useLiveApi = Boolean(center) || isSuggestionMode;
   // Backend API first strategy - tránh gọi Google Places trực tiếp để tiết kiệm phí
   const useGooglePlaces = false;
   const useBackendApi = useLiveApi;
@@ -136,12 +194,12 @@ export default function AddLocationScreen() {
       debouncedSearch,
     ],
     queryFn: async (): Promise<GooglePlaceListItem[]> => {
-      if (!center) return [];
       const q = debouncedSearch.trim();
+      if (!center && !q) return [];
       if (q.length > 0) {
-        return searchTextPlacesNear(q, center, 35000);
+        return center ? searchTextPlacesNear(q, center, 35000) : []; // Google Places needs center
       }
-      return searchNearbyPlacesForTrip(center, 30000);
+      return center ? searchNearbyPlacesForTrip(center, 30000) : [];
     },
     enabled: useGooglePlaces,
     staleTime: 45_000,
@@ -162,15 +220,14 @@ export default function AddLocationScreen() {
       cityParam,
     ],
     queryFn: async (): Promise<(LocationSearchHitDto | LocationAutocompleteSuggestionDto)[]> => {
-      if (!center) return [];
-
       const q = debouncedSearch.trim();
+      if (!center && q.length < 2) return [];
+
       if (q.length >= 2) {
         const autocompleteRes = await autocompleteLocations({
           q,
           ...(cityParam ? { city: cityParam } : {}),
-          lat: center.latitude,
-          lng: center.longitude,
+          ...(center ? { lat: center.latitude, lng: center.longitude } : {}),
         });
         if (!isLocationApiSuccess(autocompleteRes.code)) return [];
         
@@ -182,7 +239,9 @@ export default function AddLocationScreen() {
         });
       }
 
-        const nearbyRes = await nearbyLocations({
+      if (!center) return [];
+
+      const nearbyRes = await nearbyLocations({
         lat: center.latitude,
         lng: center.longitude,
         radius: 30000,
@@ -333,10 +392,12 @@ export default function AddLocationScreen() {
           providerId: suggestion.provider_id,
           name: suggestion.name,
           subtitle: suggestion.full_address || suggestion.secondary_text || "",
-          imageUrl: buildStaticMapImageUrl(
-            [{ latitude: suggestion.latitude, longitude: suggestion.longitude }],
-            { width: 400, height: 400, zoom: 16 }
-          ),
+          imageUrl: (typeof suggestion.latitude === "number" && typeof suggestion.longitude === "number")
+            ? buildStaticMapImageUrl(
+                [{ latitude: suggestion.latitude, longitude: suggestion.longitude }],
+                { width: 400, height: 400, zoom: 16 }
+              )
+            : "",
           latitude: suggestion.latitude,
           longitude: suggestion.longitude,
           types: suggestion.primary_type ? [suggestion.primary_type] : ["tourist_attraction"],
@@ -362,6 +423,8 @@ export default function AddLocationScreen() {
         source: "tripjoy",
         fromMock: false,
         sourceLabel: "TripJoy DB",
+        providerId: hit.provider_id,
+        resolveSource: hit.provider === "GOOGLE_MAPS" ? "GOOGLE_MAPS" : undefined,
       };
     });
   }, [
@@ -371,6 +434,15 @@ export default function AddLocationScreen() {
     apiHits,
     resolvedLocationIds,
   ]);
+
+  const filteredListRows = useMemo(() => {
+    return listRows.filter((row) => {
+      if (existingPlaceIdentities.ids.has(row.id)) return false;
+      if (row.locationId && existingPlaceIdentities.ids.has(row.locationId)) return false;
+      if (row.providerId && existingPlaceIdentities.providers.has(row.providerId)) return false;
+      return true;
+    });
+  }, [listRows, existingPlaceIdentities]);
 
   const toggleLocation = (locationId: string) => {
     setSelectedLocationIds((prev) => {
@@ -382,6 +454,16 @@ export default function AddLocationScreen() {
   };
 
   const handleAddLocations = async () => {
+    if (!hasChanged) {
+      router.back();
+      return;
+    }
+    setAddConfirmVisible(true);
+  };
+
+  const confirmAddLocations = async () => {
+    setAddConfirmVisible(false);
+    
     if (isSuggestionMode) {
       try {
         const selectedRows = listRows.filter(r => selectedLocationIds.includes(r.id));
@@ -389,32 +471,47 @@ export default function AddLocationScreen() {
           let finalLocationId = row.locationId;
 
           // Thử resolve nếu chưa có locationId
-          if (
-            !finalLocationId &&
-            (row.providerId || row.fromMock) &&
-            typeof row.latitude === "number" &&
-            typeof row.longitude === "number"
-          ) {
-            try {
-              const resolveRes = await resolveLocation({
-                name: row.name,
-                latitude: row.latitude,
-                longitude: row.longitude,
-                full_address: row.subtitle || undefined,
-                // Nếu là mock hoặc không có source, dùng MAPBOX làm fallback an toàn hơn
-                provider: row.resolveSource || (row.fromMock ? "MAPBOX" : "GOOGLE_MAPS"),
-                provider_id: row.providerId || row.id,
-                maki: row.types?.[0],
-              });
-              if (
-                isLocationApiSuccess(resolveRes.code) &&
-                resolveRes.data &&
-                typeof resolveRes.data.id === "string"
-              ) {
-                finalLocationId = resolveRes.data.id;
+          let lat = row.latitude;
+          let lng = row.longitude;
+
+          if (!finalLocationId && (row.providerId || row.fromMock)) {
+            // Nếu thiếu tọa độ (thường là Google Autocomplete), fetch details trước
+            if (typeof lat !== "number" || typeof lng !== "number") {
+              if (row.providerId && row.resolveSource === "GOOGLE_MAPS") {
+                try {
+                  const details = await getPlaceDetails(row.providerId);
+                  if (details?.location) {
+                    lat = details.location.latitude;
+                    lng = details.location.longitude;
+                  }
+                } catch (err) {
+                  console.warn(`Failed to fetch place details for ${row.name}:`, err);
+                }
               }
-            } catch (err) {
-              console.warn(`Failed to resolve location ${row.name} for suggestion:`, err);
+            }
+
+            // Nếu đã có đủ tọa độ, tiến hành resolve
+            if (typeof lat === "number" && typeof lng === "number") {
+              try {
+                const resolveRes = await resolveLocation({
+                  name: row.name,
+                  latitude: lat,
+                  longitude: lng,
+                  full_address: row.subtitle || undefined,
+                  provider: row.resolveSource || (row.fromMock ? "MAPBOX" : "GOOGLE_MAPS"),
+                  provider_id: row.providerId || row.id,
+                  maki: row.types?.[0],
+                });
+                if (
+                  isLocationApiSuccess(resolveRes.code) &&
+                  resolveRes.data &&
+                  typeof resolveRes.data.id === "string"
+                ) {
+                  finalLocationId = resolveRes.data.id;
+                }
+              } catch (err) {
+                console.warn(`Failed to resolve location ${row.name} for suggestion:`, err);
+              }
             }
           }
 
@@ -426,14 +523,22 @@ export default function AddLocationScreen() {
           if (finalLocationId) {
             payload.location_id = finalLocationId;
           } else {
+            // Check if we have coordinates before sending location_data
+            // Backend @NotNull validation will fail if coordinates are missing
+            if (typeof lat !== "number" || typeof lng !== "number") {
+              console.warn(`Skipping suggestion for ${row.name} because coordinates are missing.`);
+              return Promise.resolve(null);
+            }
+
             payload.location_data = {
               provider: row.resolveSource || (row.fromMock ? "MAPBOX" : "GOOGLE_MAPS"),
               provider_id: row.providerId || row.id,
               name: row.name,
-              latitude: row.latitude!,
-              longitude: row.longitude!,
+              latitude: lat,
+              longitude: lng,
               full_address: row.subtitle,
-              location_type: row.types?.[0] || "POI",
+              location_type: "POI", // Backend enum LocationType (POI, PROVINCE, etc.)
+              primary_type: row.types?.[0] || "POI", // Original specific type (e.g. historical_place)
             };
           }
 
@@ -499,6 +604,7 @@ export default function AddLocationScreen() {
         }
 
         snaps[finalId] = {
+          providerId: row.providerId,
           name: row.name,
           subtitle: row.subtitle || "Địa điểm",
           imageUrl: row.imageUrl || "",
@@ -516,11 +622,81 @@ export default function AddLocationScreen() {
     }
 
     if (dayKey) {
+      if (itineraryId) {
+        // FLOW 3: Thêm trực tiếp vào một itinerary đã tồn tại (BE)
+        try {
+          const selectedRows = listRows.filter((r) =>
+            selectedLocationIds.includes(r.id)
+          );
+          const promises = selectedRows.map(async (row, idx) => {
+            let finalLocationId = row.locationId;
+
+            // Resolve nếu cần
+            if (
+              !finalLocationId &&
+              row.providerId &&
+              typeof row.latitude === "number" &&
+              typeof row.longitude === "number"
+            ) {
+              try {
+                const res = await resolveLocation({
+                  name: row.name,
+                  latitude: row.latitude,
+                  longitude: row.longitude,
+                  full_address: row.subtitle || undefined,
+                  provider: row.resolveSource || "GOOGLE_MAPS",
+                  provider_id: row.providerId,
+                  maki: row.types?.[0],
+                });
+                if (isLocationApiSuccess(res.code) && res.data?.id) {
+                  finalLocationId = res.data.id;
+                }
+              } catch (err) {
+                console.warn("Resolve failed in direct add:", err);
+              }
+            }
+
+            // Payload theo Swagger: start_time, duration, note, location_id, place_id
+            // Default time: 08:00, 10:00, 12:00... dựa trên index
+            const baseHour = 8 + idx * 2;
+            const startTime = `${dayKey}T${baseHour.toString().padStart(2, "0")}:00:00`;
+
+            return addTripItemMutation.mutateAsync({
+              itineraryId,
+              payload: {
+                start_time: startTime,
+                duration: 120, // Default 2h
+                note: "",
+                location_id: finalLocationId,
+                place_id: row.providerId,
+              },
+            });
+          });
+
+          await Promise.all(promises);
+
+          // Invalidate queries to ensure data is fresh
+          queryClient.invalidateQueries({
+            queryKey: ["itineraries", "detail", itineraryId],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["itineraries", "detail", itineraryId, "items"],
+          });
+
+          // Toast đã có trong hook
+          router.back();
+        } catch (err) {
+          showErrorToast("Không thể thêm địa điểm", err);
+        }
+        return;
+      }
+
+      const finalLocationIds = [...initialLocationIds, ...idsToCommit];
       if (isFromEdit) {
-        setPendingLocationIds(dayKey, idsToCommit);
+        setPendingLocationIds(dayKey, finalLocationIds);
         router.back();
       } else {
-        addLocationsToDay(dayKey, idsToCommit);
+        addLocationsToDay(dayKey, finalLocationIds);
         router.back();
       }
     } else {
@@ -580,18 +756,32 @@ export default function AddLocationScreen() {
         <View className="flex-row items-center bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 shadow-sm">
           <Ionicons name="search" size={20} color="#999" />
           <TextInput
-            className="flex-1 ml-3 text-base text-gray-800"
+            style={{
+              flex: 1,
+              marginLeft: 12,
+              fontSize: 16,
+              color: "#1f2937",
+              paddingVertical: 0, // Tránh lệch trên Android
+            }}
             placeholder="Tìm địa điểm du lịch..."
             placeholderTextColor="#999"
             value={searchText}
             onChangeText={setSearchText}
             returnKeyType="search"
+            autoCorrect={false}
+            spellCheck={false}
+            autoCapitalize="none"
           />
-          {searchText.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchText("")}>
-              <Ionicons name="close-circle" size={20} color="#ccc" />
-            </TouchableOpacity>
-          )}
+          <View style={{ width: 24, alignItems: "center", justifyContent: "center" }}>
+            {searchText.length > 0 && (
+              <TouchableOpacity 
+                onPress={() => setSearchText("")}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close-circle" size={20} color="#ccc" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
 
@@ -605,32 +795,23 @@ export default function AddLocationScreen() {
             <ActivityIndicator size="large" color="#34B27D" />
             <Text className="text-gray-400 mt-4 font-medium">Đang tìm kiếm...</Text>
           </View>
-        ) : listRows.length === 0 ? (
+        ) : filteredListRows.length === 0 ? (
           <View className="py-20 items-center">
             <View className="bg-gray-50 p-6 rounded-full">
               <Ionicons name="map-outline" size={48} color="#ddd" />
             </View>
             <Text className="text-gray-500 mt-6 text-center text-lg font-medium px-10 leading-6">
-              {emptyMessage}
+              {searchText ? "Không tìm thấy địa điểm mới nào." : "Các địa điểm phù hợp đều đã có trong lịch."}
             </Text>
-            {useLiveApi && poiIsError ? (
-              <TouchableOpacity
-                className="mt-6 px-8 py-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200"
-                onPress={() => void refetchPoi()}
-                activeOpacity={0.8}
-              >
-                <Text className="text-white font-bold">Thử lại</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
         ) : (
-          listRows.map((row) => {
+          filteredListRows.map((row, index) => {
             const isSelected = selectedLocationIds.includes(row.id);
             const primaryType = row.types?.[0]?.replace(/_/g, " ") || "Địa điểm";
             
             return (
               <TouchableOpacity
-                key={row.fromMock ? `mock-${row.id}` : row.id}
+                key={`${row.id}-${index}`}
                 activeOpacity={0.85}
                 onPress={() => toggleLocation(row.id)}
                 className={`flex-row items-center p-3 mb-3 rounded-2xl border ${
@@ -640,20 +821,16 @@ export default function AddLocationScreen() {
                 }`}
               >
                 <View className="relative">
-                  {row.imageUrl ? (
-                    <Image
-                      source={expoImageSourceForGoogleRaster(row.imageUrl)}
-                      style={{ width: 84, height: 84, borderRadius: 16 }}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <View
-                      className="bg-gray-50 items-center justify-center rounded-2xl"
-                      style={{ width: 84, height: 84 }}
-                    >
-                      <Ionicons name="image" size={32} color="#eee" />
-                    </View>
-                  )}
+                  <LocationImage
+                    location={{
+                      name: row.name,
+                      provider_id: row.providerId,
+                      provider: row.resolveSource || "GOOGLE_MAPS",
+                      latitude: row.latitude,
+                      longitude: row.longitude,
+                    } as any}
+                    style={{ width: 84, height: 84, borderRadius: 16 }}
+                  />
                   {isSelected && (
                     <View className="absolute -top-1 -right-1 bg-emerald-500 rounded-full border-2 border-white p-0.5">
                       <Ionicons name="checkmark" size={14} color="white" />
@@ -710,23 +887,41 @@ export default function AddLocationScreen() {
         <TouchableOpacity
           activeOpacity={0.9}
           className={`rounded-2xl py-4 items-center justify-center shadow-lg ${
-            selectedLocationIds.length > 0 ? "bg-emerald-500 shadow-emerald-200" : "bg-gray-200 shadow-none"
+            hasChanged ? "bg-emerald-500 shadow-emerald-200" : "bg-gray-200 shadow-none"
           }`}
           onPress={handleAddLocations}
-          disabled={selectedLocationIds.length === 0}
+          disabled={!hasChanged}
         >
           <View className="flex-row items-center">
             <Text className="text-white text-base font-bold">
-              {selectedLocationIds.length > 0 
-                ? `Thêm ${selectedLocationIds.length} địa điểm` 
-                : "Chọn địa điểm"}
+              {newlySelectedCount > 0 
+                ? `Thêm ${newlySelectedCount} địa điểm` 
+                : hasChanged 
+                  ? "Lưu thay đổi" 
+                  : "Chọn địa điểm"}
             </Text>
-            {selectedLocationIds.length > 0 && (
+            {hasChanged && (
               <Ionicons name="arrow-forward" size={18} color="white" style={{ marginLeft: 8 }} />
             )}
           </View>
         </TouchableOpacity>
       </View>
+
+      <AppDialogModal
+        visible={addConfirmVisible}
+        variant="info"
+        title={newlySelectedCount > 0 ? "Xác nhận thêm" : "Xác nhận thay đổi"}
+        message={
+          newlySelectedCount > 0 
+            ? `Bạn có chắc chắn muốn thêm ${newlySelectedCount} địa điểm này vào lịch trình?`
+            : "Bạn có chắc chắn muốn cập nhật danh sách địa điểm cho ngày này?"
+        }
+        primaryLabel="Thêm"
+        onPrimaryPress={confirmAddLocations}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setAddConfirmVisible(false)}
+        onRequestClose={() => setAddConfirmVisible(false)}
+      />
     </SafeAreaView>
   );
 }

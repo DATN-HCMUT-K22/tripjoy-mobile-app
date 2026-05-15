@@ -278,3 +278,511 @@ datn_tripjoy
    └─ storage.ts
 
 ```
+```
+datn_tripjoy
+├─ .claude
+│  ├─ brainstorm
+│  ├─ plans
+│  │  ├─ chat-share-reply-enhancement
+│  │  │  ├─ phase-1-shared-post-card.md
+│  │  │  ├─ phase-2-enhanced-reply.md
+│  │  │  ├─ phase-3-thread-navigation.md
+│  │  │  ├─ phase-4-polish-testing.md
+│  │  │  └─ plan.md
+│  │  ├─ chat-ui-ux-improvement-20260420
+│  │  │  ├─ phase-1-critical-fixes.md
+│  │  │  ├─ phase-2-connection-status.md
+│  │  │  ├─ phase-3-message-optimization.md
+│  │  │  ├─ phase-4-typing-indicators.md
+│  │  │  ├─ phase-5-swipe-actions.md
+│  │  │  ├─ phase-6-inbox-ui-polish.md
+│  │  │  ├─ plan.md
+│  │  │  └─ README.md
+│  │  ├─ group-ui-ux-improvement
+│  │  │  ├─ phase-1.md
+│  │  │  ├─ phase-2.md
+│  │  │  ├─ phase-3.md
+│  │  │  ├─ phase-4.md
+│  │  │  ├─ phase-5.md
+│  │  │  ├─ phase-6.md
+│  │  │  ├─ phase-7.md
+│  │  │  └─ plan.md
+│  │  ├─ itinerary-implementation
+│  │  │  ├─ phase-1.md
+│  │  │  ├─ phase-2.md
+│  │  │  ├─ phase-3.md
+│  │  │  ├─ phase-4.md
+│  │  │  ├─ phase-5.md
+│  │  │  ├─ phase-6.md
+│  │  │  ├─ phase-7.md
+│  │  │  └─ plan.md
+│  │  ├─ nearby-suggestions-feature-20260426
+│  │  │  ├─ phase-1-core-mvp.md
+│  │  │  ├─ phase-2-polish.md
+│  │  │  ├─ phase-3-enhancement.md
+│  │  │  ├─ plan.md
+│  │  │  └─ README.md
+│  │  ├─ post-module-implementation
+│  │  │  ├─ API_DOCUMENTATION.md
+│  │  │  ├─ IMPLEMENTATION_SUMMARY.md
+│  │  │  ├─ phase-1-core-creation.md
+│  │  │  ├─ phase-1-implementation-summary.md
+│  │  │  ├─ phase-2-itinerary-management.md
+│  │  │  ├─ phase-3-discovery-search.md
+│  │  │  ├─ phase-4-architecture.md
+│  │  │  ├─ phase-4-COMPLETED.md
+│  │  │  ├─ phase-4-social-interactions.md
+│  │  │  ├─ phase-5-notifications.md
+│  │  │  ├─ phase-6-COMPLETED.md
+│  │  │  ├─ phase-6-optimization.md
+│  │  │  ├─ PHASE-6-TESTING.md
+│  │  │  ├─ phase-7-private-visibility.md
+│  │  │  ├─ plan.md
+│  │  │  ├─ privacy-verification-checklist.md
+│  │  │  └─ README.md
+│  │  ├─ travel-notebook-fe-implementation
+│  │  │  ├─ phase-1-core-infrastructure.md
+│  │  │  ├─ phase-2-fake-progress.md
+│  │  │  ├─ phase-3-ui-components.md
+│  │  │  ├─ phase-4-main-screen.md
+│  │  │  ├─ phase-5-integration.md
+│  │  │  ├─ plan.md
+│  │  │  └─ README.md
+│  │  └─ user-profile-feature-20260426
+│  │     ├─ phase-1-core-structure.md
+│  │     ├─ phase-2-shared-components.md
+│  │     ├─ phase-3-main-screen.md
+│  │     ├─ phase-4-navigation.md
+│  │     ├─ phase-5-testing-polish.md
+│  │     └─ plan.md
+│  └─ settings.local.json
+├─ .cursor
+│  ├─ plan
+│  │  └─ implementation.md
+│  ├─ rules
+│  │  ├─ error-ui-consistency.mdc
+│  │  └─ safe-area-screens.mdc
+│  └─ skills
+│     └─ group-detail-itineraries
+│        └─ SKILL.md
+├─ ANDROID_QUICKSTART.md
+├─ app
+│  ├─ (tabs)
+│  │  ├─ explore.tsx
+│  │  ├─ index.tsx
+│  │  └─ _layout.tsx
+│  ├─ chat
+│  │  └─ [id].tsx
+│  ├─ create
+│  │  ├─ add-location.tsx
+│  │  ├─ adjust-itinerary.tsx
+│  │  ├─ ai-wait.tsx
+│  │  ├─ budget.tsx
+│  │  ├─ edit-itinerary.tsx
+│  │  ├─ index.tsx
+│  │  ├─ manual.tsx
+│  │  ├─ select-group.tsx
+│  │  ├─ summary.tsx
+│  │  ├─ time.tsx
+│  │  └─ _layout.tsx
+│  ├─ create-post.tsx
+│  ├─ edit-post
+│  │  └─ [id].tsx
+│  ├─ groups
+│  │  ├─ create-wizard.tsx
+│  │  ├─ create.tsx
+│  │  ├─ index.tsx
+│  │  ├─ [id]
+│  │  │  ├─ chat.tsx
+│  │  │  ├─ edit.tsx
+│  │  │  ├─ index.tsx
+│  │  │  ├─ info.tsx
+│  │  │  ├─ itineraries.tsx
+│  │  │  ├─ members.tsx
+│  │  │  ├─ suggestions.tsx
+│  │  │  └─ _layout.tsx
+│  │  └─ _layout.tsx
+│  ├─ itinerary
+│  │  ├─ detail.tsx
+│  │  ├─ expenses.tsx
+│  │  ├─ index.tsx
+│  │  ├─ notebook.tsx
+│  │  ├─ [id].tsx
+│  │  └─ _layout.tsx
+│  ├─ login.tsx
+│  ├─ messages.tsx
+│  ├─ modal.tsx
+│  ├─ notifications.tsx
+│  ├─ post
+│  │  └─ [id].tsx
+│  ├─ profile
+│  │  ├─ edit.tsx
+│  │  ├─ index.tsx
+│  │  ├─ saved.tsx
+│  │  ├─ update-user.tsx
+│  │  └─ _layout.tsx
+│  ├─ select-itinerary.tsx
+│  ├─ settings
+│  │  └─ privacy.tsx
+│  ├─ signup.tsx
+│  ├─ user
+│  │  └─ [id].tsx
+│  └─ _layout.tsx
+├─ app.config.js
+├─ app.json
+├─ assets
+│  ├─ icons
+│  │  └─ GoogleIcon.svg
+│  ├─ images
+│  │  ├─ ai-itinerary.png
+│  │  ├─ ai-logo.jpg
+│  │  ├─ favicon.png
+│  │  ├─ icon.png
+│  │  ├─ landing_page_1.png
+│  │  ├─ landing_page_2.png
+│  │  ├─ landing_page_3.png
+│  │  ├─ loading_img.jpg
+│  │  ├─ loading_img_2.jpg
+│  │  ├─ loading_img_3.jpg
+│  │  ├─ login_logo.jpg
+│  │  ├─ partial-react-logo.png
+│  │  ├─ react-logo.png
+│  │  ├─ react-logo@2x.png
+│  │  ├─ react-logo@3x.png
+│  │  ├─ signup_logo.jpg
+│  │  └─ splash-icon.png
+│  └─ logo
+│     ├─ ai_bot.webp
+│     ├─ black_black.png
+│     ├─ green.png
+│     ├─ green_black_black.png
+│     ├─ green_black_hori.png
+│     ├─ Logo.png
+│     └─ white_white.png
+├─ babel.config.js
+├─ brain-storm
+│  ├─ brainstorm-group-module-ui-ux-2026-04-20.md
+│  ├─ BRAINSTORM_TRAVEL_NOTEBOOK_UX.md
+│  ├─ FE_ITINERARY_BUSINESS.md
+│  ├─ FE_TRAVEL_NOTEBOOK_BUSINESS.md
+│  ├─ MOBILE_CHAT_UX_IMPROVEMENT_ROADMAP_2026-04-20.md
+│  ├─ POST_BUSINESS_SPEC.md
+│  └─ user-profile-feature-2026-04-26.md
+├─ brainstorm
+│  └─ CHAT_SHARE_REPLY_FEATURES_2026-05-07.md
+├─ components
+│  ├─ auth
+│  │  └─ SignupScreen.tsx
+│  ├─ chat
+│  │  ├─ ChatBubble.tsx
+│  │  ├─ ConnectionBanner.tsx
+│  │  ├─ DateSeparator.tsx
+│  │  ├─ MentionSuggestions.tsx
+│  │  ├─ MessageActionSheet.tsx
+│  │  ├─ MessageLikesModal.tsx
+│  │  ├─ MessageNotificationBanner.tsx
+│  │  ├─ MessageNotificationProvider.tsx
+│  │  ├─ MessageSearchModal.tsx
+│  │  ├─ PinnedMessageBar.tsx
+│  │  ├─ PinnedMessageItem.tsx
+│  │  ├─ PinnedMessagesModal.tsx
+│  │  ├─ SharedPostCard.tsx
+│  │  ├─ TypingIndicator.tsx
+│  │  └─ TypingIndicatorBubble.tsx
+│  ├─ common
+│  │  ├─ AppBottomSheet.tsx
+│  │  ├─ AppDialogModal.tsx
+│  │  ├─ ConfirmLogoutModal.tsx
+│  │  ├─ ErrorBoundary.tsx
+│  │  ├─ FullScreenLoading.tsx
+│  │  ├─ Input.tsx
+│  │  ├─ LoginRequiredModal.tsx
+│  │  ├─ MenuDrawer.tsx
+│  │  └─ SharedHeader.tsx
+│  ├─ conversation
+│  │  ├─ ConversationAvatar.tsx
+│  │  ├─ ConversationSkeleton.tsx
+│  │  ├─ index.ts
+│  │  ├─ SwipeableConversationItem.tsx
+│  │  └─ UnreadBadge.tsx
+│  ├─ create-post
+│  │  └─ AttachedMediaGalleryModal.tsx
+│  ├─ errors
+│  │  ├─ ErrorBoundary.tsx
+│  │  └─ ErrorFallback.tsx
+│  ├─ external-link.tsx
+│  ├─ group
+│  │  ├─ ContactItem.tsx
+│  │  ├─ CreateGroupModal.tsx
+│  │  ├─ GroupCard.tsx
+│  │  ├─ GroupHeader.tsx
+│  │  ├─ GroupListItem.tsx
+│  │  ├─ index.ts
+│  │  ├─ ItineraryCard.tsx
+│  │  ├─ ItineraryListItem.tsx
+│  │  ├─ LocationSuggestionsSection.tsx
+│  │  ├─ MemberCard.tsx
+│  │  ├─ QuickAccessCard.tsx
+│  │  ├─ RolePermissionsSheet.tsx
+│  │  └─ SwipeableGroupCard.tsx
+│  ├─ haptic-tab.tsx
+│  ├─ hello-wave.tsx
+│  ├─ icons
+│  │  └─ GoogleIcon.tsx
+│  ├─ InteractiveMap.tsx
+│  ├─ InteractiveMap.web.tsx
+│  ├─ itinerary
+│  │  ├─ DraggableApiItineraryItemCard.tsx
+│  │  ├─ ExpensesOverlay.tsx
+│  │  ├─ ItineraryRouteMap.tsx
+│  │  ├─ StatusBadge.tsx
+│  │  └─ TripItemCard.tsx
+│  ├─ loading
+│  │  ├─ index.ts
+│  │  ├─ LoadingScreen.tsx
+│  │  ├─ README.md
+│  │  ├─ SimpleLogoLoading.tsx
+│  │  └─ SplashLoadingScreen.tsx
+│  ├─ LoadingOverlay.tsx
+│  ├─ location
+│  │  └─ LocationImage.tsx
+│  ├─ notebook
+│  │  ├─ EmptyState.tsx
+│  │  ├─ GeneratingState.tsx
+│  │  ├─ NotebookContent.tsx
+│  │  ├─ NotebookSection.tsx
+│  │  └─ TravelNotebookScreen.tsx
+│  ├─ onboarding
+│  │  ├─ index.ts
+│  │  └─ Onboarding.js
+│  ├─ parallax-scroll-view.tsx
+│  ├─ post
+│  ├─ profile
+│  │  ├─ PostsGrid.tsx
+│  │  ├─ ProfileActions.tsx
+│  │  ├─ ProfileHeader.tsx
+│  │  ├─ ProfileSkeleton.tsx
+│  │  └─ ProfileStats.tsx
+│  ├─ shared
+│  │  ├─ EmptyState.tsx
+│  │  └─ LoadingSkeleton.tsx
+│  ├─ social
+│  │  ├─ BottomNavigation.tsx
+│  │  ├─ CommentInput.tsx
+│  │  ├─ CommentItem.tsx
+│  │  ├─ CommentModal.tsx
+│  │  ├─ filters
+│  │  │  ├─ BudgetRangeSlider.tsx
+│  │  │  ├─ DateRangePicker.tsx
+│  │  │  ├─ DurationFilter.tsx
+│  │  │  ├─ FilterModal.tsx
+│  │  │  ├─ HashtagSelector.tsx
+│  │  │  ├─ index.ts
+│  │  │  └─ PeopleCountFilter.tsx
+│  │  ├─ HashtagList.tsx
+│  │  ├─ Header.tsx
+│  │  ├─ index.ts
+│  │  ├─ PostActionsMenu.tsx
+│  │  ├─ PostCard.tsx
+│  │  ├─ PostCardSkeleton.tsx
+│  │  ├─ SearchBar.tsx
+│  │  ├─ ShareModal.tsx
+│  │  ├─ SocialHeader.tsx
+│  │  └─ TabMenu.tsx
+│  ├─ themed-text.tsx
+│  ├─ themed-view.tsx
+│  ├─ TimePickerModal.tsx
+│  ├─ trip
+│  │  ├─ BudgetItem.tsx
+│  │  ├─ BudgetManualRange.tsx
+│  │  ├─ index.ts
+│  │  ├─ LocationItem.tsx
+│  │  ├─ SectionHeader.tsx
+│  │  └─ SimpleCalendar.tsx
+│  └─ ui
+│     ├─ AppHeader.tsx
+│     ├─ AvatarStack.tsx
+│     ├─ Button.tsx
+│     ├─ collapsible.tsx
+│     ├─ GroupCardSkeleton.tsx
+│     ├─ icon-symbol.ios.tsx
+│     ├─ icon-symbol.tsx
+│     ├─ index.ts
+│     ├─ MemberCardSkeleton.tsx
+│     ├─ RoleBadge.tsx
+│     ├─ RouteIcon.tsx
+│     └─ VietnamFlag.tsx
+├─ config
+│  └─ env.ts
+├─ constants
+│  ├─ errorCodes.ts
+│  └─ theme.ts
+├─ contexts
+│  ├─ ItineraryContext.tsx
+│  ├─ TempLocationContext.tsx
+│  └─ TripSetupContext.tsx
+├─ data
+│  ├─ budgetOptions.ts
+│  ├─ mockAttractions.ts
+│  ├─ mockContacts.ts
+│  ├─ mockGroups.ts
+│  ├─ mockItineraries.ts
+│  ├─ mockItineraryItems.ts
+│  ├─ mockLocations.ts
+│  ├─ mockPosts.ts
+│  ├─ sampleProvinceLocations.ts
+│  └─ tripTypeOptions.ts
+├─ eas.json
+├─ eslint.config.js
+├─ fix-bundling.md
+├─ global.css
+├─ hooks
+│  ├─ use-color-scheme.ts
+│  ├─ use-color-scheme.web.ts
+│  ├─ use-theme-color.ts
+│  ├─ useAppDialog.ts
+│  ├─ useAuth.ts
+│  ├─ useAuthLogger.ts
+│  ├─ useComments.ts
+│  ├─ useConversations.ts
+│  ├─ useCreateTripExitToHome.ts
+│  ├─ useCurrentUser.ts
+│  ├─ useDebounce.ts
+│  ├─ useExpenses.ts
+│  ├─ useFakeProgress.ts
+│  ├─ useGroupPreferences.ts
+│  ├─ useGroups.ts
+│  ├─ useGuestMode.ts
+│  ├─ useIncomingMessage.ts
+│  ├─ useIncomingNotification.ts
+│  ├─ useItineraries.ts
+│  ├─ useLocationSuggestions.ts
+│  ├─ useLoginForm.ts
+│  ├─ useManualUserLocation.ts
+│  ├─ useMessages.ts
+│  ├─ useNotebook.ts
+│  ├─ useNotifications.ts
+│  ├─ usePinnedMessages.ts
+│  ├─ usePostManagement.ts
+│  ├─ useProvinceLocations.ts
+│  ├─ useRequireAuth.ts
+│  ├─ useSignupForm.ts
+│  ├─ useSocial.ts
+│  ├─ useSocket.ts
+│  ├─ useSocketTyping.ts
+│  ├─ useTripItems.ts
+│  ├─ useUserPosts.ts
+│  ├─ useUserProfile.ts
+│  ├─ useUsers.ts
+│  └─ useUserSearchDebounce.ts
+├─ metro.config.js
+├─ nativewind-env.d.ts
+├─ package-lock.json
+├─ package.json
+├─ plans
+│  ├─ expense_implementation_plan.md
+│  ├─ refactor-itinerary-detail-ui-ORIGINAL.md
+│  ├─ refactor-itinerary-detail-ui.md
+│  └─ social-post-comments-mvp-2026-04-16.md
+├─ plugins
+│  └─ withGoogleMapsNativeApiKey.js
+├─ README.md
+├─ schemas
+│  └─ itinerary.ts
+├─ screens
+│  └─ notifications
+│     ├─ components
+│     │  ├─ EmptyState.tsx
+│     │  ├─ NotificationItem.tsx
+│     │  └─ NotificationSkeleton.tsx
+│     └─ NotificationScreen.tsx
+├─ scripts
+│  └─ reset-project.js
+├─ services
+│  ├─ auth.ts
+│  ├─ comment.ts
+│  ├─ conversations.ts
+│  ├─ googleDistanceMatrix.ts
+│  ├─ googlePlaces.ts
+│  ├─ groups.ts
+│  ├─ http
+│  │  └─ client.ts
+│  ├─ itineraries.ts
+│  ├─ locations.ts
+│  ├─ locationSuggestions.ts
+│  ├─ media.ts
+│  ├─ messages.ts
+│  ├─ notebooks.ts
+│  ├─ notification.service.ts
+│  ├─ notifications.ts
+│  ├─ README.md
+│  ├─ search.ts
+│  ├─ social.ts
+│  ├─ socket
+│  │  └─ socketService.ts
+│  └─ users.ts
+├─ store
+│  ├─ hooks.ts
+│  ├─ index.ts
+│  └─ slices
+│     ├─ authSlice.ts
+│     ├─ conversationSlice.ts
+│     ├─ messageNotificationSlice.ts
+│     └─ notificationSlice.ts
+├─ stores
+│  └─ chat.store.ts
+├─ tailwind.config.js
+├─ tripjoy-ai-service
+│  └─ credentials.json
+├─ tsconfig.json
+├─ types
+│  ├─ axios.d.ts
+│  ├─ comment.ts
+│  ├─ contact.ts
+│  ├─ env.d.ts
+│  ├─ group.ts
+│  ├─ itinerary.ts
+│  ├─ locationSuggestion.ts
+│  ├─ message.ts
+│  ├─ notebook.ts
+│  ├─ places.ts
+│  ├─ search.ts
+│  ├─ social.ts
+│  ├─ svg.d.ts
+│  ├─ trip.ts
+│  └─ user.ts
+└─ utils
+   ├─ aiItineraryGenerate.ts
+   ├─ analytics.ts
+   ├─ appStateManager.ts
+   ├─ conversationDisplay.ts
+   ├─ format.ts
+   ├─ googlePlaceImageSource.ts
+   ├─ googlePlacePhoto.ts
+   ├─ googleStaticMap.ts
+   ├─ haptics.ts
+   ├─ haversine.ts
+   ├─ image.ts
+   ├─ itineraryDates.ts
+   ├─ itineraryThemes.ts
+   ├─ locationImages.ts
+   ├─ manualTravelTimes.ts
+   ├─ mapLocationDtoToTrip.ts
+   ├─ mapLocations.ts
+   ├─ mappers.ts
+   ├─ messageDeduplication.ts
+   ├─ notebookCache.ts
+   ├─ pendingItinerarySelection.ts
+   ├─ placeItinerary.ts
+   ├─ resolveItineraryCoords.ts
+   ├─ roleUtils.ts
+   ├─ staticMapUrl.ts
+   ├─ storage
+   │  └─ groupPreferences.ts
+   ├─ storage.ts
+   ├─ timeFormat.ts
+   ├─ timeRange.ts
+   ├─ toast.ts
+   └─ userAvatar.ts
+
+```

@@ -41,6 +41,7 @@ export const createReply = (payload: {
 }) =>
   httpClient.post(`/comments/${payload.commentId}/replies`, {
     content: payload.content,
+    post_id: payload.postId,
   }, {
     skipAuth: false,
   });

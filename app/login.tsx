@@ -189,13 +189,6 @@ export default function LoginScreen() {
               )}
             />
 
-            <TouchableOpacity style={{ alignSelf: "flex-end", marginTop: 6 }}>
-              <Text
-                style={{ color: "#0EA5E9", fontSize: 12, fontWeight: "600" }}
-              >
-                Quên mật khẩu?
-              </Text>
-            </TouchableOpacity>
           </View>
 
           {/* Buttons */}
@@ -216,47 +209,6 @@ export default function LoginScreen() {
                 style={{ color: "#ffffff", fontWeight: "700", fontSize: 16 }}
               >
                 {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
-              </Text>
-            </TouchableOpacity>
-
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
-                justifyContent: "center",
-              }}
-            >
-              <View
-                style={{ height: 1, flex: 1, backgroundColor: "#D1D5DB" }}
-              />
-              <Text
-                style={{ color: "#ffffff", fontSize: 12, fontWeight: "600" }}
-              >
-                Hoặc
-              </Text>
-              <View
-                style={{ height: 1, flex: 1, backgroundColor: "#D1D5DB" }}
-              />
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={{
-                height: 48,
-                borderRadius: 12,
-                backgroundColor: "#ffffff",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <Ionicons name="logo-google" size={18} color="#DB4437" />
-              <Text
-                style={{ color: "#111827", fontWeight: "600", fontSize: 14 }}
-              >
-                Đăng nhập với Google
               </Text>
             </TouchableOpacity>
 

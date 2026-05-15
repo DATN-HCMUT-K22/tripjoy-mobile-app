@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from "react";
-import { socketService, ChatMessageResponse } from "@/services/socket/socketService";
+import { socketService } from "@/services/socket/socketService";
+import { ChatMessageResponse } from "@/types/message";
 
 interface UseSocketOptions {
   conversationId?: string;

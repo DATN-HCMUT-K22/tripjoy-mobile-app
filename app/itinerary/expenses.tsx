@@ -18,6 +18,7 @@ import { useExpenses, useAddExpense, useUpdateExpense, useDeleteExpense } from "
 import { useItineraryDetail } from "@/hooks/useItineraries";
 import { ExpenseRequest, ExpenseResponse } from "@/services/itineraries";
 import { SharedHeader } from "@/components/common/SharedHeader";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 
 const EXPENSE_CATEGORIES = [
   { id: "FOOD", name: "Ăn uống", icon: "restaurant-outline", color: "#F59E0B", bg: "bg-amber-100" },
@@ -57,7 +58,13 @@ export default function ExpensesScreen() {
     method: "CASH",
   });
 
+
+
   const [strAmount, setStrAmount] = useState("");
+
+  // Deletion confirm state
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<{ id: string; name?: string } | null>(null);
 
   const totalExpense = useMemo(() => {
     return expenses.reduce((sum, item) => sum + (item.amount || 0), 0);
@@ -87,22 +94,16 @@ export default function ExpensesScreen() {
   };
 
   const handleDelete = (id: string, name?: string) => {
-    Alert.alert(
-      "Xóa chi phí",
-      `Bạn có chắc muốn xóa chi phí "${name || 'này'}"?`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: () => {
-            if (itineraryId) {
-              deleteExpenseMut.mutate({ itineraryId, expenseId: id });
-            }
-          },
-        },
-      ]
-    );
+    setExpenseToDelete({ id, name });
+    setDeleteConfirmVisible(true);
+  };
+
+  const confirmDelete = () => {
+    if (itineraryId && expenseToDelete) {
+      deleteExpenseMut.mutate({ itineraryId, expenseId: expenseToDelete.id });
+    }
+    setDeleteConfirmVisible(false);
+    setExpenseToDelete(null);
   };
 
   const handleSave = async () => {
@@ -365,7 +366,19 @@ export default function ExpensesScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
-
+      
+      <AppDialogModal
+        visible={deleteConfirmVisible}
+        variant="warning"
+        title="Xóa chi phí"
+        message={`Bạn có chắc muốn xóa chi phí "${expenseToDelete?.name || 'này'}"?`}
+        primaryLabel="Xóa"
+        primaryDestructive
+        onPrimaryPress={confirmDelete}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setDeleteConfirmVisible(false)}
+        onRequestClose={() => setDeleteConfirmVisible(false)}
+      />
     </View>
   );
 }

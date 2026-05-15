@@ -1,30 +1,29 @@
 import {
-  unlikePost,
-  savePost,
-  unsavePost,
   commentPost,
   createPost,
-  getPosts,
-  getPostById,
   getPopularHashtags,
+  getPostById,
+  getPosts,
   getSavedPosts,
   likePost,
+  savePost,
   sharePost,
-  type Post,
+  unlikePost,
+  unsavePost,
   type GetPostsParams,
+  type Post,
+  type CreatePostRequest,
 } from "@/services/social";
+import { itineraryService } from "@/services/itineraries";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
-import { useMutation, useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { EXPO_PUBLIC_MOCK_DATA } from "@/config/env";
-import { mockPosts } from "@/data/mockPosts";
 import { useAppSelector } from "@/store/hooks";
-import * as Sharing from "expo-sharing";
-import * as Clipboard from "expo-clipboard";
-import { useEffect, useRef } from "react";
-import { socketService, PostUpdatedEvent } from "@/services/socket/socketService";
-import { trackEvent, trackError } from "@/utils/analytics";
+import { trackError, trackEvent } from "@/utils/analytics";
 import { mapPostData } from "@/utils/mappers";
+import * as Clipboard from "expo-clipboard";
+import * as Sharing from "expo-sharing";
+import { useRef, useCallback, useEffect } from "react";
 
 
 
@@ -134,31 +133,48 @@ export function useLikePost() {
         }
       }
 
-      queryClient.setQueriesData<Post[]>({ queryKey: ["posts"] }, (old) => {
-        if (!Array.isArray(old)) return old;
-        return old.map((post) =>
-          post.id === postId
-            ? {
-                ...post,
-                isLiked: !post.isLiked,
-                is_liked: !post.isLiked,
-                likes: post.isLiked ? post.likes - 1 : post.likes + 1,
-                like_count: post.isLiked ? post.likes - 1 : post.likes + 1,
-              }
-            : post
-        );
+      queryClient.setQueriesData({ queryKey: ["posts"] }, (old: any) => {
+        if (Array.isArray(old)) {
+          return old.map((post: Post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  isLiked: !post.is_liked,
+                  is_liked: !post.is_liked,
+                  likes: post.is_liked ? post.likes - 1 : post.likes + 1,
+                  like_count: post.is_liked ? post.likes - 1 : post.likes + 1,
+                }
+              : post
+          );
+        }
+        
+        // Single post detail update
+        if (old && typeof old === 'object' && old.id === postId) {
+          return {
+            ...old,
+            isLiked: !old.is_liked,
+            is_liked: !old.is_liked,
+            likes: old.is_liked ? old.likes - 1 : old.likes + 1,
+            like_count: old.is_liked ? old.likes - 1 : old.likes + 1,
+          };
+        }
+        
+        return old;
       });
 
-      return { previousQueriesData, isCurrentlyLiked };
+      return { previousQueriesData };
     },
-    onSuccess: () => {},
-    onError: (error: Error, postId, context) => {
+    onSuccess: (data, variables) => {
+      // If we want to be sure, we can invalidate here too
+      // queryClient.invalidateQueries({ queryKey: ["posts", variables.postId] });
+    },
+    onError: (error: Error, variables, context) => {
       if (context?.previousQueriesData) {
         context.previousQueriesData.forEach(([queryKey, data]) => {
           queryClient.setQueryData(queryKey, data);
         });
       }
-      trackError(error.message, { postId, action: 'like' });
+      trackError(error.message, { postId: variables.postId, action: 'like' });
       showErrorToast("Thao tác thất bại", error);
     },
   });
@@ -184,17 +200,29 @@ export function useCommentPost() {
       const previousQueriesData = queryClient.getQueriesData({ queryKey: ["posts"] });
 
       // Optimistically update to the new value
-      queryClient.setQueriesData<Post[]>({ queryKey: ["posts"] }, (old) => {
-        if (!Array.isArray(old)) return old;
-        return old.map((post) =>
-          post.id === postId
-            ? {
-                ...post,
-                comments: post.comments + 1,
-                comment_count: post.comment_count + 1,
-              }
-            : post
-        );
+      queryClient.setQueriesData({ queryKey: ["posts"] }, (old: any) => {
+        if (Array.isArray(old)) {
+          return old.map((post: Post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  comments: post.comments + 1,
+                  comment_count: post.comment_count + 1,
+                }
+              : post
+          );
+        }
+
+        // Single post detail update
+        if (old && typeof old === 'object' && old.id === postId) {
+          return {
+            ...old,
+            comments: (old.comments || 0) + 1,
+            comment_count: (old.comment_count || 0) + 1,
+          };
+        }
+
+        return old;
       });
 
       return { previousQueriesData };
@@ -269,31 +297,43 @@ export function useBookmarkPost() {
         }
       }
 
-      queryClient.setQueriesData<Post[]>({ queryKey: ["posts"] }, (old) => {
-        if (!Array.isArray(old)) return old;
-        return old.map((post) =>
-          post.id === postId
-            ? { 
-                ...post, 
-                isBookmarked: !post.isBookmarked,
-                is_saved: !post.isBookmarked 
-              }
-            : post
-        );
+      queryClient.setQueriesData({ queryKey: ["posts"] }, (old: any) => {
+        if (Array.isArray(old)) {
+          return old.map((post: Post) =>
+            post.id === postId
+              ? { 
+                  ...post, 
+                  isBookmarked: !post.isBookmarked,
+                  is_saved: !post.isBookmarked 
+                }
+              : post
+          );
+        }
+
+        // Single post detail update
+        if (old && typeof old === 'object' && old.id === postId) {
+          return {
+            ...old,
+            isBookmarked: !old.is_saved,
+            is_saved: !old.is_saved
+          };
+        }
+
+        return old;
       });
 
-      return { previousQueriesData, isCurrentlyBookmarked };
+      return { previousQueriesData };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["saved-posts"] });
     },
-    onError: (error: Error, postId, context) => {
+    onError: (error: Error, variables, context) => {
       if (context?.previousQueriesData) {
         context.previousQueriesData.forEach(([queryKey, data]) => {
           queryClient.setQueryData(queryKey, data);
         });
       }
-      trackError(error.message, { postId, action: 'bookmark' });
+      trackError(error.message, { postId: variables.postId, action: 'bookmark' });
       showErrorToast("Thao tác thất bại", error);
     },
   });
@@ -388,6 +428,144 @@ export function useNativeShare() {
         return false;
       }
     },
+  };
+}
+
+/**
+ * Hook for applying an itinerary from a social post to a group.
+ * Includes polling for generation status.
+ */
+export function useApplyItinerary() {
+  const queryClient = useQueryClient();
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopPolling();
+    };
+  }, [stopPolling]);
+
+  const pollGenerationStatus = useCallback(
+    async (
+      generationId: string,
+      onComplete: (itineraryId: string) => void,
+      onError: (error: string) => void
+    ) => {
+      stopPolling();
+
+      const poll = async () => {
+        try {
+          const response = await itineraryService.getGenerationStatus(generationId);
+
+          if (isSuccessCode(response.code || 0)) {
+            const data = response.data;
+
+            if (data?.status === 'completed' && data.newItineraryId) {
+              stopPolling();
+              onComplete(data.newItineraryId);
+            } else if (data?.status === 'failed') {
+              stopPolling();
+              onError(data.error || 'Generation failed');
+            }
+          }
+        } catch (error) {
+          stopPolling();
+          onError((error as Error).message || 'Failed to check status');
+        }
+      };
+
+      // Poll immediately, then every 3 seconds
+      await poll();
+      pollingIntervalRef.current = setInterval(poll, 3000) as any;
+
+      // Auto-stop after 2 minutes
+      timeoutRef.current = setTimeout(() => {
+        stopPolling();
+        onError('Generation timed out');
+      }, 120000) as any;
+    },
+    [stopPolling]
+  );
+
+  const applyMutation = useMutation({
+    ...retryConfig,
+    mutationFn: async (payload: {
+      sourceItineraryId: string;
+      groupId: string;
+      name?: string;
+      description?: string;
+    }) => {
+      const response = await itineraryService.applyItineraryToGroup(payload);
+
+      if (isSuccessCode(response.code || 0)) {
+        return response.data;
+      }
+      throw new Error(response.message || "Failed to apply itinerary");
+    },
+    onSuccess: (data, variables) => {
+      if (data?.newItineraryId) {
+        // Immediate success
+        queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+        queryClient.invalidateQueries({ queryKey: ["groups", variables.groupId] });
+        trackEvent('itinerary_applied', {
+          sourceItineraryId: variables.sourceItineraryId,
+          groupId: variables.groupId,
+          immediate: true
+        });
+        showSuccessToast("Đã áp dụng lịch trình thành công!");
+      } else if (data?.generationId) {
+        // Start polling
+        showSuccessToast("Đang tạo lịch trình...");
+        pollGenerationStatus(
+          data.generationId,
+          (newItineraryId) => {
+            queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+            queryClient.invalidateQueries({ queryKey: ["groups", variables.groupId] });
+            trackEvent('itinerary_applied', {
+              sourceItineraryId: variables.sourceItineraryId,
+              groupId: variables.groupId,
+              immediate: false,
+              newItineraryId
+            });
+            showSuccessToast("Lịch trình đã được tạo thành công!");
+          },
+          (error) => {
+            trackError(error, {
+              sourceItineraryId: variables.sourceItineraryId,
+              groupId: variables.groupId,
+              action: 'apply_itinerary_polling'
+            });
+            showErrorToast("Tạo lịch trình thất bại", new Error(error));
+          }
+        );
+      }
+    },
+    onError: (error: Error, variables) => {
+      trackError(error.message, {
+        sourceItineraryId: variables.sourceItineraryId,
+        groupId: variables.groupId,
+        action: 'apply_itinerary'
+      });
+      showErrorToast("Áp dụng lịch trình thất bại", error);
+    },
+  });
+
+  return {
+    ...applyMutation,
+    stopPolling,
   };
 }
 

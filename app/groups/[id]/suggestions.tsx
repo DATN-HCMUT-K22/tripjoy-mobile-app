@@ -3,11 +3,13 @@ import { useLocationSuggestions, useDeleteLocationSuggestion } from "@/hooks/use
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { isGroupManager } from "@/utils/roleUtils";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LocationImage } from "@/components/location/LocationImage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -37,19 +39,24 @@ export default function GroupSuggestionsScreen() {
 
   const isManager = useMemo(() => isGroupManager(group || undefined, currentUser?.id), [group, currentUser]);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const handleDelete = (suggestionId: string) => {
-    Alert.alert(
-      "Xóa gợi ý",
-      "Bạn có chắc chắn muốn xóa địa điểm gợi ý này không?",
-      [
-        { text: "Hủy", style: "cancel" },
-        { 
-          text: "Xóa", 
-          style: "destructive",
-          onPress: () => deleteSuggestionMutation.mutate(suggestionId)
-        },
-      ]
-    );
+    setConfirmDeleteId(suggestionId);
+  };
+
+  const executeDelete = () => {
+    if (!confirmDeleteId) return;
+    deleteSuggestionMutation.mutate(confirmDeleteId, {
+      onSuccess: () => {
+        showSuccessToast("Đã xóa gợi ý địa điểm");
+        setConfirmDeleteId(null);
+      },
+      onError: (err: any) => {
+        showErrorToast("Không thể xóa", err?.message);
+        setConfirmDeleteId(null);
+      }
+    });
   };
 
   const renderSuggestionItem = ({ item }: { item: SuggestLocationResponse }) => {
@@ -146,6 +153,20 @@ export default function GroupSuggestionsScreen() {
           <Ionicons name="add-circle" size={32} color="#0D9488" />
         </TouchableOpacity>
       </View>
+
+      <AppDialogModal
+        visible={!!confirmDeleteId}
+        onRequestClose={() => setConfirmDeleteId(null)}
+        title="Xóa gợi ý"
+        message="Bạn có chắc muốn xóa địa điểm gợi ý này khỏi nhóm không?"
+        variant="warning"
+        primaryLabel="Xóa"
+        primaryDestructive
+        secondaryLabel="Hủy"
+        onPrimaryPress={executeDelete}
+        onSecondaryPress={() => setConfirmDeleteId(null)}
+        isLoading={deleteSuggestionMutation.isPending}
+      />
 
       <FlatList
         data={suggestions}

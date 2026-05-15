@@ -52,9 +52,9 @@ async function textSearch(
   lat: number,
   lon: number,
   radiusMeters = 50_000
-): Promise<NearbyPlaceResult | null> {
+): Promise<NearbyPlaceResult[]> {
   const apiKey = getGoogleMapsApiKey();
-  if (!apiKey || !query.trim()) return null;
+  if (!apiKey || !query.trim()) return [];
 
   const body = {
     textQuery: query,
@@ -84,7 +84,7 @@ async function textSearch(
         `[googlePlacePhoto] textSearch HTTP ${res.status}:`,
         await res.text()
       );
-      return null;
+      return [];
     }
 
     const json = (await res.json()) as { places?: NearbyPlaceResult[] };
@@ -108,9 +108,9 @@ async function nearbySearch(
   lon: number,
   radiusMeters: number,
   includedTypes: string[]
-): Promise<NearbyPlaceResult | null> {
+): Promise<NearbyPlaceResult[]> {
   const apiKey = getGoogleMapsApiKey();
-  if (!apiKey) return null;
+  if (!apiKey) return [];
 
   const body = {
     locationRestriction: {
@@ -139,13 +139,14 @@ async function nearbySearch(
         `[googlePlacePhoto] nearbySearch HTTP ${res.status}:`,
         await res.text()
       );
-      return null;
+      return [];
     }
 
     const json = (await res.json()) as { places?: NearbyPlaceResult[] };
     return json.places ?? [];
   } catch (err) {
     console.warn("[googlePlacePhoto] nearbySearch error:", err);
+    return [];
   }
 }
 
@@ -191,6 +192,7 @@ async function getPlaceById(placeId: string): Promise<NearbyPlaceResult | null> 
 
 function buildPlacePhotoUrl(photoName: string, maxWidthPx: number): string {
   const apiKey = getGoogleMapsApiKey();
+  if (!apiKey) return "";
   return `${PLACES_BASE}/${photoName}/media?maxWidthPx=${maxWidthPx}&key=${encodeURIComponent(apiKey)}`;
 }
 
@@ -238,12 +240,12 @@ export async function fetchPlacePhotoUrls(
 
     // 1. Text Search (ưu tiên cao nhất — tìm theo tên)
     if (safeName) {
-      places = (await textSearch(safeName, lat, lon, radiusMeters)) as any;
+      places = await textSearch(safeName, lat, lon, radiusMeters);
     }
 
     // 2. Nearby Search với scenic types (fallback khi không tìm thấy hoặc kết quả không tốt)
     if (places.length === 0) {
-      places = (await nearbySearch(lat, lon, radiusMeters, SCENIC_TYPES)) as any;
+      places = await nearbySearch(lat, lon, radiusMeters, SCENIC_TYPES);
     }
 
     if (places.length === 0) return [];

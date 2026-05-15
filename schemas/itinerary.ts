@@ -6,9 +6,9 @@ export const createItinerarySchema = z.object({
     .max(100, 'Tên lịch trình không quá 100 ký tự'),
   description: z.string().optional(),
   start_date: z.string()
-    .refine(val => !isNaN(Date.parse(val)), 'Ngày không hợp lệ'),
+    .refine((val: string) => !isNaN(Date.parse(val)), 'Ngày không hợp lệ'),
   end_date: z.string()
-    .refine(val => !isNaN(Date.parse(val)), 'Ngày không hợp lệ'),
+    .refine((val: string) => !isNaN(Date.parse(val)), 'Ngày không hợp lệ'),
   people_quantity: z.number()
     .int('Số người phải là số nguyên')
     .min(1, 'Ít nhất 1 người')
@@ -20,7 +20,7 @@ export const createItinerarySchema = z.object({
   themes: z.array(z.string()).optional(),
   group_id: z.string().optional(),
 }).refine(
-  data => new Date(data.end_date) >= new Date(data.start_date),
+  (data: any) => new Date(data.end_date) >= new Date(data.start_date),
   { message: 'Ngày kết thúc phải sau ngày bắt đầu', path: ['end_date'] }
 );
 
@@ -28,7 +28,7 @@ export const createItinerarySchema = z.object({
 export const tripItemSchema = z.object({
   location_id: z.string().min(1, 'Vui lòng chọn địa điểm'),
   start_time: z.string()
-    .refine(val => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(val), 'Thời gian không hợp lệ'),
+    .refine((val: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(val), 'Thời gian không hợp lệ'),
   duration: z.number()
     .int('Thời lượng phải là số nguyên')
     .min(15, 'Thời lượng tối thiểu 15 phút')

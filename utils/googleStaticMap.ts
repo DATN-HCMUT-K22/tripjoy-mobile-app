@@ -14,9 +14,14 @@ export function buildGoogleStaticMapUrl(
   const key = getGoogleMapsApiKey();
   if (!key) return null;
 
-  const width = options.width ?? 800;
-  const height = options.height ?? 256;
-  const zoom = options.zoom ?? DEFAULT_ZOOM;
+  let width = Math.round(options.width ?? 800);
+  let height = Math.round(options.height ?? 256);
+  let zoom = Math.round(options.zoom ?? DEFAULT_ZOOM);
+
+  // Fallback for invalid numbers (NaN or <= 0)
+  if (Number.isNaN(width) || width <= 0) width = 800;
+  if (Number.isNaN(height) || height <= 0) height = 256;
+  if (Number.isNaN(zoom) || zoom <= 0) zoom = DEFAULT_ZOOM;
 
   if (!locations.length) {
     return `https://maps.googleapis.com/maps/api/staticmap?center=16.0471,108.2068&zoom=${zoom}&size=${width}x${height}&scale=2&maptype=roadmap&key=${encodeURIComponent(

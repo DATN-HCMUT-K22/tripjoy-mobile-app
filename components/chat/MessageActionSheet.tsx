@@ -24,6 +24,8 @@ export interface MessageActionSheetProps {
   onReply?: (message: ChatMessageResponse) => void;
   onForward?: (message: ChatMessageResponse) => void;
   onDelete?: (message: ChatMessageResponse) => void;
+  /** ID người dùng hiện tại để check ownership */
+  currentUserId?: string;
 }
 
 const SHEET_HEIGHT = 200;
@@ -35,6 +37,8 @@ export function MessageActionSheet({
   onPin,
   onUnpin,
   onReply,
+  onDelete,
+  currentUserId,
 }: MessageActionSheetProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -83,7 +87,15 @@ export function MessageActionSheet({
     onDismiss();
   };
 
+  const handleDelete = () => {
+    if (!message) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onDelete?.(message);
+    onDismiss();
+  };
+
   const isPinned = !!message?.is_pinned;
+  const isOwner = message?.sender_id === currentUserId || message?.sender?.id === currentUserId;
 
   if (!visible) return null;
 
@@ -131,11 +143,11 @@ export function MessageActionSheet({
                 </View>
               </Pressable>
               {/* Reply action */}
-              <Pressable 
+              <Pressable
                 style={({ pressed }) => [
                   styles.actionRow,
                   pressed && styles.actionRowPressed,
-                ]} 
+                ]}
                 onPress={() => {
                   if (message) onReply?.(message);
                   onDismiss();
@@ -147,15 +159,21 @@ export function MessageActionSheet({
                 </View>
               </Pressable>
 
-              {/* Forward and Delete (still commented for now if not requested) */}
-              {/* <Pressable style={styles.actionRow} onPress={() => onForward?.(message!)}>
-                <Ionicons name="share-outline" size={22} color="#111827" />
-                <Text style={styles.actionText}>Chuyển tiếp</Text>
-              </Pressable>
-              <Pressable style={[styles.actionRow, styles.actionRowDanger]} onPress={() => onDelete?.(message!)}>
-                <Ionicons name="trash-outline" size={22} color="#ef4444" />
-                <Text style={[styles.actionText, { color: "#ef4444" }]}>Xóa</Text>
-              </Pressable> */}
+              {/* Delete action - Chỉ hiện cho chủ tin nhắn */}
+              {isOwner && onDelete && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.actionRow,
+                    pressed && styles.actionRowPressed,
+                  ]}
+                  onPress={handleDelete}
+                >
+                  <View style={styles.actionIconText}>
+                    <Ionicons name="trash-outline" size={22} color="#EF4444" style={styles.actionIcon} />
+                    <Text style={[styles.actionText, { color: "#EF4444" }]}>Thu hồi tin nhắn</Text>
+                  </View>
+                </Pressable>
+              )}
             </View>
           </Animated.View>
       </View>

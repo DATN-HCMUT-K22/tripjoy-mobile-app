@@ -11,9 +11,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { PostCard } from "@/components/social/PostCard";
+import { ShareModal } from "@/components/social/ShareModal";
 import { CommentItem } from "@/components/social/CommentItem";
 import { CommentInput } from "@/components/social/CommentInput";
 import {
@@ -21,8 +22,10 @@ import {
   useLikePost,
   useBookmarkPost,
   useSharePost,
-  useNativeShare,
 } from "@/hooks/useSocial";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { ReportModal } from "@/components/social/ReportModal";
+import { ContentType } from "@/types/report";
 import {
   usePostComments,
   useCreateComment,
@@ -43,7 +46,11 @@ export default function PostDetailScreen() {
   const { data: post, isLoading: isPostLoading, isError: isPostError } = usePost(id);
   const likeMutation = useLikePost();
   const bookmarkMutation = useBookmarkPost();
-  const { shareNative } = useNativeShare();
+  const { requireAuth } = useRequireAuth();
+
+  // Share & Report state
+  const [reportModalVisible, setReportModalVisible] = React.useState(false);
+  const [shareModalVisible, setShareModalVisible] = React.useState(false);
 
   // Comments data & actions
   const { data: commentsData, isLoading: isCommentsLoading } = usePostComments(id, true);
@@ -57,7 +64,7 @@ export default function PostDetailScreen() {
   // State for replying
   const [replyToComment, setReplyToComment] = React.useState<CommentResponse | null>(null);
 
-  const navigation = require("expo-router").useNavigation();
+  const navigation = useNavigation();
   React.useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
@@ -76,9 +83,19 @@ export default function PostDetailScreen() {
 
   const handleShare = useCallback(() => {
     if (post) {
-      shareNative(post.id);
+      requireAuth(() => {
+        setShareModalVisible(true);
+      });
     }
-  }, [post, shareNative]);
+  }, [post, requireAuth]);
+
+  const handleReport = useCallback(() => {
+    if (post) {
+      requireAuth(() => {
+        setReportModalVisible(true);
+      });
+    }
+  }, [post, requireAuth]);
 
   const handleSubmitComment = useCallback((content: string) => {
     if (replyToComment) {
@@ -134,7 +151,7 @@ export default function PostDetailScreen() {
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerAction}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
+          <Ionicons name="chevron-back" size={28} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chi tiết bài viết</Text>
         <View style={styles.headerAction} />
@@ -143,12 +160,12 @@ export default function PostDetailScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         <FlatList
           data={comments}
           renderItem={renderCommentItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.id.toString()}
           ListHeaderComponent={
             <View>
               <PostCard
@@ -156,8 +173,9 @@ export default function PostDetailScreen() {
                 onLike={handleLike}
                 onBookmark={handleBookmark}
                 onShare={handleShare}
+                onReport={handleReport}
                 onComment={() => {
-                  // Scroll to bottom or focus input
+                  commentInputRef.current?.focus();
                 }}
               />
               <View style={styles.commentsHeader}>
@@ -185,6 +203,7 @@ export default function PostDetailScreen() {
         />
 
         <CommentInput
+          ref={commentInputRef}
           onSubmit={handleSubmitComment}
           isSubmitting={createCommentMutation.isPending || createReplyMutation.isPending}
           replyToUsername={replyToComment?.created_by_user.fullName}
@@ -192,6 +211,23 @@ export default function PostDetailScreen() {
           useBottomSheetInput={false}
         />
       </KeyboardAvoidingView>
+
+      <ReportModal
+        visible={reportModalVisible}
+        onClose={() => setReportModalVisible(false)}
+        contentId={id}
+        contentType={ContentType.POST}
+        contentTitle={post?.caption}
+      />
+
+      {post && (
+        <ShareModal
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          postId={post.id}
+          postTitle={post.caption}
+        />
+      )}
     </SafeAreaView>
   );
 }

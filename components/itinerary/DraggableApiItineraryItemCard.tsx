@@ -73,6 +73,7 @@ export const DraggableApiItineraryItemCard = React.memo(
     onMove,
     onDelete,
     onSuggest,
+    onEdit,
   }: {
     row: TripItemResponse;
     index: number;
@@ -81,6 +82,7 @@ export const DraggableApiItineraryItemCard = React.memo(
     onMove: (from: number, to: number) => void;
     onDelete: () => void;
     onSuggest?: () => void;
+    onEdit?: () => void;
   }) {
   const translateY = useSharedValue(0);
   const isDragging = useSharedValue(false);
@@ -139,67 +141,77 @@ export const DraggableApiItineraryItemCard = React.memo(
   return (
     <Animated.View style={animatedStyle} className="mb-3">
       <GestureDetector gesture={panGesture}>
-        <View className="rounded-xl border border-gray-200 bg-white p-3">
-          <View className="flex-row items-center">
-            {/* Drag handle - visual indicator */}
-            {canInteract && (
-              <View className="mr-3 flex-row">
-                <Ionicons name="ellipsis-vertical" size={20} color="#666" />
-                <Ionicons
-                  name="ellipsis-vertical"
-                  size={20}
-                  color="#666"
-                  style={{ marginLeft: -10 }}
-                />
-              </View>
+        <View className="flex-row items-center py-4">
+          {/* Drag handle - visual indicator */}
+          {canInteract && (
+            <View className="mr-3 flex-row items-center">
+              <Ionicons name="ellipsis-vertical" size={20} color="#666" />
+              <Ionicons
+                name="ellipsis-vertical"
+                size={20}
+                color="#666"
+                style={{ marginLeft: -10 }}
+              />
+            </View>
+          )}
+
+          {/* Image */}
+          <LocationImage
+            location={row.location}
+            style={{ width: 135, height: 80 }}
+            containerStyle={{ borderRadius: 12 }}
+          />
+
+          {/* Info */}
+          <View className="flex-1 ml-3">
+            <Text className="text-base font-bold text-black mb-1" numberOfLines={1}>
+              {name}
+            </Text>
+            {address ? (
+              <Text className="text-xs text-gray-500 mb-1" numberOfLines={1}>
+                {address}
+              </Text>
+            ) : null}
+            <View className="flex-row items-center">
+              <Ionicons name="time-outline" size={14} color="#666" />
+              <Text className="ml-1 text-sm text-gray-600">
+                {timeRange || "Chưa đặt giờ"}
+              </Text>
+              {canInteract && onEdit && (
+                <TouchableOpacity
+                  onPress={onEdit}
+                  className="ml-2 rounded-full border border-blue-200 bg-blue-50 px-2 py-1"
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Ionicons name="pencil" size={14} color="#2563EB" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Actions */}
+          <View className="ml-2 flex-row items-center">
+            {canInteract && onSuggest && (
+              <TouchableOpacity
+                onPress={onSuggest}
+                activeOpacity={0.7}
+                className="mr-2 p-2 bg-amber-50 rounded-full"
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="sparkles" size={18} color="#D97706" />
+              </TouchableOpacity>
             )}
 
-            {/* Image or placeholder */}
-            <LocationImage
-              location={row.location}
-              style={{ width: 112, height: 72 }}
-              containerStyle={{ borderRadius: 8 }}
-            />
-
-            {/* Info */}
-            <View className="flex-1 ml-3">
-              <Text className="text-base font-bold text-black mb-1" numberOfLines={2}>
-                {name}
-              </Text>
-              {timeRange ? (
-                <Text className="text-xs text-gray-500 mb-1">{timeRange}</Text>
-              ) : null}
-              {address ? (
-                <Text className="text-xs text-gray-500" numberOfLines={1}>
-                  {address}
-                </Text>
-              ) : null}
-            </View>
-
-            {/* Actions */}
-            <View className="ml-2 flex-row items-center">
-              {canInteract && onSuggest && (
-                <TouchableOpacity
-                  onPress={onSuggest}
-                  activeOpacity={0.7}
-                  className="mr-3 p-2 bg-amber-50 rounded-full"
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="sparkles" size={18} color="#D97706" />
-                </TouchableOpacity>
-              )}
-
-              {canInteract && (
-                <TouchableOpacity
-                  onPress={onDelete}
-                  activeOpacity={0.7}
-                  className="p-1"
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="trash-outline" size={24} color="#EF4444" />
-                </TouchableOpacity>
-              )}
-            </View>
+            {canInteract && (
+              <TouchableOpacity
+                onPress={onDelete}
+                activeOpacity={0.7}
+                className="p-1"
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="trash-outline" size={24} color="#EF4444" />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </GestureDetector>
@@ -210,5 +222,7 @@ export const DraggableApiItineraryItemCard = React.memo(
     prev.row.id === next.row.id &&
     prev.index === next.index &&
     prev.total === next.total &&
-    prev.canInteract === next.canInteract
+    prev.canInteract === next.canInteract &&
+    prev.row.start_time === next.row.start_time &&
+    prev.row.duration === next.row.duration
 );

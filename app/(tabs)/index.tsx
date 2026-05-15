@@ -7,6 +7,7 @@ import { ShareModal } from "@/components/social/ShareModal";
 import { SocialHeader } from "@/components/social/SocialHeader";
 import { TabMenu } from "@/components/social/TabMenu";
 import { CommentModal } from "@/components/social/CommentModal";
+import { ReportModal } from "@/components/social/ReportModal";
 import { useAuthLogger } from "@/hooks/useAuthLogger";
 import { useConversations } from "@/hooks/useConversations";
 import { useGuestMode } from "@/hooks/useGuestMode";
@@ -24,6 +25,7 @@ import {
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { useItinerary } from "@/contexts/ItineraryContext";
 import { TabType, type Post } from "@/types/social";
+import { ContentType } from "@/types/report";
 import { useAppSelector } from "@/store/hooks";
 import { useFocusEffect, router } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -86,6 +88,10 @@ export default function HomeScreen() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [selectedPostForShare, setSelectedPostForShare] = useState<string | null>(null);
   const [selectedPostTitle, setSelectedPostTitle] = useState<string>("");
+
+  // Report modal state
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [selectedPostForReport, setSelectedPostForReport] = useState<string | null>(null);
 
   // Lấy conversations để tính unread count
   const { conversations } = useConversations({
@@ -155,10 +161,8 @@ export default function HomeScreen() {
 
   const handleReport = async (postId: string) => {
     await requireAuth(async () => {
-      // TODO: Call API report post
-      console.log("Report post:", postId);
-      trackEvent('post_reported', { postId });
-      // await reportPost(postId);
+      setSelectedPostForReport(postId);
+      setReportModalVisible(true);
     });
   };
 
@@ -308,6 +312,19 @@ export default function HomeScreen() {
           onClose={() => setShareModalVisible(false)}
           postId={selectedPostForShare}
           postTitle={selectedPostTitle}
+        />
+      )}
+
+      {selectedPostForReport && (
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={() => {
+            setReportModalVisible(false);
+            setSelectedPostForReport(null);
+          }}
+          contentId={selectedPostForReport}
+          contentType={ContentType.POST}
+          contentTitle={posts.find(p => p.id === selectedPostForReport)?.caption}
         />
       )}
     </SafeAreaView>

@@ -31,6 +31,7 @@ interface UseMessagesReturn {
     sharePostUrl?: string;
     sharedPostId?: string;
     parentMessageId?: string;
+    parentMessage?: ChatMessageResponse;
   }) => Promise<ChatMessageResponse | null>;
   /**
    * Đồng bộ lại like_count/is_liked_by_current_user theo dữ liệu mới từ server
@@ -43,6 +44,7 @@ interface UseMessagesReturn {
   ) => void;
   likeMessage: (messageId: string) => Promise<void>;
   unlikeMessage: (messageId: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   pinMessage: (messageId: string) => Promise<void>;
   unpinMessage: (messageId: string) => Promise<void>;
   refresh: () => Promise<void>;
@@ -274,6 +276,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
         sharePostUrl?: string;
         sharedPostId?: string;
         parentMessageId?: string;
+        parentMessage?: ChatMessageResponse;
       }
     ): Promise<ChatMessageResponse | null> => {
       if (!conversationId || !content.trim()) return null;
@@ -300,6 +303,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
           : null,
         conversation_id: conversationId,
         parent_message_id: options?.parentMessageId,
+        parent_message: options?.parentMessage,
         created_at: new Date().toISOString(),
         _isOptimistic: true,
         _tempId: tempId,
@@ -332,6 +336,9 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
             ...response.data,
             conversation_id: response.data.conversation_id || conversationId,
             status: response.data.status || "SENT",
+            // 🔥 Resilience: Preserve parent message info from optimistic state if server returns null
+            parent_message: response.data.parent_message || optimisticMessage.parent_message,
+            parent_message_id: response.data.parent_message_id || optimisticMessage.parent_message_id,
           };
           
           // Thay thế optimistic message bằng real message
@@ -492,6 +499,37 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
   );
 
   /**
+   * Delete/Unsend message
+   * Chỉ người gửi mới có thể xóa tin nhắn của mình
+   */
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      // Optimistically remove from UI
+      const previousMessages = messagesRef.current;
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+
+      try {
+        const response = await messageService.deleteMessage(messageId);
+        if (response.code === 1000 || response.code === 0) {
+          // Success - message already removed optimistically
+          console.log(`✅ Message ${messageId} deleted successfully`);
+        } else {
+          // Rollback on error
+          setMessages(previousMessages);
+          throw new Error(response.message || "Failed to delete message");
+        }
+      } catch (err: any) {
+        // Rollback on error
+        setMessages(previousMessages);
+        console.error("Error deleting message:", err);
+        setError(err.message || "Không thể xóa tin nhắn");
+        throw err;
+      }
+    },
+    []
+  );
+
+  /**
    * Pin message — POST /api/v1/messages/{messageId}/pin
    * Optimistic: set is_pinned = true. Refetch pinned list do Screen gọi usePinnedMessages.refetch sau khi thành công.
    */
@@ -647,7 +685,13 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
             // Nếu đã tồn tại, update status nếu là message của mình
             return prev.map((m) => {
               if (m.id === message.id) {
-                return { ...message, status: message.status || "SENT" };
+                return { 
+                  ...message, 
+                  status: message.status || "SENT",
+                  // 🔥 Resilience: Preserve existing parent message info if socket update has it as null
+                  parent_message: message.parent_message || m.parent_message,
+                  parent_message_id: message.parent_message_id || m.parent_message_id,
+                };
               }
               return m;
             });
@@ -806,6 +850,7 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
     syncMessageLikes,
     likeMessage,
     unlikeMessage,
+    deleteMessage,
     pinMessage,
     unpinMessage,
     refresh,

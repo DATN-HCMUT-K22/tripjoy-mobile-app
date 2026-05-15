@@ -2,11 +2,12 @@ import { ApiResponse } from "@/types/user";
 import { CreatePostRequest, Post } from "@/types/social";
 import { httpClient } from "./http/client";
 
-// Re-export Post type for backward compatibility
-export type { Post };
+// Re-export types for backward compatibility
+export type { Post, CreatePostRequest };
 
 export interface GetPostsResponse {
   code: number;
+  message?: string;
   data:
     | Post[]
     | {

@@ -1,0 +1,1044 @@
+{
+  "columns": [
+    "ID",
+    "Use Case",
+    "Mô tả",
+    "Đầu vào",
+    "Bước thực hiện",
+    "Đầu ra mong đợi",
+    "Trạng thái thực hiện",
+    "Unnamed: 7"
+  ],
+  "data": [
+    {
+      "ID": "TC-MD01-01",
+      "Use Case": "UC-MD01-01",
+      "Mô tả": "Xem danh sách bài đăng công khai",
+      "Đầu vào": "Không",
+      "Bước thực hiện": "1) Truy cập trang “Khám phá” khi chưa login \n2) Cuộn danh sách",
+      "Đầu ra mong đợi": "Hiển thị danh sách bài đăng công khai",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-02",
+      "Use Case": "UC-MD01-01",
+      "Mô tả": "Xem chi tiết một bài đăng",
+      "Đầu vào": "Chọn bài đăng",
+      "Bước thực hiện": "1) Click bài đăng 2) Hệ thống mở trang chi tiết",
+      "Đầu ra mong đợi": "Hiển thị đầy đủ nội dung bài đăng",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-03",
+      "Use Case": "UC-MD01-02",
+      "Mô tả": "Xem danh sách lượt thích",
+      "Đầu vào": "Bài đăng hợp lệ",
+      "Bước thực hiện": "1) Mở bài đăng 2) Click số lượt thích",
+      "Đầu ra mong đợi": "Hiển thị danh sách user đã like",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-04",
+      "Use Case": "UC-MD01-03",
+      "Mô tả": "Xem tất cả bình luận",
+      "Đầu vào": "Bài đăng",
+      "Bước thực hiện": "1) Mở bài đăng 2) Cuộn xuống phần comment",
+      "Đầu ra mong đợi": "Hiển thị toàn bộ bình luận",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-06",
+      "Use Case": "UC-MD01-05",
+      "Mô tả": "Xem trang cá nhân public",
+      "Đầu vào": "UserID",
+      "Bước thực hiện": "1) Click avatar user → 2) Mở trang cá nhân",
+      "Đầu ra mong đợi": "Hiển thị bài đăng, thông tin, nút nhắn tin",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-07",
+      "Use Case": "UC-MD01-06",
+      "Mô tả": "Tạo bài đăng hợp lệ",
+      "Đầu vào": "Nội dung, ảnh/video",
+      "Bước thực hiện": "1) Tạo bài đăng → 2) Nhập nội dung → 3) Upload \n→ 4) Submit",
+      "Đầu ra mong đợi": "Bài đăng xuất hiện trong feed",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-08",
+      "Use Case": "UC-MD01-06",
+      "Mô tả": "Tạo bài đăng không có nội dung",
+      "Đầu vào": "Không nhập gì",
+      "Bước thực hiện": "Submit",
+      "Đầu ra mong đợi": "Lỗi: “Nội dung không được để trống”",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-09",
+      "Use Case": "UC-MD01-07",
+      "Mô tả": "Like bài đăng",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "1) Mở bài đăng → 2) Click Like",
+      "Đầu ra mong đợi": "Like tăng 1",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-10",
+      "Use Case": "UC-MD01-07",
+      "Mô tả": "Bỏ Like",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Click lại Like",
+      "Đầu ra mong đợi": "Like giảm 1",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-11",
+      "Use Case": "UC-MD01-08",
+      "Mô tả": "Bình luận bài đăng",
+      "Đầu vào": "Nội dung comment",
+      "Bước thực hiện": "1) Mở bài → 2) Nhập comment → 3) Submit",
+      "Đầu ra mong đợi": "Comment xuất hiện",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-12",
+      "Use Case": "UC-MD01-08",
+      "Mô tả": "Sửa bình luận",
+      "Đầu vào": "Nội dung mới",
+      "Bước thực hiện": "1) Edit → 2) Nhập nội dung mới → 3) Save",
+      "Đầu ra mong đợi": "Comment được cập nhật",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-13",
+      "Use Case": "UC-MD01-09",
+      "Mô tả": "Reply bình luận người khác",
+      "Đầu vào": "Nội dung",
+      "Bước thực hiện": "1) Chọn comment → 2) Reply → 3) Submit",
+      "Đầu ra mong đợi": "Reply xuất hiện dưới comment cha",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-14",
+      "Use Case": "UC-MD01-10",
+      "Mô tả": "Xóa bình luận cá nhân",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Chọn comment → Delete",
+      "Đầu ra mong đợi": "Comment bị xoá",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-15",
+      "Use Case": "UC-MD01-11",
+      "Mô tả": "Chia sẻ bài vào nhóm",
+      "Đầu vào": "GroupID",
+      "Bước thực hiện": "1) Share → 2) Chọn group → 3) Submit",
+      "Đầu ra mong đợi": "Bài được chia sẻ",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-16",
+      "Use Case": "UC-MD01-12",
+      "Mô tả": "Áp dụng lịch trình",
+      "Đầu vào": "Lịch trình + Group",
+      "Bước thực hiện": "1) Apply → 2) Chọn group → 3) Tùy chỉnh AI",
+      "Đầu ra mong đợi": "Lịch trình được áp dụng",
+      "Trạng thái thực hiện": "Not implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-17",
+      "Use Case": "UC-MD01-13",
+      "Mô tả": "Lưu bài đăng",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Click Save",
+      "Đầu ra mong đợi": "Bài vào danh sách yêu thích",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-18",
+      "Use Case": "UC-MD01-13",
+      "Mô tả": "Bỏ lưu bài đăng",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Click Unsave",
+      "Đầu ra mong đợi": "Bài bị xóa khỏi danh sách",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-19",
+      "Use Case": "UC-MD01-14",
+      "Mô tả": "Xem profile bản thân",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open Profile",
+      "Đầu ra mong đợi": "Hiển thị thông tin",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-20",
+      "Use Case": "UC-MD01-14.1",
+      "Mô tả": "Xem lịch trình đã đi",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Travel History”",
+      "Đầu ra mong đợi": "Hiển thị danh sách",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-21",
+      "Use Case": "UC-MD01-14.2",
+      "Mô tả": "Xem lịch trình yêu thích",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Favorites”",
+      "Đầu ra mong đợi": "Hiển thị danh sách",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-22",
+      "Use Case": "UC-MD01-15",
+      "Mô tả": "Xem bài đã lưu",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open Saved Posts",
+      "Đầu ra mong đợi": "Hiển thị danh sách bài đã lưu",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-23",
+      "Use Case": "UC-MD01-16",
+      "Mô tả": "Xem bài đăng của tôi",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “My Posts”",
+      "Đầu ra mong đợi": "Hiển thị danh sách bài đăng",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-24",
+      "Use Case": "UC-MD01-17",
+      "Mô tả": "Sửa nội dung bài đăng",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Edit → Save",
+      "Đầu ra mong đợi": "Nội dung được cập nhật",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-25",
+      "Use Case": "UC-MD01-18",
+      "Mô tả": "Xóa bài đăng",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Delete Post",
+      "Đầu ra mong đợi": "Post bị xoá khỏi feed",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-26",
+      "Use Case": "UC-MD01-21",
+      "Mô tả": "Xem danh sách báo cáo",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Admin Panel → Reports",
+      "Đầu ra mong đợi": "Hiển thị danh sách báo cáo",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-27",
+      "Use Case": "UC-MD01-22",
+      "Mô tả": "Xem báo cáo bình luận",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Click comment report",
+      "Đầu ra mong đợi": "Hiển thị chi tiết",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-28",
+      "Use Case": "UC-MD01-23",
+      "Mô tả": "Xử lý vi phạm",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Chọn hành động: xoá / cảnh cáo",
+      "Đầu ra mong đợi": "Báo cáo được xử lý",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD01-29",
+      "Use Case": "UC-MD01-24",
+      "Mô tả": "Xem thống kê hệ thống",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Admin → Statistics",
+      "Đầu ra mong đợi": "Hiển thị biểu đồ và số liệu",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-01",
+      "Use Case": "UC-MD02-01",
+      "Mô tả": "Xem danh sách nhóm",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Mở tab “Nhóm của tôi”",
+      "Đầu ra mong đợi": "Hiển thị danh sách nhóm",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-02",
+      "Use Case": "UC-MD02-02",
+      "Mô tả": "Tạo nhóm",
+      "Đầu vào": "Tên nhóm + thành viên mời",
+      "Bước thực hiện": "1) Tạo nhóm → 2) Nhập tên → 3) Mời thành viên → 4) Submit",
+      "Đầu ra mong đợi": "Nhóm được tạo",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-03",
+      "Use Case": "UC-MD02-04",
+      "Mô tả": "Truy cập group",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Mở 1 group",
+      "Đầu ra mong đợi": "Hiển thị tin nhắn + thành viên",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-04",
+      "Use Case": "UC-MD02-05",
+      "Mô tả": "Nhắn bot",
+      "Đầu vào": "@Bot message",
+      "Bước thực hiện": "1) Gõ tin nhắn → 2) Send",
+      "Đầu ra mong đợi": "Bot trả lời trong nhóm",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-05",
+      "Use Case": "UC-MD02-06",
+      "Mô tả": "Xem lịch sử tin nhắn",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open Group",
+      "Đầu ra mong đợi": "Hiển thị lịch sử chat",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-06",
+      "Use Case": "UC-MD02-07",
+      "Mô tả": "Gửi tin nhắn",
+      "Đầu vào": "Tin nhắn",
+      "Bước thực hiện": "Send",
+      "Đầu ra mong đợi": "Tin xuất hiện trong group",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-07",
+      "Use Case": "UC-MD02-08",
+      "Mô tả": "Reply tin nhắn",
+      "Đầu vào": "Nội dung phản hồi",
+      "Bước thực hiện": "Reply → Send",
+      "Đầu ra mong đợi": "Reply hiển thị đúng luồng",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-08",
+      "Use Case": "UC-MD02-09",
+      "Mô tả": "Like tin nhắn",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Click Like",
+      "Đầu ra mong đợi": "Tin được like",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-09",
+      "Use Case": "UC-MD02-09",
+      "Mô tả": "Unlike tin nhắn",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Click Unlike",
+      "Đầu ra mong đợi": "Like bị gỡ",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-10",
+      "Use Case": "UC-MD02-10",
+      "Mô tả": "Thu hồi tin",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Recall Message",
+      "Đầu ra mong đợi": "Tin nhắn bị thu hồi, hiển thị placeholder",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-11",
+      "Use Case": "UC-MD02-11",
+      "Mô tả": "Xem mô tả nhóm",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open Group Info",
+      "Đầu ra mong đợi": "Hiển thị tên nhóm, creator, thành viên",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-12",
+      "Use Case": "UC-MD02-12",
+      "Mô tả": "Rời nhóm",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Leave group",
+      "Đầu ra mong đợi": "Người dùng bị xoá khỏi nhóm",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-13",
+      "Use Case": "UC-MD02-13",
+      "Mô tả": "Xóa thành viên",
+      "Đầu vào": "UserID",
+      "Bước thực hiện": "Leader → Remove Member",
+      "Đầu ra mong đợi": "Thành viên bị xóa",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD02-14",
+      "Use Case": "UC-MD02-14",
+      "Mô tả": "Thay đổi vai trò",
+      "Đầu vào": "UserID",
+      "Bước thực hiện": "Leader → Promote/Demote",
+      "Đầu ra mong đợi": "Vai trò được cập nhật",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-01",
+      "Use Case": "UC-MD03-09",
+      "Mô tả": "Xem danh sách địa điểm AI gợi ý",
+      "Đầu vào": "Không",
+      "Bước thực hiện": "1) Vào mục “AI Suggestion” \n2) Hệ thống load danh sách gợi ý",
+      "Đầu ra mong đợi": "Hiển thị danh sách địa điểm được AI gợi ý",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-02",
+      "Use Case": "UC-MD03-09",
+      "Mô tả": "Xem chi tiết 1 địa điểm gợi ý",
+      "Đầu vào": "Chọn địa điểm",
+      "Bước thực hiện": "1) Click item trong danh sách",
+      "Đầu ra mong đợi": "Hiển thị mô tả, ảnh, lịch mở cửa, bản đồ…",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-03",
+      "Use Case": "UC-MD03-09",
+      "Mô tả": "Áp dụng 1 địa điểm AI gợi ý vào lịch trình nháp",
+      "Đầu vào": "Địa điểm",
+      "Bước thực hiện": "1) Chọn “Use this suggestion” 2) Xác nhận",
+      "Đầu ra mong đợi": "Địa điểm được thêm vào lịch trình nháp",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD03-04",
+      "Use Case": "UC-MD03-09",
+      "Mô tả": "Từ chối gợi ý AI",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "1) Nhấn “Dismiss”",
+      "Đầu ra mong đợi": "Địa điểm được ẩn hoặc đánh dấu “Không phù hợp”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD03-05",
+      "Use Case": "UC-MD03-10",
+      "Mô tả": "Xóa lịch trình nháp hợp lệ",
+      "Đầu vào": "DraftID",
+      "Bước thực hiện": "1) Mở draft 2) Chọn Delete 3) Confirm",
+      "Đầu ra mong đợi": "Draft bị xóa hoàn toàn",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-06",
+      "Use Case": "UC-MD03-10",
+      "Mô tả": "Xóa draft khi không có quyền",
+      "Đầu vào": "DraftID của người khác",
+      "Bước thực hiện": "1) Chọn Delete",
+      "Đầu ra mong đợi": "Lỗi: “Bạn không có quyền xóa lịch trình này”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD03-07",
+      "Use Case": "UC-MD03-11",
+      "Mô tả": "Yêu cầu AI tạo lịch trình mới",
+      "Đầu vào": "Số ngày, ngân sách, sở thích",
+      "Bước thực hiện": "1) Mở AI Planner 2) Nhập yêu cầu 3) Request AI",
+      "Đầu ra mong đợi": "AI tạo lịch trình mới",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-08",
+      "Use Case": "UC-MD03-11",
+      "Mô tả": "AI tạo lịch trình thất bại (input lỗi)",
+      "Đầu vào": "Input không hợp lệ",
+      "Bước thực hiện": "1) Nhập dữ liệu lỗi 2) Request",
+      "Đầu ra mong đợi": "Lỗi: “Không thể tạo lịch trình — dữ liệu không hợp lệ”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD03-09",
+      "Use Case": "UC-MD03-12",
+      "Mô tả": "Xem gợi ý khách sạn",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Service Suggestions”",
+      "Đầu ra mong đợi": "Hiển thị danh sách khách sạn",
+      "Trạng thái thực hiện": "Coming soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-10",
+      "Use Case": "UC-MD03-12",
+      "Mô tả": "Xem gợi ý di chuyển",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Transport Recommendations”",
+      "Đầu ra mong đợi": "Hiển thị taxi, xe buýt, thuê xe",
+      "Trạng thái thực hiện": "Coming soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-11",
+      "Use Case": "UC-MD03-12",
+      "Mô tả": "Xem gợi ý ăn uống",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Food Suggestions”",
+      "Đầu ra mong đợi": "Hiển thị nhà hàng, món ăn",
+      "Trạng thái thực hiện": "Coming soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-12",
+      "Use Case": "UC-MD03-13",
+      "Mô tả": "Xem sổ tay du lịch",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "1) Mở địa điểm 2) Chọn “Travel Guide”",
+      "Đầu ra mong đợi": "Hiển thị văn hóa, tips, lưu ý an toàn",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-13",
+      "Use Case": "UC-MD03-13",
+      "Mô tả": "Xem lưu ý quan trọng",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Chọn “Important Notes”",
+      "Đầu ra mong đợi": "Hiển thị cảnh báo quan trọng",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-14",
+      "Use Case": "UC-MD03-14",
+      "Mô tả": "Chốt lịch trình thành công",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "1) Open Draft 2) Chọn Finalize",
+      "Đầu ra mong đợi": "Lịch trình chuyển thành trạng thái “Final”",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-15",
+      "Use Case": "UC-MD03-14",
+      "Mô tả": "Chốt lịch trình khi thiếu thông tin",
+      "Đầu vào": "Missing data",
+      "Bước thực hiện": "1) Finalize",
+      "Đầu ra mong đợi": "Lỗi: “Lịch trình chưa đầy đủ”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD03-16",
+      "Use Case": "UC-MD03-15",
+      "Mô tả": "Thêm vào ưa thích",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Click “Add to favorites”",
+      "Đầu ra mong đợi": "Lịch trình được thêm vào danh sách ưa thích",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD03-17",
+      "Use Case": "UC-MD03-16",
+      "Mô tả": "Xem sổ tay cho lịch trình đã chốt",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Travel Guide for Final Plan”",
+      "Đầu ra mong đợi": "Hiển thị đầy đủ thông tin chuẩn bị trước chuyến đi",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-01",
+      "Use Case": "UC-MD04-01",
+      "Mô tả": "Xem lịch trình đang diễn ra",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Current Trip”",
+      "Đầu ra mong đợi": "Hiển thị timeline & địa điểm",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-02",
+      "Use Case": "UC-MD04-01",
+      "Mô tả": "Xem lịch trình sắp diễn ra",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Upcoming Trip”",
+      "Đầu ra mong đợi": "Hiển thị lịch trình chờ bắt đầu",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD04-03",
+      "Use Case": "UC-MD04-02",
+      "Mô tả": "Thêm địa điểm",
+      "Đầu vào": "Thông tin địa điểm",
+      "Bước thực hiện": "1) Open Edit Mode 2) Add location",
+      "Đầu ra mong đợi": "Địa điểm mới được thêm",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-04",
+      "Use Case": "UC-MD04-02",
+      "Mô tả": "Xóa địa điểm",
+      "Đầu vào": "LocationID",
+      "Bước thực hiện": "1) Chọn địa điểm 2) Delete",
+      "Đầu ra mong đợi": "Địa điểm bị xóa",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-05",
+      "Use Case": "UC-MD04-02",
+      "Mô tả": "Thay thế địa điểm",
+      "Đầu vào": "OldID + NewID",
+      "Bước thực hiện": "1) Replace 2) Confirm",
+      "Đầu ra mong đợi": "Lịch trình được cập nhật",
+      "Trạng thái thực hiện": "Cần test lại",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-06",
+      "Use Case": "UC-MD04-02",
+      "Mô tả": "Thêm bằng gợi ý AI",
+      "Đầu vào": "SuggestionID",
+      "Bước thực hiện": "Click “Use AI suggestion”",
+      "Đầu ra mong đợi": "Địa điểm được thêm vào lịch trình",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-07",
+      "Use Case": "UC-MD04-02",
+      "Mô tả": "Không có quyền chỉnh sửa",
+      "Đầu vào": "User không phải phó nhóm",
+      "Bước thực hiện": "1) Open Edit 2) Save",
+      "Đầu ra mong đợi": "Lỗi: “Bạn không có quyền chỉnh sửa”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD04-08",
+      "Use Case": "UC-MD04-03",
+      "Mô tả": "Xem mô tả địa điểm",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Click địa điểm trong lịch trình",
+      "Đầu ra mong đợi": "Hiển thị mô tả, ảnh",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-09",
+      "Use Case": "UC-MD04-03",
+      "Mô tả": "Xem nhà hàng gần đó",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Nearby Restaurants”",
+      "Đầu ra mong đợi": "Hiển thị danh sách",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại (trùng với TC-MD03-12)"
+    },
+    {
+      "ID": "TC-MD04-10",
+      "Use Case": "UC-MD04-03",
+      "Mô tả": "Xem thời tiết",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Weather Info”",
+      "Đầu ra mong đợi": "Hiển thị thời tiết hiện tại",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-11",
+      "Use Case": "UC-MD04-04",
+      "Mô tả": "Xem gợi ý AI",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “AI Suggestions”",
+      "Đầu ra mong đợi": "Hiển thị khách sạn, ăn uống, di chuyển",
+      "Trạng thái thực hiện": "Coming soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-12",
+      "Use Case": "UC-MD04-05",
+      "Mô tả": "Xem danh sách chi phí",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Trip Expenses”",
+      "Đầu ra mong đợi": "Hiển thị chi phí theo hạng mục",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-13",
+      "Use Case": "UC-MD04-05",
+      "Mô tả": "Xem tổng chi phí",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Open “Summary”",
+      "Đầu ra mong đợi": "Hiển thị tổng tiền",
+      "Trạng thái thực hiện": "implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-14",
+      "Use Case": "UC-MD04-06",
+      "Mô tả": "Thêm chi phí",
+      "Đầu vào": "Loại + số tiền",
+      "Bước thực hiện": "1) Add Expense",
+      "Đầu ra mong đợi": "Chi phí được thêm",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-15",
+      "Use Case": "UC-MD04-06",
+      "Mô tả": "Sửa chi phí",
+      "Đầu vào": "ExpenseID + new value",
+      "Bước thực hiện": "1) Edit → Save",
+      "Đầu ra mong đợi": "Chi phí cập nhật",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-16",
+      "Use Case": "UC-MD04-06",
+      "Mô tả": "Xóa chi phí",
+      "Đầu vào": "ExpenseID",
+      "Bước thực hiện": "1) Delete",
+      "Đầu ra mong đợi": "Chi phí bị xóa",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD04-17",
+      "Use Case": "UC-MD04-06",
+      "Mô tả": "Lỗi khi thêm chi phí không hợp lệ",
+      "Đầu vào": "Giá tiền âm",
+      "Bước thực hiện": "1) Add",
+      "Đầu ra mong đợi": "Lỗi: “Giá trị không hợp lệ”",
+      "Trạng thái thực hiện": "Implemented soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-01",
+      "Use Case": "UC-MD05-01",
+      "Mô tả": "Đăng ký tài khoản hợp lệ",
+      "Đầu vào": "Email hợp lệ, mật khẩu đủ mạnh, xác nhận mật khẩu khớp",
+      "Bước thực hiện": "1) Mở trang đăng ký \n2) Nhập email, password, confirm password \n3) Bấm “Đăng ký”",
+      "Đầu ra mong đợi": "Tài khoản được tạo thành công, hệ thống chuyển sang trang đăng nhập hoặc tự động đăng nhập",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-02",
+      "Use Case": "UC-MD05-01",
+      "Mô tả": "Đăng ký với email đã tồn tại",
+      "Đầu vào": "Email đã có trong DB",
+      "Bước thực hiện": "1) Mở trang đăng ký 2) Nhập email đã tồn tại 3) Submit",
+      "Đầu ra mong đợi": "Báo lỗi: “Email đã được sử dụng”",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-03",
+      "Use Case": "UC-MD05-01",
+      "Mô tả": "Đăng ký với mật khẩu không đạt yêu cầu",
+      "Đầu vào": "Mật khẩu < 6 ký tự hoặc không đủ ký tự đặc biệt",
+      "Bước thực hiện": "1) Nhập thông tin 2) Submit",
+      "Đầu ra mong đợi": "Báo lỗi: “Mật khẩu không hợp lệ”",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-04",
+      "Use Case": "UC-MD05-01",
+      "Mô tả": "Xác nhận mật khẩu không khớp",
+      "Đầu vào": "Password ≠ Confirm Password",
+      "Bước thực hiện": "1) Nhập dữ liệu 2) Submit",
+      "Đầu ra mong đợi": "Báo lỗi: “Mật khẩu xác nhận không khớp”",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-05",
+      "Use Case": "UC-MD05-01",
+      "Mô tả": "Đăng ký với email không hợp lệ",
+      "Đầu vào": "Email sai định dạng",
+      "Bước thực hiện": "1) Nhập email sai 2) Submit",
+      "Đầu ra mong đợi": "Báo lỗi định dạng email",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-06",
+      "Use Case": "UC-MD05-02",
+      "Mô tả": "Đăng nhập hợp lệ",
+      "Đầu vào": "Email + Mật khẩu đúng",
+      "Bước thực hiện": "1) Mở form login 2) Nhập email/pass 3) Click Login",
+      "Đầu ra mong đợi": "Đăng nhập thành công, chuyển sang dashboard",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-07",
+      "Use Case": "UC-MD05-02",
+      "Mô tả": "Sai mật khẩu",
+      "Đầu vào": "Email đúng, password sai",
+      "Bước thực hiện": "Submit login",
+      "Đầu ra mong đợi": "Hiển thị lỗi: “Sai mật khẩu”",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-08",
+      "Use Case": "UC-MD05-02",
+      "Mô tả": "Email không tồn tại",
+      "Đầu vào": "Email không có trong DB",
+      "Bước thực hiện": "Submit",
+      "Đầu ra mong đợi": "“Tài khoản không tồn tại”",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-09",
+      "Use Case": "UC-MD05-02",
+      "Mô tả": "Bỏ trống thông tin",
+      "Đầu vào": "Empty form",
+      "Bước thực hiện": "Click Login",
+      "Đầu ra mong đợi": "Hiển thị lỗi yêu cầu nhập",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-10",
+      "Use Case": "UC-MD05-03",
+      "Mô tả": "Đăng nhập Gmail hợp lệ",
+      "Đầu vào": "Tài khoản Gmail hợp lệ",
+      "Bước thực hiện": "1) Click “Login with Google” \n2) Chọn tài khoản Google \n3) Cho phép truy cập",
+      "Đầu ra mong đợi": "Đăng nhập thành công, user được tạo nếu chưa tồn tại",
+      "Trạng thái thực hiện": "Comming soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-11",
+      "Use Case": "UC-MD05-03",
+      "Mô tả": "Từ chối quyền truy cập Gmail",
+      "Đầu vào": "Người dùng nhấn “Cancel”",
+      "Bước thực hiện": "1) Click login Google 2) Cancel",
+      "Đầu ra mong đợi": "Quay lại form login, báo lỗi “Không thể xác thực Gmail”",
+      "Trạng thái thực hiện": "Comming soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-12",
+      "Use Case": "UC-MD05-03",
+      "Mô tả": "Gmail không hợp lệ",
+      "Đầu vào": "Gmail không tồn tại hoặc bị khóa",
+      "Bước thực hiện": "1) Chọn tài khoản Gmail lỗi",
+      "Đầu ra mong đợi": "Hiển thị lỗi từ Google API",
+      "Trạng thái thực hiện": "Comming soon",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-13",
+      "Use Case": "UC-MD05-04",
+      "Mô tả": "Đăng xuất thành công",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "1) User đã login 2) Click Logout",
+      "Đầu ra mong đợi": "Phiên đăng nhập bị xoá, trở về màn hình login",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-14",
+      "Use Case": "UC-MD05-04",
+      "Mô tả": "Đăng xuất khi session hết hạn",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "1) Hết session 2) Click logout",
+      "Đầu ra mong đợi": "Hệ thống reload và chuyển về login",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-15",
+      "Use Case": "UC-MD05-05",
+      "Mô tả": "Gửi yêu cầu reset mật khẩu hợp lệ",
+      "Đầu vào": "Email tồn tại",
+      "Bước thực hiện": "1) Mở trang forgot password 2) Nhập email 3) Submit",
+      "Đầu ra mong đợi": "Hệ thống gửi email reset",
+      "Trạng thái thực hiện": "Not Found",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-16",
+      "Use Case": "UC-MD05-05",
+      "Mô tả": "Email không tồn tại",
+      "Đầu vào": "Email sai",
+      "Bước thực hiện": "Submit",
+      "Đầu ra mong đợi": "Hiển thị lỗi “Email không tồn tại”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD05-17",
+      "Use Case": "UC-MD05-05",
+      "Mô tả": "Bỏ trống email",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "Submit",
+      "Đầu ra mong đợi": "Lỗi yêu cầu nhập email",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD05-18",
+      "Use Case": "UC-MD05-05",
+      "Mô tả": "Link reset hết hạn",
+      "Đầu vào": "Click link quá hạn",
+      "Bước thực hiện": "1) Mở link lỗi",
+      "Đầu ra mong đợi": "Hiển thị thông báo “Link reset đã hết hạn”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD05-19",
+      "Use Case": "UC-MD05-06",
+      "Mô tả": "Xem thông tin hợp lệ",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "1) User login 2) Mở trang Profile",
+      "Đầu ra mong đợi": "Hiển thị đầy đủ thông tin cá nhân",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-20",
+      "Use Case": "UC-MD05-06",
+      "Mô tả": "Truy cập khi chưa login",
+      "Đầu vào": NaN,
+      "Bước thực hiện": "1) Mở profile không login",
+      "Đầu ra mong đợi": "Chuyển sang trang login",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-21",
+      "Use Case": "UC-MD05-07",
+      "Mô tả": "Thay đổi thông tin hợp lệ",
+      "Đầu vào": "Tên mới, tuổi, email phụ,...",
+      "Bước thực hiện": "1) Mở profile 2) Edit 3) Save",
+      "Đầu ra mong đợi": "Cập nhật thành công",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-22",
+      "Use Case": "UC-MD05-07",
+      "Mô tả": "Nhập dữ liệu không hợp lệ",
+      "Đầu vào": "Tuổi âm, tên rỗng,…",
+      "Bước thực hiện": "Submit",
+      "Đầu ra mong đợi": "Lỗi: “Dữ liệu không hợp lệ”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD05-23",
+      "Use Case": "UC-MD05-07",
+      "Mô tả": "Email bị trùng với tài khoản khác",
+      "Đầu vào": "Email mới = email đã tồn tại ở user khác",
+      "Bước thực hiện": "Save",
+      "Đầu ra mong đợi": "Lỗi: “Email đã tồn tại”",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-24",
+      "Use Case": "UC-MD05-08",
+      "Mô tả": "Đổi mật khẩu hợp lệ",
+      "Đầu vào": "Old pass đúng + new pass hợp lệ",
+      "Bước thực hiện": "1) Mở Change Password 2) Nhập old/new pass 3) Save",
+      "Đầu ra mong đợi": "Thay đổi mật khẩu thành công",
+      "Trạng thái thực hiện": "Implemented",
+      "Unnamed: 7": NaN
+    },
+    {
+      "ID": "TC-MD05-25",
+      "Use Case": "UC-MD05-08",
+      "Mô tả": "Sai mật khẩu cũ",
+      "Đầu vào": "Old pass sai",
+      "Bước thực hiện": "Submit",
+      "Đầu ra mong đợi": "Lỗi: “Mật khẩu cũ không đúng”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD05-26",
+      "Use Case": "UC-MD05-08",
+      "Mô tả": "Mật khẩu mới không hợp lệ",
+      "Đầu vào": "Password quá yếu",
+      "Bước thực hiện": "Submit",
+      "Đầu ra mong đợi": "Lỗi validation",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    },
+    {
+      "ID": "TC-MD05-27",
+      "Use Case": "UC-MD05-08",
+      "Mô tả": "Mật khẩu mới trùng mật khẩu cũ",
+      "Đầu vào": "New pass = old pass",
+      "Bước thực hiện": "Submit",
+      "Đầu ra mong đợi": "Lỗi: “Mật khẩu mới không được trùng mật khẩu cũ”",
+      "Trạng thái thực hiện": "Not Evaluated",
+      "Unnamed: 7": "Cần xem lại"
+    }
+  ]
+}

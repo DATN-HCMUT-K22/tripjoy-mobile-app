@@ -206,8 +206,8 @@ export const itineraryService = {
   getMyItineraries: () =>
     httpClient.get<ApiEnvelope<ItineraryResponse[]>>("/itineraries/me"),
 
-  getFavoriteItineraries: () =>
-    httpClient.get<ApiEnvelope<ItineraryResponse[]>>("/itineraries/favorites"),
+  getFavoriteItineraries: (itineraryId: string) =>
+    httpClient.get<ApiEnvelope<ItineraryResponse[]>>(`/itineraries/${itineraryId}/favorites`),
 
   /**
    * Lọc theo `group_id` trên danh sách `/itineraries/me` (API không có filter group trong tài liệu).
@@ -237,23 +237,29 @@ export const itineraryService = {
     console.log(`\n🤖 [AI SERVICE] Generating Itinerary:`, JSON.stringify(payload, null, 2));
     return httpClient.post<ApiEnvelope<ItineraryResponse>, GenerateItineraryRequest>(
       "/itineraries/ai-generate",
-      payload
+      payload,
+      { timeout: 60000 } // Tăng timeout lên 60 giây cho AI
     );
   },
 
   /** Chỉnh lịch bằng AI: loại place và gợi ý thay thế (body chứa itineraryId). */
   aiModifyItinerary: (payload: AiModifyItineraryRequest) => {
+    // Thêm log này để debug
+    console.log(`[DEBUG] Calling ai-modify for itineraryId: "${payload.itineraryId}"`);
     console.log(`\n🤖 [AI SERVICE] Modifying Itinerary with AI:`, JSON.stringify(payload, null, 2));
     return httpClient.post<ApiEnvelope<ItineraryResponse>, AiModifyItineraryRequest>(
-      "/itineraries/ai-modify",
-      payload
+      `/itineraries/${payload.itineraryId}/ai-modify`,
+      payload,
+      { timeout: 60000 } // Tăng timeout lên 60 giây cho AI
     );
   },
 
   /** Sinh Travel Notebook (markdown) cho một lịch. */
   generateTravelNotebook: (itineraryId: string) =>
     httpClient.post<ApiEnvelope<TravelNotebookResponse>>(
-      `/notebooks/${itineraryId}/ai-generate`
+      `/notebooks/${itineraryId}/ai-generate`,
+      undefined,
+      { timeout: 60000 } // Tăng timeout lên 60 giây cho AI
     ),
 
   updateItinerary: (itineraryId: string, payload: ItineraryRequest) =>
@@ -333,11 +339,16 @@ export const itineraryService = {
    * Gợi ý địa điểm mới lẻ (AI Suggest Location).
    * Trả về list TripItemResponse (thông tin thô, chưa lưu DB).
    */
-  suggestAlternativeLocation: (itineraryId: string, unwantedPlaceId?: string) => {
+  suggestAlternativeLocation: (payload: { itineraryId: string; unwantedPlaceId: string }) => {
+    const { itineraryId, unwantedPlaceId } = payload;
+    if (!unwantedPlaceId) {
+      console.warn("⚠️ [AI SERVICE] suggestAlternativeLocation called without unwantedPlaceId");
+    }
     console.log(`\n🤖 [AI SERVICE] Suggesting Alternative Location: itineraryId=${itineraryId}, unwantedPlaceId=${unwantedPlaceId}`);
     return httpClient.post<ApiEnvelope<TripItemResponse[]>>(
-      "/itineraries/ai-suggest-location",
-      { itineraryId, unwantedPlaceId }
+      `/itineraries/${itineraryId}/ai-suggest-location`,
+      { unwantedPlaceId },
+      { timeout: 60000 }
     );
   },
 
@@ -347,6 +358,38 @@ export const itineraryService = {
   getNotebooks: (itineraryId: string) =>
     httpClient.get<ApiEnvelope<TravelNotebookResponse[]>>(
       `/itineraries/${itineraryId}/notebooks`
+    ),
+
+  /**
+   * Apply an itinerary to a group (creates a copy for the group).
+   * Returns generation ID for polling status.
+   */
+  applyItineraryToGroup: (payload: {
+    sourceItineraryId: string;
+    groupId: string;
+    name?: string;
+    description?: string;
+  }) =>
+    httpClient.post<ApiEnvelope<{ generationId: string; newItineraryId?: string; status: string }>>(
+      `/itineraries/${payload.sourceItineraryId}/apply-to-group`,
+      {
+        group_id: payload.groupId,
+        name: payload.name,
+        description: payload.description,
+      }
+    ),
+
+  /**
+   * Poll generation status for apply-to-group operation.
+   */
+  getGenerationStatus: (generationId: string) =>
+    httpClient.get<ApiEnvelope<{
+      status: string;
+      progress?: number;
+      newItineraryId?: string;
+      error?: string;
+    }>>(
+      `/itineraries/generation/${generationId}/status`
     ),
 };
 

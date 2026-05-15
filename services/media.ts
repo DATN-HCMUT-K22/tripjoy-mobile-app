@@ -95,8 +95,13 @@ export async function uploadImage(
 
   // Compress image before upload (if enabled)
   let uploadUri = fileUri;
+  let finalFileType = fileType;
+  let finalFileName = fileName;
+
   if (compress) {
     uploadUri = await compressImage(fileUri, maxWidth, quality);
+    finalFileType = "image/jpeg";
+    finalFileName = finalFileName.replace(/\.(png|webp)$/i, ".jpg");
   }
 
   // Tạo FormData cho React Native
@@ -104,18 +109,18 @@ export async function uploadImage(
   const formData = new FormData();
   formData.append("file", {
     uri: uploadUri,
-    type: fileType,
-    name: fileName,
+    type: finalFileType,
+    name: finalFileName,
   } as any);
 
   console.log("[uploadImage] FormData created:", {
     originalUri: fileUri,
     uploadUri,
-    fileName,
-    fileType,
+    fileName: finalFileName,
+    fileType: finalFileType,
     folder,
     compressed: compress,
-    formDataKeys: formData._parts?.map((p: any) => p[0]) || [],
+    formDataKeys: (formData as any)._parts?.map((p: any) => p[0]) || [],
   });
 
   const uploadWithUrl = (url: string) =>

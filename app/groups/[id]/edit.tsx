@@ -123,8 +123,8 @@ export default function EditGroupInfoScreen() {
         description: description.trim() || undefined,
         avatar: finalAvatar || "",
         theme_color: themeColor.trim() || undefined,
-        chatbotCount: group.chatbot_count,
-        isPro: group.is_pro,
+        chatbot_count: group.chatbot_count,
+        is_pro: group.is_pro,
       });
       router.back();
     } catch (error: any) {

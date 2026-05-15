@@ -53,6 +53,7 @@ interface ChatMessageProps {
   onLongPress?: () => void;
   onImagePress?: (imageUrl: string) => void;
   isHighlighted?: boolean;
+  showAvatar?: boolean;
 }
 
 // Format time helper
@@ -79,6 +80,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   onLongPress,
   onImagePress,
   isHighlighted = false,
+  showAvatar = true,
 }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -172,26 +174,30 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const heartColor = (isLiked || hasLikes) ? "#ef4444" : textColor;
   const heartName = (isLiked || hasLikes) ? "heart" : "heart-outline";
 
-  // Avatar JSX (dùng lại cho cả 2 phía để đảm bảo kích thước đồng nhất)
-  const avatar = (
+  // Avatar JSX (Only show for others and when showAvatar is true)
+  const avatar = !isMe ? (
     <View style={styles.avatarContainer}>
-      {isBot ? (
-        <View style={[styles.avatarCircle, { backgroundColor: BOT_BG, borderColor: BOT_BORDER, borderWidth: 1 }]}>
+      {showAvatar ? (
+        isBot ? (
+          <View style={[styles.avatarCircle, { backgroundColor: BOT_BG, borderColor: BOT_BORDER, borderWidth: 1 }]}>
+            <Image
+              source={require("@/assets/logo/ai_bot.webp")}
+              style={styles.avatarBotIcon}
+              contentFit="cover"
+            />
+          </View>
+        ) : (
           <Image
-            source={require("@/assets/logo/ai_bot.webp")}
-            style={styles.avatarBotIcon}
+            source={{ uri: resolvedAvatarUri }}
+            style={styles.avatar}
             contentFit="cover"
           />
-        </View>
+        )
       ) : (
-        <Image
-          source={{ uri: resolvedAvatarUri }}
-          style={styles.avatar}
-          contentFit="cover"
-        />
+        <View style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }} />
       )}
     </View>
-  );
+  ) : null;
 
   // Message status indicator (chỉ hiển thị cho message của mình)
   const getStatusIcon = () => {
@@ -426,24 +432,55 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       </View>
     ) : message.message_type === "SHARE_POST" ? (
       <View style={styles.bubbleWrapper}>
-        {message.shared_post ? (
-          <SharedPostCard
-            post={message.shared_post}
-            onPress={() => {
-              if (message.shared_post_id) {
-                // Navigate to post detail - expo-router handles string paths
-                router.push(`/post/${message.shared_post_id}`);
-              }
-            }}
-          />
-        ) : (
-          <View style={styles.fallbackCard}>
-            <Ionicons name="alert-circle-outline" size={24} color="#9CA3AF" />
-            <Text style={[styles.fallbackText, { color: isDark ? "#9CA3AF" : "#6B7280" }]}>
-              Post không khả dụng
+        <View
+          style={[
+            styles.bubble,
+            {
+              backgroundColor: isBot ? BOT_BG : bubbleColor,
+              borderWidth: isBot || !isMe ? 1 : 0,
+              borderColor: isBot ? BOT_BORDER : borderColor,
+              paddingTop: 10,
+              paddingHorizontal: 12,
+              paddingBottom: 12,
+            },
+          ]}
+        >
+          {replyPreview}
+          
+          {message.message_content && (
+            <Text
+              style={[
+                styles.messageText,
+                {
+                  color: isBot ? BOT_TEXT : textColor,
+                  marginBottom: 8,
+                },
+              ]}
+              selectable
+            >
+              {message.message_content}
             </Text>
-          </View>
-        )}
+          )}
+
+          {message.shared_post ? (
+            <SharedPostCard
+              post={message.shared_post}
+              onPress={() => {
+                const postId = message.shared_post_id || message.shared_post?.id;
+                if (postId) {
+                  router.push(`/post/${postId}`);
+                }
+              }}
+            />
+          ) : (
+            <View style={styles.fallbackCard}>
+              <Ionicons name="alert-circle-outline" size={24} color="#9CA3AF" />
+              <Text style={[styles.fallbackText, { color: isDark ? "#9CA3AF" : "#6B7280" }]}>
+                Post không khả dụng
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
     ) : (
       <View style={styles.bubbleWrapper}>
@@ -555,18 +592,22 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   if (onLongPress) {
     return (
-      <Animated.View style={[containerStyle, { backgroundColor: highlightColor }]}>
+      <Animated.View style={[{ backgroundColor: highlightColor }]}>
         <Pressable
           onLongPress={onLongPress}
           delayLongPress={400}
-          style={{ flex: 1 }}
+          style={[containerStyle, { flex: 1 }]}
         >
           {Inner}
         </Pressable>
       </Animated.View>
     );
   }
-  return <Animated.View style={[containerStyle, { backgroundColor: highlightColor }]}>{Inner}</Animated.View>;
+  return (
+    <Animated.View style={[containerStyle, { backgroundColor: highlightColor }]}>
+      {Inner}
+    </Animated.View>
+  );
 };
 
 // Giữ export cũ để không phá vỡ import hiện tại
@@ -576,13 +617,17 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     marginBottom: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
   },
   containerRight: {
     justifyContent: "flex-end",
+    paddingRight: 12,
+    paddingLeft: 12,
   },
   containerLeft: {
     justifyContent: "flex-start",
+    paddingLeft: 8,  // Khoảng cách bên trái cho avatar
+    paddingRight: 12,
   },
   avatarContainer: {
     marginHorizontal: 8,
@@ -612,9 +657,11 @@ const styles = StyleSheet.create({
   },
   messageWrapperRight: {
     alignItems: "flex-end",
+    marginRight: 0,
   },
   messageWrapperLeft: {
     alignItems: "flex-start",
+    marginLeft: 0,
   },
   header: {
     flexDirection: "row",
@@ -653,7 +700,6 @@ const styles = StyleSheet.create({
     borderRadius: BUBBLE_BORDER_RADIUS,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    alignSelf: "flex-start",
     maxWidth: "100%",
   },
   messageText: {

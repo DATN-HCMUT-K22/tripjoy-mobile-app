@@ -71,16 +71,27 @@ export interface ChatMessageResponse {
   shared_post_id?: string; // SHARE_POST (mới - theo API)
   shared_post?: {
     id: string;
-    content: string;
-    media_urls: string[];
-    created_by_user: {
+    content?: string;
+    content_snippet?: string;
+    media_urls?: string[];
+    thumbnail_url?: string;
+    visibility?: string;
+    author?: {
       id: string;
       username: string;
       fullName: string;
       avatarUrl?: string;
     };
-    like_count: number;
-    comment_count: number;
+    created_by_user?: {
+      id: string;
+      username: string;
+      fullName: string;
+      avatarUrl?: string;
+    };
+    like_count?: number;
+    comment_count?: number;
+    hashtags?: string[];
+    location_name?: string;
   }; // Full post object from backend
   parent_message?: ChatMessageResponse | ParentMessage;
   parent_message_id?: string;

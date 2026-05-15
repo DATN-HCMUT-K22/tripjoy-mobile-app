@@ -1,5 +1,6 @@
+import { expoImageSourceForGoogleRaster } from '@/utils/googlePlaceImageSource';
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { Image, ImageStyle } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LocationResponse } from '@/services/itineraries';
@@ -39,21 +40,32 @@ export const LocationImage: React.FC<LocationImageProps> = ({
     const resolveImage = async () => {
       if (!location) return;
       
-      const providerId = location.provider_id;
+      const providerId = location.provider_id || (location as any).providerId;
       const provider = location.provider || '';
-      const isGoogle = provider.toUpperCase() === 'GOOGLE_MAPS' || 
-                       provider.toLowerCase().includes('google');
+      
+      // Stability check: Avoid re-resolving if we already have a URL for this ID/Coords
+      // and the location object is effectively the same.
+      const lat = location.lat ?? location.latitude;
+      const lng = location.lng ?? location.longitude;
+      
+      const isGoogle = !provider || 
+                       provider.toUpperCase() === 'NONE' ||
+                       provider.toUpperCase() === 'GOOGLE_MAPS' || 
+                       provider.toLowerCase().includes('google') ||
+                       (providerId && providerId.startsWith('ChI'));
 
       console.log(`\n🚀 [LocationImage] Resolving for: ${location.name || 'unnamed'}`);
       console.log(`   - Provider ID: ${providerId || 'NONE'}`);
       console.log(`   - Provider: ${provider || 'NONE'}`);
+      console.log(`   - isGoogle: ${isGoogle}`);
+      console.log(`   - Coords: ${lat},${lng}`);
 
       // Chỉ cần có provider_id HOẶC được xác định là từ Google, ta sẽ thử fetch ảnh
       if (providerId || isGoogle) {
-        setLoading(true);
+        if (!imageUrl) setLoading(true); // Only show loading if we don't have a sync URL
         try {
           const url = await getLocationImageUrlAsync(location);
-          if (isMounted && url) {
+          if (isMounted && url && url !== imageUrl) {
             console.log(`   - ✅ [RESOLVED URL]: ${url.substring(0, 60)}...`);
             setImageUrl(url);
           }
@@ -63,9 +75,8 @@ export const LocationImage: React.FC<LocationImageProps> = ({
           if (isMounted) setLoading(false);
         }
       } else {
-        console.log(`   - ℹ️ No Google Provider ID, using fallback extraction.`);
         const syncUrl = getLocationImageUrl(location);
-        if (isMounted && syncUrl) {
+        if (isMounted && syncUrl && syncUrl !== imageUrl) {
           setImageUrl(syncUrl);
         }
       }
@@ -76,17 +87,21 @@ export const LocationImage: React.FC<LocationImageProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [location]);
+  }, [location?.id, location?.provider_id, (location as any)?.providerId, location?.lat, location?.latitude, location?.lng, location?.longitude]);
 
   return (
     <View style={[styles.container, containerStyle]}>
       {imageUrl ? (
         <Image
-          source={{ uri: imageUrl }}
+          source={expoImageSourceForGoogleRaster(imageUrl)}
           style={[styles.image, style]}
           contentFit="cover"
           transition={300}
           placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
+          onError={() => {
+            console.log(`[LocationImage] Failed to load image: ${imageUrl?.substring(0, 40)}...`);
+            setImageUrl(undefined);
+          }}
         />
       ) : (
         <View style={[styles.placeholder, style]}>

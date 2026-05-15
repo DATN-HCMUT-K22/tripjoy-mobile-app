@@ -14,6 +14,8 @@ import { updateUser } from "@/store/slices/authSlice";
 import { PostCard } from "@/components/social/PostCard";
 import { CommentModal } from "@/components/social/CommentModal";
 import { ShareModal } from "@/components/social/ShareModal";
+import { ReportModal } from "@/components/social/ReportModal";
+import { ContentType } from "@/types/report";
 import { 
   useBookmarkPost, 
   useLikePost, 
@@ -23,6 +25,8 @@ import {
   useSharePost,
   useNativeShare
 } from "@/hooks/useSocial";
+import { useFavoriteItineraries } from "@/hooks/useItineraries";
+import { ItineraryCard } from "@/components/group/ItineraryCard";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
@@ -86,6 +90,10 @@ export default function ProfileScreen() {
   const { data: savedPostsData, isLoading: isSavedLoading } = useSavedPosts();
   const savedPosts = savedPostsData?.pages.flatMap((page) => page.content) || [];
 
+  const { data: favoriteItineraries = [], isLoading: isFavoritesLoading } = useFavoriteItineraries(
+    shouldLoadAuthenticatedData ? "all" : undefined
+  );
+
   const likePostMutation = useLikePost();
   const bookmarkPostMutation = useBookmarkPost();
   const commentPostMutation = useCommentPost();
@@ -98,6 +106,10 @@ export default function ProfileScreen() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [selectedPostForShare, setSelectedPostForShare] = useState<string | null>(null);
   const [selectedPostTitle, setSelectedPostTitle] = useState<string>("");
+
+  // Report state
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [selectedPostForReport, setSelectedPostForReport] = useState<string | null>(null);
 
   const handleLike = async (postId: string) => {
     const post = userPosts.find((p) => p.id === postId) || savedPosts.find((p) => p.id === postId);
@@ -124,7 +136,10 @@ export default function ProfileScreen() {
   };
 
   const handleReport = (postId: string) => {
-    console.log("Report post:", postId);
+    requireAuth(() => {
+      setSelectedPostForReport(postId);
+      setReportModalVisible(true);
+    });
   };
 
   useLayoutEffect(() => {
@@ -141,7 +156,8 @@ export default function ProfileScreen() {
 
       checkAuthStatus();
       setActiveIcon(null);
-    }, [checkAuth])
+      refetchPosts();
+    }, [checkAuth, refetchPosts])
   );
 
   const messageCount = React.useMemo(
@@ -151,10 +167,27 @@ export default function ProfileScreen() {
 
 
 
-  const filteredUserPosts = React.useMemo(() => {
+  const displayedUserPosts = React.useMemo(() => {
     if (!user?.id) return [];
-    return userPosts.filter(post => post.creator_id === user.id);
-  }, [userPosts, user?.id]);
+    const myPosts = userPosts.filter(post => post.creator_id === user.id);
+    if (!searchText.trim()) return myPosts;
+    const lower = searchText.toLowerCase();
+    return myPosts.filter(post => post.caption?.toLowerCase().includes(lower));
+  }, [userPosts, user?.id, searchText]);
+
+  const displayedSavedPosts = React.useMemo(() => {
+    if (!searchText.trim()) return savedPosts;
+    const lower = searchText.toLowerCase();
+    return savedPosts.filter(post => post.caption?.toLowerCase().includes(lower));
+  }, [savedPosts, searchText]);
+
+  const displayedFavoriteItineraries = React.useMemo(() => {
+    if (!searchText.trim()) return favoriteItineraries;
+    const lower = searchText.toLowerCase();
+    return favoriteItineraries.filter(it => 
+      it.title?.toLowerCase().includes(lower)
+    );
+  }, [favoriteItineraries, searchText]);
 
   const showSkeleton = isCheckingAuth || (isAuthenticated && !user && isCurrentUserLoading);
   
@@ -265,7 +298,7 @@ export default function ProfileScreen() {
               </Text>
               <View className="flex-row mt-3 items-center">
                 <View>
-                  <Text className="text-lg font-bold text-[#1A1A1A]">{filteredUserPosts.length}</Text>
+                  <Text className="text-lg font-bold text-[#1A1A1A]">{userPosts.filter(post => post.creator_id === user?.id).length}</Text>
                   <Text className="text-gray-400 text-xs uppercase tracking-tighter">Bài viết</Text>
                 </View>
 
@@ -314,7 +347,11 @@ export default function ProfileScreen() {
           <View className="flex-row items-center bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-100">
             <Ionicons name="search-outline" size={18} color="#9CA3AF" />
             <TextInput
-              placeholder="Tìm trong bài viết của bạn..."
+              placeholder={
+                activeTab === "posts" ? "Tìm trong bài viết của bạn..." :
+                activeTab === "saved" ? "Tìm trong bài viết đã lưu..." :
+                "Tìm trong lịch trình yêu thích..."
+              }
               placeholderTextColor="#9CA3AF"
               value={searchText}
               onChangeText={setSearchText}
@@ -331,13 +368,13 @@ export default function ProfileScreen() {
                 <View className="py-20 items-center">
                   <ActivityIndicator size="large" color="#34B27D" />
                 </View>
-              ) : filteredUserPosts.length === 0 ? (
+              ) : displayedUserPosts.length === 0 ? (
                 <View className="items-center justify-center py-20 bg-white rounded-3xl mt-4 border border-dashed border-gray-200">
                   <Ionicons name="images-outline" size={64} color="#E5E7EB" />
-                  <Text className="text-gray-400 text-base font-medium mt-4">Bạn chưa đăng khoảnh khắc nào</Text>
+                  <Text className="text-gray-400 text-base font-medium mt-4">Không tìm thấy bài viết nào</Text>
                 </View>
               ) : (
-                filteredUserPosts.map((post) => (
+                displayedUserPosts.map((post) => (
                   <PostCard
                     key={post.id}
                     post={post}
@@ -359,13 +396,13 @@ export default function ProfileScreen() {
                 <View className="py-20 items-center">
                   <ActivityIndicator size="large" color="#34B27D" />
                 </View>
-              ) : savedPosts.length === 0 ? (
+              ) : displayedSavedPosts.length === 0 ? (
                 <View className="items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
                   <Ionicons name="bookmark-outline" size={64} color="#E5E7EB" />
-                  <Text className="text-gray-400 text-base font-medium mt-4">Chưa có bài viết nào được lưu</Text>
+                  <Text className="text-gray-400 text-base font-medium mt-4">Không tìm thấy bài viết nào</Text>
                 </View>
               ) : (
-                savedPosts.map((post) => (
+                displayedSavedPosts.map((post) => (
                   <TouchableOpacity
                     key={post.id}
                     activeOpacity={0.9}
@@ -395,9 +432,23 @@ export default function ProfileScreen() {
           )}
 
           {activeTab === "favorites" && (
-            <View className="items-center justify-center py-20 bg-white rounded-3xl mt-4 border border-dashed border-gray-200">
-              <Ionicons name="heart-outline" size={64} color="#E5E7EB" />
-              <Text className="text-gray-400 text-base font-medium mt-4">Chưa có bài viết yêu thích</Text>
+            <View className="mt-2">
+              {isFavoritesLoading ? (
+                <View className="py-20 items-center">
+                  <ActivityIndicator size="large" color="#34B27D" />
+                </View>
+              ) : displayedFavoriteItineraries.length === 0 ? (
+                <View className="items-center justify-center py-20 bg-white rounded-3xl mt-4 border border-dashed border-gray-200">
+                  <Ionicons name="heart-outline" size={64} color="#E5E7EB" />
+                  <Text className="text-gray-400 text-base font-medium mt-4">Không tìm thấy lịch trình nào</Text>
+                </View>
+              ) : (
+                displayedFavoriteItineraries.map((itinerary) => (
+                  <View key={itinerary.id} className="mb-4">
+                    <ItineraryCard itinerary={itinerary} />
+                  </View>
+                ))
+              )}
             </View>
           )}
         </View>
@@ -428,6 +479,19 @@ export default function ProfileScreen() {
           onClose={() => setShareModalVisible(false)}
           postId={selectedPostForShare}
           postTitle={selectedPostTitle}
+        />
+      )}
+
+      {selectedPostForReport && (
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={() => {
+            setReportModalVisible(false);
+            setSelectedPostForReport(null);
+          }}
+          contentId={selectedPostForReport}
+          contentType={ContentType.POST}
+          contentTitle={(userPosts.find(p => p.id === selectedPostForReport) || savedPosts.find(p => p.id === selectedPostForReport))?.caption}
         />
       )}
     </SafeAreaView>

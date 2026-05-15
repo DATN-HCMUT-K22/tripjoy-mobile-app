@@ -93,6 +93,9 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
               source={{ uri: avatarUri }}
               style={{ width: 80, height: 80, borderRadius: 8 }}
               contentFit="cover"
+              cachePolicy="memory-disk"
+              placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+              transition={200}
               onError={() => setImageError(true)}
             />
           )

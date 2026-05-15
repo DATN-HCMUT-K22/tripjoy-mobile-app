@@ -397,7 +397,9 @@ export const PostCard = React.memo<PostCardProps>(
 
           {/* Itinerary Preview */}
           {post.itinerary && (
-            <ItineraryPreview itinerary={post.itinerary} />
+            <>
+              <ItineraryPreview itinerary={post.itinerary} />
+            </>
           )}
 
           {/* Engagement metrics */}
@@ -472,6 +474,8 @@ export const PostCard = React.memo<PostCardProps>(
             </View>
           </Pressable>
         </Modal>
+
+
       </View>
     );
   }
@@ -515,6 +519,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
   },
+
   privacyBadge: {
     flexDirection: 'row',
     alignItems: 'center',

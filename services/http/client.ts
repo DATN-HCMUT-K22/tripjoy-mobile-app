@@ -259,9 +259,16 @@ async function request<T>(
       }
     }
     
+    const finalHeaders = {
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+      ...headers,
+    };
+
     const res = await fetch(url, {
       ...restWithoutHeadersAndBody,
-      headers,
+      headers: finalHeaders,
       body: rest.body, // Sử dụng body gốc (có thể là FormData)
       signal: controller.signal,
     });
@@ -294,11 +301,15 @@ async function request<T>(
           retryController.abort();
         }, timeout) as any;
 
-        // Loại bỏ headers và body khỏi rest để tránh override
         const { headers: _retry, body: __retry, ...restWithoutHeadersAndBodyRetry } = rest;
         const retryRes = await fetch(url, {
           ...restWithoutHeadersAndBodyRetry,
-          headers,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            ...headers
+          },
           body: rest.body, // Sử dụng body gốc (có thể là FormData)
           signal: retryController.signal,
         });

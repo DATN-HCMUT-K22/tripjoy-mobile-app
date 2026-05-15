@@ -198,7 +198,7 @@ class NotificationService {
   private setupNotificationDisplayListener(): void {
     // Remove listener cũ nếu có (tránh duplicate)
     if (this.notificationReceivedSubscription) {
-      Notifications.removeNotificationReceivedSubscription(this.notificationReceivedSubscription);
+      this.notificationReceivedSubscription.remove();
       this.notificationReceivedSubscription = null;
     }
     
@@ -399,7 +399,7 @@ class NotificationService {
       const payload: NotificationPayload = {
         chatId: message.conversation_id,
         conversationId: message.conversation_id,
-        groupId: groupId || null,
+        groupId: groupId || undefined,
         senderName,
         message: messageContent,
         messageId: message.id,

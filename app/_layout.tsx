@@ -109,6 +109,7 @@ function AuthRedirectHandler() {
   const segments = useSegments();
   const { isAuthenticated, user } = useAppSelector((state) => state.auth);
   const [hasRedirected, setHasRedirected] = useState(false);
+  const isFirstRun = useRef(true);
 
   // Reset cờ redirect khi auth thay đổi
   useEffect(() => {
@@ -126,11 +127,21 @@ function AuthRedirectHandler() {
       const isGuest = await storage.isGuestMode();
       const isActuallyAuthenticated = !!token && isAuthenticated && !!user;
 
-      if (isActuallyAuthenticated || isGuest) {
+      if (isActuallyAuthenticated) {
         if (isOnLoginPage) {
           setHasRedirected(true);
           router.replace("/(tabs)");
         }
+        isFirstRun.current = false;
+        return;
+      }
+
+      if (isGuest) {
+        if (isFirstRun.current && isOnLoginPage) {
+          setHasRedirected(true);
+          router.replace("/(tabs)");
+        }
+        isFirstRun.current = false;
         return;
       }
 
@@ -138,6 +149,7 @@ function AuthRedirectHandler() {
         setHasRedirected(true);
         router.replace("/login");
       }
+      isFirstRun.current = false;
     }
     handleNavigation();
   }, [segments, isAuthenticated, user?.id, hasRedirected]);

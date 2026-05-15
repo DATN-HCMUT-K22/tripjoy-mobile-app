@@ -1,4 +1,5 @@
 import { ChatBubble } from "@/components/chat/ChatBubble";
+import { SwipeableMessage } from "@/components/chat/SwipeableMessage";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
 import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
@@ -236,6 +237,7 @@ export default function ChatScreen() {
     sendMessage,
     likeMessage,
     unlikeMessage,
+    deleteMessage,
     pinMessage,
     unpinMessage,
     loadMore,
@@ -339,12 +341,18 @@ export default function ChatScreen() {
     let prev: ChatMessageResponse | null = null;
     messages.forEach((msg) => {
       const showSep = shouldShowDateSeparator(msg, prev);
-      const showSender =
-        !prev || getChatSenderId(prev) !== getChatSenderId(msg);
+      const isNewSender = !prev || getChatSenderId(prev) !== getChatSenderId(msg);
+      const showSender = isNewSender || showSep;
       if (showSep) {
         list.push({ type: "date", key: `date-${msg.id}-${msg.created_at}`, date: msg.created_at });
       }
-      list.push({ type: "message", key: msg.id, message: msg, showSenderName: showSender });
+      list.push({ 
+        type: "message", 
+        key: msg.id, 
+        message: msg, 
+        showSenderName: showSender,
+        showAvatar: showSender // Avatar follows same grouping as name
+      });
       map.set(msg.id, list.length - 1);
       prev = msg;
     });
@@ -438,6 +446,7 @@ export default function ChatScreen() {
             messageType: mediaToSend.kind === "video" ? "VIDEO" : "IMAGE",
             mediaUrl,
             parentMessageId: replyingToMessage?.id,
+            parentMessage: replyingToMessage ?? undefined,
           });
 
           if (result) {
@@ -460,6 +469,7 @@ export default function ChatScreen() {
       } else {
         const result = await sendMessage(content, {
           parentMessageId: replyingToMessage?.id,
+          parentMessage: replyingToMessage ?? undefined,
         });
         if (result) {
           setReplyingToMessage(null);
@@ -571,6 +581,34 @@ export default function ChatScreen() {
     }
   }, [isPinning, unpinMessage, conversationId]);
 
+  const handleDelete = useCallback(async (message: ChatMessageResponse) => {
+    const { Alert } = await import("react-native");
+    Alert.alert(
+      "Thu hồi tin nhắn",
+      "Bạn có chắc chắn muốn thu hồi tin nhắn này?",
+      [
+        {
+          text: "Hủy",
+          style: "cancel",
+        },
+        {
+          text: "Thu hồi",
+          style: "destructive",
+          onPress: async () => {
+            console.log(`\n🗑️ [UI ACTION] Deleting message: ${message.id}`);
+            try {
+              await deleteMessage(message.id);
+              console.log(`✅ [UI ACTION] Delete API success`);
+            } catch (err) {
+              console.error("❌ [UI ACTION] Delete failed:", err);
+              showErrorToast("Lỗi", "Không thể thu hồi tin nhắn");
+            }
+          },
+        },
+      ]
+    );
+  }, [deleteMessage]);
+
   const handlePinnedBarTap = useCallback(() => {
     if (pinnedMessages.length === 0) return;
     const msg = pinnedMessages[pinnedIndex];
@@ -596,16 +634,26 @@ export default function ChatScreen() {
       return <DateSeparator dateString={item.date} />;
     }
     return (
-      <ChatBubble
+      <SwipeableMessage
         message={item.message}
         currentUserId={currentUser?.id}
-        showSenderName={item.showSenderName}
-        onLike={handleLike}
-        onShowLikes={handleShowLikes}
-        onLongPress={() => handleLongPress(item.message)}
-        onReplyPress={scrollToMessage}
-        isHighlighted={highlightMessageId === item.message.id}
-      />
+        onSwipeToReply={(msg) => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          setReplyingToMessage(msg);
+        }}
+      >
+        <ChatBubble
+          message={item.message}
+          currentUserId={currentUser?.id}
+          showSenderName={item.showSenderName}
+          onLike={handleLike}
+          onShowLikes={handleShowLikes}
+          onLongPress={() => handleLongPress(item.message)}
+          onReplyPress={scrollToMessage}
+          isHighlighted={highlightMessageId === item.message.id}
+          showAvatar={item.showAvatar}
+        />
+      </SwipeableMessage>
     );
   }, [currentUser?.id, handleLike, handleShowLikes, highlightMessageId, handleLongPress, scrollToMessage]);
 
@@ -690,7 +738,7 @@ export default function ChatScreen() {
             className="mr-3"
             activeOpacity={0.7}
           >
-            <Ionicons name="arrow-back" size={24} color="#000" />
+            <Ionicons name="arrow-back" size={24} color={isDark ? "#FFFFFF" : "#000000"} />
           </TouchableOpacity>
           {/* Avatar */}
           <Image
@@ -702,14 +750,14 @@ export default function ChatScreen() {
           />
           {/* Name */}
           <View className="flex-1 ml-3">
-            <Text className="text-base font-bold text-black">
+            <Text style={{ fontSize: 16, fontWeight: "bold", color: isDark ? "#FFFFFF" : "#000000" }}>
               {getDisplayName()}
             </Text>
             {conversation?.type === "DIRECT" && (
-              <Text className="text-xs text-gray-500 mt-0.5">Đang hoạt động</Text>
+              <Text style={{ fontSize: 12, color: isDark ? "#9CA3AF" : "#6B7280", marginTop: 2 }}>Đang hoạt động</Text>
             )}
             {conversation?.type === "GROUP" && (
-              <Text className="text-xs text-gray-500 mt-0.5">
+              <Text style={{ fontSize: 12, color: isDark ? "#9CA3AF" : "#6B7280", marginTop: 2 }}>
                 {conversation.members && conversation.members.length > 0
                   ? `${conversation.members.length} thành viên`
                   : "0 thành viên"}
@@ -861,17 +909,17 @@ export default function ChatScreen() {
         <View style={styles.inputWrapper}>
         <TouchableOpacity 
           activeOpacity={0.7} 
-          className="mr-3"
+          style={{ marginRight: 12 }}
           onPress={handlePickMedia}
           disabled={uploadingMedia}
         >
           <Ionicons 
             name="images-outline" 
-            size={24} 
-            color={uploadingMedia ? "#9CA3AF" : "#6B7280"} 
+            size={26} 
+            color={uploadingMedia ? "#9CA3AF" : (isDark ? "#9CA3AF" : "#6B7280")} 
           />
         </TouchableOpacity>
-        <View className="flex-1">
+        <View style={{ flex: 1 }}>
           <TextInput
             value={input}
             onChangeText={(text) => {
@@ -883,7 +931,15 @@ export default function ChatScreen() {
               }
             }}
             placeholder="Nhắn tin..."
-            className="bg-gray-100 rounded-full px-4 py-3 text-sm"
+            style={{
+              backgroundColor: isDark ? "#2A2A2A" : "#F3F4F6",
+              borderRadius: 24,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              fontSize: 15,
+              color: isDark ? "#FFFFFF" : "#000000",
+              maxHeight: 120,
+            }}
             placeholderTextColor="#9CA3AF"
             multiline
             onSubmitEditing={handleSend}
@@ -932,6 +988,8 @@ export default function ChatScreen() {
           // Auto focus input
           // Note: TextInput doesn't have a direct ref here yet, but usually autofocus works when state changes if implemented
         }}
+        onDelete={handleDelete}
+        currentUserId={currentUser?.id}
       />
 
       {/* Pinned Messages Modal */}

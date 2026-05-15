@@ -1,5 +1,5 @@
 import { useGroup } from "@/hooks/useGroups";
-import { useGroupItinerariesByTab, GroupInfoItineraryListItem, useConfirmItinerary, useDeleteItinerary } from "@/hooks/useItineraries";
+import { useGroupItinerariesByTab, GroupInfoItineraryListItem, useConfirmItinerary, useDeleteItinerary, ITINERARY_STATUS } from "@/hooks/useItineraries";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { isGroupManager } from "@/utils/roleUtils";
 import { Ionicons } from "@expo/vector-icons";
@@ -91,9 +91,24 @@ export default function GroupItinerariesScreen() {
           <Text style={styles.cardTitle} numberOfLines={2}>
             {item.name}
           </Text>
-          <View style={[styles.badge, activeTab === "ongoing" ? styles.badgeOngoing : activeTab === "completed" ? styles.badgeCompleted : styles.badgeDraft]}>
+          <View style={[
+            styles.badge,
+            item.raw?.status === ITINERARY_STATUS.CONFIRMED
+              ? styles.badgeConfirmed
+              : activeTab === "ongoing"
+                ? styles.badgeOngoing
+                : activeTab === "completed"
+                  ? styles.badgeCompleted
+                  : styles.badgeDraft
+          ]}>
             <Text style={styles.badgeText}>
-              {activeTab === "ongoing" ? "Đang diễn ra" : activeTab === "completed" ? "Đã kết thúc" : "Bản nháp"}
+              {item.raw?.status === ITINERARY_STATUS.CONFIRMED
+                ? "Chính thức"
+                : activeTab === "ongoing"
+                  ? "Đang diễn ra"
+                  : activeTab === "completed"
+                    ? "Đã kết thúc"
+                    : "Bản nháp"}
             </Text>
           </View>
         </View>
@@ -375,6 +390,9 @@ const styles = StyleSheet.create({
   },
   badgeDraft: {
     backgroundColor: "#F59E0B",
+  },
+  badgeConfirmed: {
+    backgroundColor: "#10B981", // Green CONFIRMED
   },
   badgeText: {
     color: "#fff",

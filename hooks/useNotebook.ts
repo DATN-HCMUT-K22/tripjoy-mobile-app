@@ -34,19 +34,23 @@ export function useNotebook(
 
         if (code === 0 || code === 1000) {
           const data = res.data ?? null;
-          if (data) {
-            // Save to cache for next time
-            await notebookCache.set(itineraryId, data);
+          // If data is null or an empty object (no id), treat as not generated
+          if (!data || !data.id) {
+            console.log(`[useNotebook] Data empty or missing id, treating as not generated`);
+            return null;
           }
+          // Save to cache for next time
+          await notebookCache.set(itineraryId, data);
           return data;
         }
 
-        // 404 means notebook doesn't exist yet - this is expected, not an error
-        if (code === 404 || code === 2004) {
-          console.log(`[useNotebook] Notebook not found for itinerary ${itineraryId}`);
+        // 404 or specific "not found" codes mean notebook doesn't exist yet
+        if (code === 404 || code === 2004 || code === 4004) {
+          console.log(`[useNotebook] Notebook not found (code ${code}) for itinerary ${itineraryId}`);
           return null;
         }
 
+        // If we have an error code but it's not a "not found" error, throw
         throw new Error(res?.message || "Không tải được notebook");
       } catch (error: any) {
         // Handle 404 as null (notebook not generated yet)

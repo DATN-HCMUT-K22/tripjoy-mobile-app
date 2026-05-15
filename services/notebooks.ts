@@ -18,13 +18,13 @@ export const notebookService = {
     ),
 
   /**
-   * POST /api/v1/travel-notebooks/ai-generate
+   * POST /api/v1/notebooks/{itineraryId}/ai-generate
    * Generate or regenerate notebook (10-30 seconds)
    */
   generateNotebook: (itineraryId: string) =>
     httpClient.post<ApiEnvelope<TravelNotebookResponse>>(
-      "/travel-notebooks/ai-generate",
-      { itineraryId },
+      `/notebooks/${itineraryId}/ai-generate`,
+      undefined,
       { timeout: 60000 } // Tăng timeout lên 60 giây cho AI generation
     ),
 };

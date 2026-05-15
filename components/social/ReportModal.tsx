@@ -1,22 +1,19 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
   Modal,
+  View,
   Text,
   TouchableOpacity,
-  View,
+  StyleSheet,
+  Pressable,
   ScrollView,
   TextInput,
-  ActivityIndicator,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useSubmitReport } from "@/hooks/useReports";
-import {
-  ContentType,
-  ReportType,
-  REPORT_TYPE_LABELS,
-  CONTENT_TYPE_LABELS,
-} from "@/types/report";
-import { showErrorToast } from "@/utils/toast";
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { ContentType, ReportType, REPORT_TYPE_LABELS } from '@/types/report';
+import { useReport } from '@/hooks/useReport';
 
 interface ReportModalProps {
   visible: boolean;
@@ -33,52 +30,43 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   contentType,
   contentTitle,
 }) => {
-  const [selectedReason, setSelectedReason] = useState<ReportType | null>(null);
-  const [description, setDescription] = useState("");
-  const { mutate: submit, isPending } = useSubmitReport();
+  const [selectedType, setSelectedType] = useState<ReportType | null>(null);
+  const [description, setDescription] = useState('');
+  const reportMutation = useReport();
 
-  const handleSubmit = () => {
-    if (!selectedReason) {
-      showErrorToast("Vui lòng chọn lý do báo cáo");
-      return;
-    }
+  const handleSubmit = async () => {
+    if (!selectedType) return;
 
-    if (description.length > 500) {
-      showErrorToast("Mô tả không được vượt quá 500 ký tự");
-      return;
-    }
-
-    submit(
-      {
+    try {
+      await reportMutation.mutateAsync({
         content_id: contentId,
         content_type: contentType,
-        report_type: selectedReason,
+        report_type: selectedType,
         description: description.trim() || undefined,
-      },
-      {
-        onSuccess: () => {
-          onClose();
-          setSelectedReason(null);
-          setDescription("");
-        },
-      }
-    );
+      });
+      onClose();
+      // Reset state
+      setSelectedType(null);
+      setDescription('');
+    } catch (error) {
+      // Error handled by hook
+    }
   };
 
   const handleClose = () => {
-    if (!isPending) {
-      onClose();
-      setTimeout(() => {
-        setSelectedReason(null);
-        setDescription("");
-      }, 300);
-    }
+    onClose();
+    setSelectedType(null);
+    setDescription('');
   };
 
-  const reportOptions = Object.entries(REPORT_TYPE_LABELS).map(([key, label]) => ({
-    value: key as ReportType,
-    label,
-  }));
+  const isPost = contentType === ContentType.POST;
+  const isComment = contentType === ContentType.COMMENT;
+  const isUser = contentType === ContentType.USER;
+
+  let title = "Báo cáo";
+  if (isPost) title = "Báo cáo bài viết";
+  if (isComment) title = "Báo cáo bình luận";
+  if (isUser) title = "Báo cáo người dùng";
 
   return (
     <Modal
@@ -87,143 +75,211 @@ export const ReportModal: React.FC<ReportModalProps> = ({
       animationType="slide"
       onRequestClose={handleClose}
     >
-      <TouchableOpacity
-        className="flex-1 bg-black/50"
-        activeOpacity={1}
-        onPress={handleClose}
-        disabled={isPending}
-      >
-        <View className="flex-1 justify-end">
-          <TouchableOpacity activeOpacity={1}>
-            <View className="bg-white rounded-t-3xl max-h-[85%]">
-              {/* Header */}
-              <View className="flex-row items-center justify-between px-6 py-4 border-b border-gray-100">
-                <View className="flex-1">
-                  <Text className="text-lg font-semibold text-gray-800">
-                    Báo cáo vi phạm
+      <Pressable style={styles.overlay} onPress={handleClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <Pressable style={styles.content} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.header}>
+              <View style={styles.headerTextContainer}>
+                <Text style={styles.headerTitle}>{title}</Text>
+                {contentTitle && (
+                  <Text style={styles.contentTitlePreview} numberOfLines={1}>
+                    "{contentTitle}"
                   </Text>
-                  {contentTitle && (
-                    <Text className="text-sm text-gray-500 mt-1" numberOfLines={1}>
-                      {CONTENT_TYPE_LABELS[contentType]}: {contentTitle}
-                    </Text>
-                  )}
-                </View>
-                <TouchableOpacity
-                  onPress={handleClose}
-                  activeOpacity={0.7}
-                  disabled={isPending}
-                >
-                  <Ionicons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
+                )}
               </View>
+              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
 
-              {/* Content */}
-              <ScrollView className="px-6 py-4">
-                <Text className="text-base font-semibold text-gray-800 mb-3">
-                  Chọn lý do báo cáo: <Text className="text-red-500">*</Text>
-                </Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
+              <Text style={styles.sectionTitle}>Tại sao bạn báo cáo nội dung này?</Text>
+              <Text style={styles.sectionSubtitle}>
+                Báo cáo của bạn là ẩn danh. Nếu ai đó đang gặp nguy hiểm, hãy gọi cho dịch vụ khẩn cấp địa phương ngay lập tức.
+              </Text>
 
-                {reportOptions.map((option) => (
-                  <TouchableOpacity
-                    key={option.value}
-                    onPress={() => setSelectedReason(option.value)}
-                    className={`flex-row items-center py-3 px-4 mb-2 rounded-lg border ${
-                      selectedReason === option.value
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-200 bg-white"
-                    }`}
-                    activeOpacity={0.7}
-                    disabled={isPending}
+              {Object.entries(REPORT_TYPE_LABELS).map(([type, label]) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.reasonItem,
+                    selectedType === type && styles.reasonItemActive,
+                  ]}
+                  onPress={() => setSelectedType(type as ReportType)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.reasonLabel,
+                      selectedType === type && styles.reasonLabelActive,
+                    ]}
                   >
-                    <View
-                      className={`w-5 h-5 rounded-full border-2 items-center justify-center mr-3 ${
-                        selectedReason === option.value
-                          ? "border-red-500"
-                          : "border-gray-300"
-                      }`}
-                    >
-                      {selectedReason === option.value && (
-                        <View className="w-3 h-3 rounded-full bg-red-500" />
-                      )}
-                    </View>
-                    <Text
-                      className={`flex-1 ${
-                        selectedReason === option.value
-                          ? "text-red-700 font-medium"
-                          : "text-gray-700"
-                      }`}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                    {label}
+                  </Text>
+                  {selectedType === type && (
+                    <Ionicons name="checkmark-circle" size={20} color="#34B27D" />
+                  )}
+                </TouchableOpacity>
+              ))}
 
-                <Text className="text-base font-semibold text-gray-800 mt-4 mb-2">
-                  Mô tả thêm (tùy chọn):
-                </Text>
+              <View style={styles.descriptionContainer}>
+                <Text style={styles.descriptionTitle}>Thêm chi tiết (không bắt buộc)</Text>
                 <TextInput
-                  className="border border-gray-200 rounded-lg p-3 min-h-[100px] text-gray-800"
-                  placeholder="Nhập lý do chi tiết để chúng tôi xem xét tốt hơn..."
-                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                  placeholder="Hãy cho chúng tôi biết thêm..."
+                  placeholderTextColor="#999"
                   multiline
                   numberOfLines={4}
-                  textAlignVertical="top"
                   value={description}
                   onChangeText={setDescription}
-                  maxLength={500}
-                  editable={!isPending}
+                  textAlignVertical="top"
                 />
-                <Text className="text-xs text-gray-500 mt-1 text-right">
-                  {description.length}/500
-                </Text>
-
-                <View className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4 flex-row">
-                  <Ionicons name="information-circle" size={20} color="#3B82F6" />
-                  <Text className="text-sm text-blue-700 ml-2 flex-1">
-                    Báo cáo của bạn sẽ được kiểm tra bởi đội ngũ quản trị.
-                    Chúng tôi cam kết xử lý trong vòng 24 giờ.
-                  </Text>
-                </View>
-              </ScrollView>
-
-              {/* Footer Actions */}
-              <View className="px-6 py-4 border-t border-gray-100 flex-row space-x-3">
-                <TouchableOpacity
-                  onPress={handleClose}
-                  className="flex-1 py-3 rounded-lg border border-gray-300"
-                  activeOpacity={0.7}
-                  disabled={isPending}
-                >
-                  <Text className="text-center text-gray-700 font-semibold">
-                    Hủy
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={handleSubmit}
-                  className={`flex-1 py-3 rounded-lg ${
-                    isPending || !selectedReason
-                      ? "bg-gray-300"
-                      : "bg-red-500"
-                  }`}
-                  activeOpacity={0.7}
-                  disabled={isPending || !selectedReason}
-                >
-                  {isPending ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text className="text-center text-white font-semibold">
-                      Gửi báo cáo
-                    </Text>
-                  )}
-                </TouchableOpacity>
               </View>
+            </ScrollView>
 
-              <View className="h-4" />
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={[
+                  styles.submitButton,
+                  (!selectedType || reportMutation.isPending) && styles.submitButtonDisabled,
+                ]}
+                onPress={handleSubmit}
+                disabled={!selectedType || reportMutation.isPending}
+              >
+                <Text style={styles.submitButtonText}>
+                  {reportMutation.isPending ? "Đang gửi..." : "Gửi báo cáo"}
+                </Text>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
     </Modal>
   );
 };
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  keyboardView: {
+    width: '100%',
+  },
+  content: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+  },
+  contentTitlePreview: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 8,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  reasonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  reasonItemActive: {
+    borderColor: '#34B27D',
+    backgroundColor: '#F0FDF4',
+  },
+  reasonLabel: {
+    fontSize: 15,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  reasonLabelActive: {
+    color: '#065F46',
+    fontWeight: '600',
+  },
+  descriptionContainer: {
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  descriptionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  textInput: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 15,
+    color: '#111827',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    minHeight: 100,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  submitButton: {
+    backgroundColor: '#34B27D',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#A7F3D0',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+});

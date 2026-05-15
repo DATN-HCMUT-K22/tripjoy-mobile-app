@@ -233,4 +233,24 @@ export const messageService = {
       throw error;
     }
   },
+
+  /**
+   * Xóa/Thu hồi message
+   * DELETE /api/v1/messages/{messageId}
+   * Chỉ người gửi mới có thể xóa tin nhắn của mình
+   */
+  async deleteMessage(messageId: string): Promise<ApiResponse<null>> {
+    console.log(`\n🗑️ [MESSAGE SERVICE] Deleting message: ${messageId}`);
+    try {
+      const response = await httpClient.delete<ApiResponse<null>>(
+        `/messages/${messageId}`
+      );
+      console.log(`✅ [MESSAGE SERVICE] Message deleted successfully`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ [MESSAGE SERVICE] Failed to delete message`);
+      console.error(`Error:`, error.message);
+      throw error;
+    }
+  },
 };

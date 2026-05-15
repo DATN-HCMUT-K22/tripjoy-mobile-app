@@ -60,6 +60,7 @@ export interface Post {
   timestamp: string;
   timeAgo: string;
   isBookmarked: boolean;
+  isLiked: boolean;
 }
 
 export interface CreatePostRequest {

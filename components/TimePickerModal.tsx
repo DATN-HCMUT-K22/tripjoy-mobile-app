@@ -1,6 +1,6 @@
 import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
 import DatePicker from "react-native-date-picker";
 
 type Props = {
@@ -8,12 +8,13 @@ type Props = {
   initialStartTime: string;
   initialEndTime: string;
   onClose: () => void;
-  onSave: (timeRange: { start: string; end: string }) => void;
+  onSave: (timeRange: { start: string; end: string }, duration?: number) => void;
 };
 
 const pad = (n: number) => n.toString().padStart(2, "0");
 
-const parseTimeToMinutes = (value: string, fallback: number) => {
+const parseTimeToMinutes = (value: string | undefined, fallback: number) => {
+  if (!value) return fallback;
   const [hRaw = "", mRaw = ""] = value.split(":");
   const h = Number(hRaw);
   const m = Number(mRaw);
@@ -50,9 +51,7 @@ const parseTimeToDate = (value: string) => {
 };
 
 const roundToFiveMinutes = (date: Date) => {
-  const next = new Date(date);
-  next.setSeconds(0, 0);
-  return next;
+  return date;
 };
 
 const TimePickerModal: React.FC<Props> = ({
@@ -66,12 +65,26 @@ const TimePickerModal: React.FC<Props> = ({
     parseTimeToDate(initialStartTime)
   );
   const [endTime, setEndTime] = useState<Date>(parseTimeToDate(initialEndTime));
+  const [durationStr, setDurationStr] = useState<string>("60");
 
   useEffect(() => {
     if (!visible) return;
-    setStartTime(parseTimeToDate(initialStartTime));
-    setEndTime(parseTimeToDate(initialEndTime));
+    const start = parseTimeToDate(initialStartTime);
+    const end = parseTimeToDate(initialEndTime);
+    setStartTime(start);
+    setEndTime(end);
+    
+    // Calculate initial duration
+    const diff = Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60));
+    setDurationStr(String(Math.round(diff)));
   }, [visible, initialStartTime, initialEndTime]);
+
+  // Update end time when start time or duration changes
+  useEffect(() => {
+    const dur = parseInt(durationStr, 10) || 0;
+    const newEnd = new Date(startTime.getTime() + dur * 60 * 1000);
+    setEndTime(newEnd);
+  }, [startTime, durationStr]);
 
   const startMinutes = useMemo(
     () => startTime.getHours() * 60 + startTime.getMinutes(),
@@ -96,7 +109,7 @@ const TimePickerModal: React.FC<Props> = ({
     onSave({
       start: startStr,
       end: endStr,
-    });
+    }, parseInt(durationStr, 10) || 0);
     onClose();
   };
 
@@ -133,11 +146,9 @@ const TimePickerModal: React.FC<Props> = ({
             </View>
           </View>
 
-          <View className="mb-3 flex-row gap-3">
-            <View className="flex-1">
-              <Text className="mb-2 text-sm font-semibold text-gray-600">
-                Bắt đầu
-              </Text>
+          <View className="mb-6">
+            <View className="mb-4">
+              <Text className="mb-2 text-sm font-semibold text-gray-700">Thời gian bắt đầu</Text>
               <View className="bg-gray-100 rounded-xl p-3 items-center justify-center">
                 <DatePicker
                   modal={false}
@@ -145,26 +156,23 @@ const TimePickerModal: React.FC<Props> = ({
                   locale="vi"
                   minuteInterval={1}
                   date={startTime}
-                  onDateChange={(value) =>
-                    setStartTime(roundToFiveMinutes(value))
-                  }
+                  onDateChange={setStartTime}
+                  is24hourSource="locale"
                 />
               </View>
             </View>
 
-            <View className="flex-1">
-              <Text className="mb-2 text-sm font-semibold text-gray-600">
-                Kết thúc
-              </Text>
-              <View className="rounded-xl bg-gray-100 p-3 items-center justify-center">
-                <DatePicker
-                  modal={false}
-                  mode="time"
-                  locale="vi"
-                  minuteInterval={1}
-                  date={endTime}
-                  onDateChange={(value) => setEndTime(roundToFiveMinutes(value))}
+            <View className="mb-2">
+              <Text className="mb-2 text-sm font-semibold text-gray-700">Thời lượng (phút)</Text>
+              <View className="flex-row items-center rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <TextInput
+                  className="flex-1 text-base text-gray-900"
+                  value={durationStr}
+                  onChangeText={setDurationStr}
+                  keyboardType="numeric"
+                  placeholder="Ví dụ: 60"
                 />
+                <Text className="ml-2 text-gray-400">phút</Text>
               </View>
             </View>
           </View>
@@ -175,28 +183,24 @@ const TimePickerModal: React.FC<Props> = ({
             </Text>
           ) : null}
 
-          <View className="flex-row justify-end gap-2">
+          <View className="flex-row items-center justify-between">
             <TouchableOpacity
               onPress={onClose}
-              className="px-4 py-3 rounded-xl border border-gray-300"
+              className="items-center justify-center rounded-xl bg-gray-100 py-4"
+              style={{ flex: 1 }}
             >
-              <Text className="text-sm font-semibold text-gray-700">Hủy</Text>
+              <Text className="text-base font-bold text-gray-600">Hủy</Text>
             </TouchableOpacity>
+            <View style={{ width: 16 }} />
             <TouchableOpacity
               onPress={handleSave}
               disabled={hasError}
-              className={`px-5 py-3 rounded-xl ${
-                hasError ? "bg-gray-300" : "bg-[#34B27D]"
+              className={`items-center justify-center rounded-xl py-4 ${
+                hasError ? "bg-gray-300" : "bg-primary"
               }`}
-              style={{ opacity: hasError ? 0.7 : 1 }}
+              style={{ flex: 1 }}
             >
-              <Text
-                className={`text-sm font-semibold ${
-                  hasError ? "text-gray-600" : "text-white"
-                }`}
-              >
-                Lưu
-              </Text>
+              <Text className="text-base font-bold text-white">Lưu</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -15,6 +15,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useAppSelector } from "@/store/hooks";
 import { Group } from "@/types/group";
 import { getCurrentUserRole, isGroupLeader } from "@/utils/roleUtils";
+import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -27,7 +28,9 @@ import {
   TouchableOpacity,
   View,
   RefreshControl,
+  ActivityIndicator,
 } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 
 type ViewMode = "card" | "list";
 
@@ -40,6 +43,7 @@ interface GroupAction {
 
 export default function GroupsScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const currentUser = useAppSelector((state) => state.auth.user);
   const { requireAuth, checkAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
   const { isGuest } = useGuestMode();
@@ -78,14 +82,38 @@ export default function GroupsScreen() {
 
   // Filter groups by search query
   const filteredGroups = useMemo(() => {
-    if (!debouncedSearch) return groups;
+    // Luôn lọc bỏ các nhóm đã bị đánh dấu xóa (nếu có trong response)
+    const activeGroups = groups.filter(g => g.isDeleted !== true);
+    
+    if (!debouncedSearch) return activeGroups;
     const query = debouncedSearch.toLowerCase();
-    return groups.filter(
+    return activeGroups.filter(
       (g) =>
         g.name.toLowerCase().includes(query) ||
         g.description?.toLowerCase().includes(query)
     );
   }, [groups, debouncedSearch]);
+
+  useEffect(() => {
+    if (groups.length > 0) {
+      console.log("📊 [GroupsScreen] Data sync check:");
+      console.log(`- Total groups from API: ${groups.length}`);
+      console.log(`- Filtered groups (active): ${filteredGroups.length}`);
+      console.log(`- Pinned groups: ${pinnedGroupIds.length}`);
+      
+      // Log avatars to debug missing images
+      const groupsWithAvatar = groups.filter(g => g.avatar);
+      console.log(`- Groups with avatar: ${groupsWithAvatar.length}/${groups.length}`);
+      if (groupsWithAvatar.length > 0) {
+        console.log("- Avatar sample:", groupsWithAvatar[0].avatar);
+      }
+
+      if (groups.length !== filteredGroups.length) {
+        const deletedIds = groups.filter(g => g.isDeleted === true).map(g => g.id);
+        console.log(`- IDs marked as isDeleted: ${deletedIds.join(", ")}`);
+      }
+    }
+  }, [groups, filteredGroups, pinnedGroupIds]);
 
   // Split groups into pinned and regular
   const { pinnedGroups, regularGroups } = useMemo(() => {
@@ -123,13 +151,21 @@ export default function GroupsScreen() {
 
   // Handle pull-to-refresh
   const handleRefresh = useCallback(async () => {
+    console.log("🔄 [GroupsScreen] Manual refresh triggered");
     setIsRefreshing(true);
     try {
-      await Promise.all([refetch(), refetchConversations()]);
+      // Sử dụng invalidateQueries để đảm bảo fetch lại data mới nhất
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+      ]);
+      console.log("✅ [GroupsScreen] Refresh successful");
+    } catch (err) {
+      console.error("❌ [GroupsScreen] Refresh failed:", err);
     } finally {
       setIsRefreshing(false);
     }
-  }, [refetch, refetchConversations]);
+  }, [queryClient]);
 
   // Handle swipe actions
   const handleSwipeAction = useCallback(
@@ -191,6 +227,16 @@ export default function GroupsScreen() {
         label: "Rời nhóm",
         onPress: () => {
           setShowContextMenu(false);
+          const hasOtherMembers = (selectedGroup.members?.length ?? 0) > 1;
+          
+          if (isLeader && hasOtherMembers) {
+            showErrorToast(
+              "Không thể rời nhóm ngay",
+              "Bạn đang là Trưởng nhóm. Hãy chuyển quyền trưởng nhóm cho thành viên khác trước khi rời nhóm."
+            );
+            return;
+          }
+          
           setLeaveGroupId(selectedGroup.id);
           setShowLeaveConfirm(true);
         },
@@ -339,25 +385,7 @@ export default function GroupsScreen() {
       </View>
 
       {/* Content */}
-      {isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-gray-500 text-base">Đang tải danh sách nhóm...</Text>
-        </View>
-      ) : error ? (
-        <View className="flex-1 items-center justify-center">
-          <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
-          <Text className="text-gray-500 text-base mt-4">
-            Có lỗi xảy ra khi tải danh sách nhóm
-          </Text>
-        </View>
-      ) : filteredGroups.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Ionicons name="people-outline" size={64} color="#ccc" />
-          <Text className="text-gray-500 text-base mt-4">
-            {searchQuery ? "Không tìm thấy nhóm nào" : "Chưa có nhóm nào"}
-          </Text>
-        </View>
-      ) : (
+      <View className="flex-1">
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
@@ -367,13 +395,55 @@ export default function GroupsScreen() {
               <Text className="text-xs font-bold text-gray-600">{section.title}</Text>
             </View>
           )}
-          contentContainerStyle={{ backgroundColor: "#E8F5E9", paddingBottom: 16 }}
+          contentContainerStyle={{ 
+            backgroundColor: "#E8F5E9", 
+            paddingBottom: 16,
+            flexGrow: 1 // Quan trọng để ListEmptyComponent hiển thị đúng giữa màn hình
+          }}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+            <RefreshControl 
+              refreshing={isRefreshing} 
+              onRefresh={handleRefresh}
+              colors={["#34B27D"]} // Màu primary cho Android
+              tintColor="#34B27D"   // Màu primary cho iOS
+            />
+          }
+          ListEmptyComponent={
+            isLoading ? (
+              <View className="flex-1 items-center justify-center p-10">
+                <ActivityIndicator size="large" color="#34B27D" />
+                <Text className="text-gray-500 text-base mt-4">
+                  Đang tải danh sách nhóm...
+                </Text>
+              </View>
+            ) : error ? (
+              <View className="flex-1 items-center justify-center p-10">
+                <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
+                <Text className="text-gray-500 text-base mt-4 text-center">
+                  Có lỗi xảy ra khi tải danh sách nhóm.{"\n"}
+                  Vuốt xuống để thử lại.
+                </Text>
+              </View>
+            ) : (
+              <View className="flex-1 items-center justify-center p-10">
+                <Ionicons name="people-outline" size={64} color="#ccc" />
+                <Text className="text-gray-500 text-base mt-4">
+                  {searchQuery ? "Không tìm thấy nhóm nào" : "Chưa có nhóm nào"}
+                </Text>
+                {!searchQuery && (
+                   <TouchableOpacity 
+                    className="mt-6 px-6 py-3 bg-primary rounded-full"
+                    onPress={() => setIsCreateModalVisible(true)}
+                  >
+                    <Text className="text-white font-bold">Tạo nhóm ngay</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )
           }
         />
-      )}
+      </View>
 
       {/* Bottom Navigation */}
       <BottomNavigation />

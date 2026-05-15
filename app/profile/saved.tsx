@@ -1,5 +1,7 @@
 import { PostCard } from "@/components/social/PostCard";
 import { ShareModal } from "@/components/social/ShareModal";
+import { ReportModal } from "@/components/social/ReportModal";
+import { ContentType } from "@/types/report";
 import { SocialHeader } from "@/components/social/SocialHeader";
 import { useSavedPosts } from "@/hooks/useSocial";
 import { useBookmarkPost, useLikePost } from "@/hooks/useSocial";
@@ -14,6 +16,10 @@ export default function SavedPostsScreen() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedPostTitle, setSelectedPostTitle] = useState<string>("");
+
+  // Report state
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [selectedPostForReport, setSelectedPostForReport] = useState<string | null>(null);
 
   // Require auth for this screen
   const { isCheckingAuth, showLoginModal, setShowLoginModal, handleAuthAction } =
@@ -37,11 +43,17 @@ export default function SavedPostsScreen() {
   const savedPosts = data?.pages.flatMap((page) => page.content) ?? [];
 
   const handleLike = async (postId: string) => {
-    return handleAuthAction(() => likeMutation.mutateAsync({ postId }));
+    const post = savedPosts.find((p) => p.id === postId);
+    return handleAuthAction(() => 
+      likeMutation.mutateAsync({ postId, isCurrentlyLiked: post?.isLiked ?? false })
+    );
   };
 
   const handleBookmark = async (postId: string) => {
-    return handleAuthAction(() => bookmarkMutation.mutateAsync({ postId }));
+    const post = savedPosts.find((p) => p.id === postId);
+    return handleAuthAction(() => 
+      bookmarkMutation.mutateAsync({ postId, isCurrentlyBookmarked: post?.isBookmarked ?? true })
+    );
   };
 
   const handleComment = (postId: string) => {
@@ -58,7 +70,10 @@ export default function SavedPostsScreen() {
   };
 
   const handleReport = (postId: string) => {
-    console.log("Report post:", postId);
+    handleAuthAction(() => {
+      setSelectedPostForReport(postId);
+      setReportModalVisible(true);
+    });
   };
 
   const handleLoadMore = () => {
@@ -179,6 +194,19 @@ export default function SavedPostsScreen() {
           onClose={() => setShowShareModal(false)}
           postId={selectedPostId}
           postTitle={selectedPostTitle}
+        />
+      )}
+
+      {selectedPostForReport && (
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={() => {
+            setReportModalVisible(false);
+            setSelectedPostForReport(null);
+          }}
+          contentId={selectedPostForReport}
+          contentType={ContentType.POST}
+          contentTitle={savedPosts.find(p => p.id === selectedPostForReport)?.caption}
         />
       )}
     </RN.SafeAreaView>

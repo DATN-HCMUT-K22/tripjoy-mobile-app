@@ -1,27 +1,47 @@
-import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
+import { DraggableApiItineraryItemCard } from "@/components/itinerary/DraggableApiItineraryItemCard";
 import { TripItemCard } from "@/components/itinerary/TripItemCard";
+import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
+import TimePickerModal from "@/components/TimePickerModal";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 import {
   useItineraryDetail,
   useItineraryTripItems,
+  useUpdateItinerary,
+  useDeleteTripItem,
+  useUpdateTripItem,
+  useAiSuggestLocation,
+  useAiModifyItinerary,
+  useFavoriteItineraries,
+  useFavoriteItinerary,
+  useUnfavoriteItinerary,
 } from "@/hooks/useItineraries";
-import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
-import { getLocationImageUrl } from "@/utils/locationImages";
+import { 
+  ITINERARY_STATUS, 
+  type TripItemResponse,
+  type LocationResponse 
+} from "@/services/itineraries";
+import { parseItineraryDateToDayOnly, tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
+import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import {
   ActivityIndicator,
+  Modal,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
   StyleSheet,
+  Animated,
+  Easing,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { SharedHeader } from "@/components/common/SharedHeader";
 import { useAppSelector } from "@/store/hooks";
 import { ExpensesOverlay } from "@/components/itinerary/ExpensesOverlay";
+import { LocationImage } from "@/components/location/LocationImage";
 
 function formatHeaderDate(iso?: string): string {
   if (!iso?.trim()) return "";
@@ -43,12 +63,120 @@ function formatDayChipLabel(dayKey: string): string {
   });
 }
 
+const AI_TIPS = [
+  "Đang phân tích sở thích của bạn...",
+  "Tìm kiếm các địa điểm lân cận phù hợp...",
+  "AI đang tối ưu hóa lộ trình di chuyển...",
+  "Sắp hoàn tất các lựa chọn tốt nhất cho bạn...",
+];
+
+function AiLoadingView({ message }: { message: string }) {
+  const [tipIndex, setTipIndex] = React.useState(0);
+  const spinValue = React.useRef(new Animated.Value(0)).current;
+  
+  React.useEffect(() => {
+    const id = setInterval(() => setTipIndex(i => (i + 1) % AI_TIPS.length), 3000);
+    
+    Animated.loop(
+      Animated.timing(spinValue, {
+        toValue: 1,
+        duration: 2000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    return () => {
+      clearInterval(id);
+      spinValue.stopAnimation();
+    };
+  }, []);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
+
+  return (
+    <View className="flex-1 items-center justify-center px-8 py-20">
+      <View className="relative h-24 w-24 items-center justify-center">
+        <View className="absolute h-full w-full rounded-full border-4 border-emerald-100 opacity-20" />
+        <Animated.View 
+          style={{ transform: [{ rotate: spin }] }}
+          className="absolute h-full w-full rounded-full border-t-4 border-primary" 
+        />
+        <Ionicons name="sparkles" size={40} color="#2BB673" />
+      </View>
+      <Text className="mt-8 text-center text-lg font-bold text-gray-900">{message}</Text>
+      <Text className="mt-2 text-center text-sm text-gray-500 italic">"{AI_TIPS[tipIndex]}"</Text>
+      
+      <View className="mt-10 flex-row gap-2">
+        {[0, 1, 2, 3].map((i) => (
+          <View 
+            key={i} 
+            className="h-2 w-2 rounded-full bg-primary" 
+            style={{ opacity: 0.3 + (i === tipIndex % 4 ? 0.7 : 0) }} 
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function getKeywordFallbackImage(note?: string): string {
+  const n = (note || "").toLowerCase();
+  if (n.includes("ăn") || n.includes("food") || n.includes("nhà hàng"))
+    return "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600";
+  if (n.includes("khách sạn") || n.includes("hotel") || n.includes("nghỉ"))
+    return "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600";
+  if (n.includes("bay") || n.includes("flight") || n.includes("sân bay"))
+    return "https://images.unsplash.com/photo-1436491865332-7a61a109c0f3?w=600";
+  return "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600";
+}
+
+function placeIdFromTripItem(row: TripItemResponse): string | undefined {
+  const loc = row.location;
+  // Fallback order: Google Place ID (provider_id) -> raw place_id -> internal UUID (id)
+  return loc?.provider_id || (row as any).place_id || row.id;
+}
+
+function formatItemDateTime(dayKey: string, time: string): string {
+  const datePart = (dayKey || "").trim().slice(0, 10);
+  const timePart = (time || "").trim();
+  // Ensure time is HH:mm:00
+  const finalTime = timePart.length === 5 ? `${timePart}:00` : timePart;
+  return `${datePart}T${finalTime}`;
+}
+
 export default function ItineraryDetailScreen() {
   // const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id: itineraryId } = useLocalSearchParams<{ id: string }>();
   const currentUserId = useAppSelector((state) => state.auth.user?.id);
   const [showExpenses, setShowExpenses] = useState(false);
+  const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
+
+  // Setup Mode State
+  const [isSetupMode, setIsSetupMode] = useState(false);
+  const [draftItemsByDay, setDraftItemsByDay] = useState<Record<string, TripItemResponse[]>>({});
+  
+  // Modals & Active Items
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [editingTimeSlot, setEditingTimeSlot] = useState<{ dayKey: string; item: TripItemResponse } | null>(null);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ dayKey: string; id?: string; index?: number; name?: string } | null>(null);
+  const [adjustModalVisible, setAdjustModalVisible] = useState(false);
+  const [suggestionModalVisible, setSuggestionModalVisible] = useState(false);
+  const [activeTripItem, setActiveTripItem] = useState<TripItemResponse | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<TripItemResponse[]>([]);
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  const [selectedUnwantedIds, setSelectedUnwantedIds] = useState<string[]>([]);
+
+  // Immediate Persistence Confirmations
+  const [swapConfirmVisible, setSwapConfirmVisible] = useState(false);
+  const [pendingSwap, setPendingSwap] = useState<{ dayKey: string; from: number; to: number } | null>(null);
+  const [timeConfirmVisible, setTimeConfirmVisible] = useState(false);
+  const [pendingTimeEdit, setPendingTimeEdit] = useState<{ dayKey: string; item: TripItemResponse; newStart: string; newDuration: number } | null>(null);
 
   const {
     data: detail,
@@ -68,6 +196,31 @@ export default function ItineraryDetailScreen() {
     enabled: !!itineraryId,
     itineraryStatus: detail?.status,
   });
+
+  useEffect(() => {
+    if (tripItems.length === 0) return;
+    const fetchImages = async () => {
+      const itemsToResolve = tripItems.filter(item => {
+        const itemId = item.id || item.location?.id || item.location_id || "";
+        return !imageUrlCache[String(itemId)];
+      });
+
+      for (const row of itemsToResolve) {
+        const itemId = row.id || row.location?.id || row.location_id || "";
+        try {
+          const url = await getLocationImageUrlAsync(row.location);
+          if (url) {
+            setImageUrlCache((prev) => ({ ...prev, [itemId]: url }));
+          }
+        } catch (err) {
+          console.warn(`[IMAGE FETCH] Failed for item ${itemId}:`, err);
+        }
+      }
+    };
+
+    fetchImages();
+  }, [tripItems]);
+
 
   const itemsByDay = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -96,6 +249,236 @@ export default function ItineraryDetailScreen() {
     return keys;
   }, [itemsByDay]);
 
+  // Mutations
+  const updateItineraryMutation = useUpdateItinerary();
+  const deleteTripItemMutation = useDeleteTripItem();
+  const updateTripItemMutation = useUpdateTripItem();
+  const aiSuggestMutation = useAiSuggestLocation();
+  const aiModifyMutation = useAiModifyItinerary();
+
+  const { data: favoriteList = [] } = useFavoriteItineraries(itineraryId);
+  const favoriteMutation = useFavoriteItinerary();
+  const unfavoriteMutation = useUnfavoriteItinerary();
+
+  const isFavorited = useMemo(() => {
+    return favoriteList.some((it) => it.id === itineraryId);
+  }, [favoriteList, itineraryId]);
+
+  const toggleFavorite = useCallback(() => {
+    if (!itineraryId) return;
+    if (isFavorited) {
+      unfavoriteMutation.mutate(itineraryId);
+    } else {
+      favoriteMutation.mutate(itineraryId);
+    }
+  }, [itineraryId, isFavorited, unfavoriteMutation, favoriteMutation]);
+
+  // Initialize draft items when entering setup mode
+  useEffect(() => {
+    if (isSetupMode) {
+      setDraftItemsByDay(itemsByDay);
+    }
+  }, [isSetupMode, itemsByDay]);
+
+  const getItemImageUrl = (row: TripItemResponse): string | undefined => {
+    const itemId = row.id || row.location?.id || row.location_id || "";
+    const cached = imageUrlCache[String(itemId)];
+    if (cached) return cached;
+
+    const locImg = getLocationImageUrl(row.location);
+    if (locImg) return locImg;
+
+    return getKeywordFallbackImage(row.note);
+  };
+
+  const moveItem = useCallback((dayKey: string, from: number, to: number) => {
+    if (from === to) return;
+    setPendingSwap({ dayKey, from, to });
+    setSwapConfirmVisible(true);
+  }, []);
+
+  const confirmSwapItems = async () => {
+    if (!pendingSwap || !itineraryId) return;
+    const { dayKey, from, to } = pendingSwap;
+    const rows = [...(itemsByDay[dayKey] || [])];
+    const itemA = rows[from];
+    const itemB = rows[to];
+    const timeA = itemA.start_time;
+    const timeB = itemB.start_time;
+
+    try {
+      const promises = [];
+      if (itemA.id) {
+        promises.push(updateTripItemMutation.mutateAsync({
+          itineraryId, tripItemId: itemA.id, payload: { ...itemA, start_time: timeB }
+        }));
+      }
+      if (itemB.id) {
+        promises.push(updateTripItemMutation.mutateAsync({
+          itineraryId, tripItemId: itemB.id, payload: { ...itemB, start_time: timeA }
+        }));
+      }
+      await Promise.all(promises);
+      refetchItems();
+    } catch {} finally {
+      setSwapConfirmVisible(false);
+      setPendingSwap(null);
+    }
+  };
+
+  const deleteItem = useCallback((dayKey: string, id?: string, fallbackIndex?: number, name?: string) => {
+    setItemToDelete({ dayKey, id, index: fallbackIndex, name });
+    setDeleteConfirmVisible(true);
+  }, []);
+
+  const confirmDeleteItem = async () => {
+    if (!itemToDelete || !itineraryId) return;
+    const { id } = itemToDelete;
+    if (id) {
+      try { await deleteTripItemMutation.mutateAsync({ itineraryId, tripItemId: id }); } catch {}
+    }
+    refetchItems();
+    setDeleteConfirmVisible(false);
+    setItemToDelete(null);
+  };
+
+  const openTimePicker = useCallback((dayKey: string, item: TripItemResponse) => {
+    setEditingTimeSlot({ dayKey, item });
+    setTimePickerVisible(true);
+  }, []);
+
+  const handleSaveTime = useCallback((timeRange: { start: string; end: string }, duration?: number) => {
+    if (!editingTimeSlot) return;
+    const { dayKey, item } = editingTimeSlot;
+    setPendingTimeEdit({ 
+      dayKey, 
+      item, 
+      newStart: formatItemDateTime(dayKey, timeRange.start),
+      newDuration: duration ?? item.duration
+    });
+    setTimePickerVisible(false);
+    setTimeConfirmVisible(true);
+  }, [editingTimeSlot]);
+
+  const confirmTimeEdit = async () => {
+    if (!pendingTimeEdit || !itineraryId) return;
+    const { item, newStart, newDuration } = pendingTimeEdit;
+    try {
+      await updateTripItemMutation.mutateAsync({
+        itineraryId,
+        tripItemId: item.id || "",
+        payload: {
+          ...item,
+          start_time: newStart,
+          duration: newDuration
+        }
+      });
+      refetchItems();
+    } catch {} finally {
+      setTimeConfirmVisible(false);
+      setPendingTimeEdit(null);
+      setEditingTimeSlot(null);
+    }
+  };
+
+  const handleSaveSetup = async () => {
+    if (!itineraryId || !detail) return;
+    const allItems: TripItemResponse[] = [];
+    dayKeys.forEach(dk => allItems.push(...(draftItemsByDay[dk] || [])));
+    try {
+      await updateItineraryMutation.mutateAsync({
+        itineraryId,
+        payload: {
+          name: detail.title || "",
+          start_date: tripPickerDateToItineraryDateTime(detail.start_date, "start"),
+          end_date: tripPickerDateToItineraryDateTime(detail.end_date || detail.start_date, "end"),
+          status: detail.status,
+          trip_items: allItems.map(item => ({
+            start_time: item.start_time || "",
+            duration: item.duration,
+            note: item.note,
+            location_id: item.location_id || item.location?.id || undefined,
+            place_id: (item as any).place_id || item.location?.provider_id || undefined,
+          })),
+        },
+      });
+      setIsSetupMode(false);
+    } catch {}
+  };
+
+  const handleOpenAiSuggest = useCallback(async (item: TripItemResponse) => {
+    const unwantedPlaceId = placeIdFromTripItem(item);
+    
+    if (!itineraryId || !unwantedPlaceId) {
+      return;
+    }
+
+    setActiveTripItem(item);
+    setAiSuggestions([]);
+    setSuggestionModalVisible(true);
+    try {
+      const suggestions = await aiSuggestMutation.mutateAsync({ 
+        itineraryId, 
+        unwantedPlaceId 
+      });
+      setAiSuggestions(suggestions);
+    } catch {}
+  }, [itineraryId, aiSuggestMutation]);
+
+  const handleSelectAiSuggestion = useCallback(async (suggestion: TripItemResponse) => {
+    if (!itineraryId || !activeTripItem?.id) return;
+    const placeId = suggestion.location?.provider_id || (suggestion as any).place_id;
+    const locationId = suggestion.location?.id || suggestion.location_id;
+    try {
+      await updateTripItemMutation.mutateAsync({
+        itineraryId,
+        tripItemId: activeTripItem.id,
+        payload: {
+          start_time: activeTripItem.start_time || "",
+          duration: suggestion.duration || activeTripItem.duration,
+          note: suggestion.note || activeTripItem.note,
+          location_id: locationId,
+          place_id: placeId,
+        },
+      });
+      setSuggestionModalVisible(false);
+      setActiveTripItem(null);
+      refetchItems();
+    } catch {}
+  }, [itineraryId, activeTripItem, updateTripItemMutation, refetchItems]);
+
+  const normItineraryStatus = (s?: string) => (s || "").toUpperCase();
+  const canEdit = normItineraryStatus(detail?.status) === ITINERARY_STATUS.DRAFT || normItineraryStatus(detail?.status) === ITINERARY_STATUS.FAILED;
+  
+  const placesForAiModify = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const row of tripItems) {
+      const k = row.start_time ? parseItineraryDateToDayOnly(row.start_time) || "_nodate" : "_nodate";
+      if (selectedDayKey && k !== selectedDayKey) continue;
+
+      const pid = placeIdFromTripItem(row);
+      if (!pid || map.has(pid)) continue;
+      map.set(pid, {
+        placeId: pid,
+        label: row.location?.name || row.note || "Địa điểm",
+        dayHint: row.start_time ? formatDayChipLabel(parseItineraryDateToDayOnly(row.start_time) || "") : undefined,
+        imageUrl: getItemImageUrl(row),
+      });
+    }
+    return Array.from(map.values());
+  }, [tripItems, imageUrlCache, selectedDayKey]);
+
+  const handleSubmitAiModify = async () => {
+    if (!itineraryId || selectedUnwantedIds.length === 0) return;
+    try {
+      await aiModifyMutation.mutateAsync({
+        itineraryId,
+        payload: { unwantedPlaceIds: selectedUnwantedIds },
+      });
+      setAdjustModalVisible(false);
+    } catch {}
+  };
+
   const loading = !!itineraryId && (detailLoading || itemsLoading);
   const detailBlocking = !!itineraryId && detailError && !detail && !detailLoading;
 
@@ -106,10 +489,12 @@ export default function ItineraryDetailScreen() {
         detail?.end_date || detail?.start_date,
       )}`
     : "";
-  const coverUri =
-    [detail?.cover_image_url, detail?.thumbnail_url]
-      .map((u) => (typeof u === "string" ? u.trim() : ""))
-      .find((u) => u.length > 0) || "";
+  const firstItemWithImage = useMemo(() => {
+    return tripItems.find(item => {
+      const img = getItemImageUrl(item);
+      return img && !img.includes("unsplash") && !img.includes("keyword-fallback");
+    });
+  }, [tripItems, imageUrlCache]);
 
   const isOwner = detail?.created_by === currentUserId;
 
@@ -173,15 +558,30 @@ export default function ItineraryDetailScreen() {
             </View>
           ) : null}
 
-          {/* Cover Card */}
           <View style={styles.coverCard}>
-            {coverUri ? (
-              <Image source={{ uri: coverUri }} style={styles.coverImage} contentFit="cover" />
+            {detail?.cover_image_url || detail?.thumbnail_url ? (
+              <Image 
+                source={{ uri: detail.cover_image_url || detail.thumbnail_url }} 
+                style={styles.coverImage} 
+                contentFit="cover" 
+              />
             ) : (
-              <View style={styles.placeholderImage}>
-                <Ionicons name="image-outline" size={48} color="#9CA3AF" />
-              </View>
+              <LocationImage
+                location={firstItemWithImage?.location}
+                style={styles.coverImage}
+                containerStyle={{ width: '100%', height: 200 }}
+                placeholderIcon="image-outline"
+              />
             )}
+            
+            <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButtonAbsolute}>
+              <Ionicons
+                name={isFavorited ? "heart" : "heart-outline"}
+                size={22}
+                color={isFavorited ? "#ef4444" : "#111827"}
+              />
+            </TouchableOpacity>
+
             <View style={styles.coverInfo}>
               <Text style={styles.itineraryTitle} numberOfLines={2}>
                 {title}
@@ -192,7 +592,6 @@ export default function ItineraryDetailScreen() {
             </View>
           </View>
 
-          {/* Quick Actions */}
           <View style={styles.actionsRow}>
             {isOwner && (
               <TouchableOpacity
@@ -213,17 +612,26 @@ export default function ItineraryDetailScreen() {
             </TouchableOpacity>
             
             {isOwner && (
-              <TouchableOpacity
-                onPress={() => router.push(`/itinerary/${itineraryId}`)}
-                style={[styles.actionButton, styles.setupButton]}
-              >
-                <Ionicons name="settings-outline" size={20} color="#2563EB" />
-                <Text style={styles.setupText}>Thiết lập</Text>
-              </TouchableOpacity>
+              !isSetupMode ? (
+                <TouchableOpacity
+                  onPress={() => setIsSetupMode(true)}
+                  style={[styles.actionButton, styles.setupButton]}
+                >
+                  <Ionicons name="settings-outline" size={20} color="#2563EB" />
+                  <Text style={styles.setupText}>Thiết lập</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => handleSaveSetup()}
+                  style={[styles.actionButton, styles.saveButton]}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                  <Text style={styles.saveText}>Xong</Text>
+                </TouchableOpacity>
+              )
             )}
           </View>
 
-          {/* Days List */}
           <View style={styles.daysList}>
             {dayKeys.map((dayKey, dayIndex) => {
               const itemsForDay = itemsByDay[dayKey] || [];
@@ -257,12 +665,42 @@ export default function ItineraryDetailScreen() {
                   )}
 
                   {itemsForDay.length > 0 ? (
-                    itemsForDay.map((row, idx) => (
-                      <TripItemCard key={row.id || idx} item={row} showMenu={false} />
+                    (isSetupMode ? draftItemsByDay[dayKey] || [] : itemsForDay).map((row, idx) => (
+                      isSetupMode ? (
+                        <DraggableApiItineraryItemCard
+                          key={row.id || `draft-${dayKey}-${idx}`}
+                          row={row}
+                          index={idx}
+                          total={(draftItemsByDay[dayKey] || []).length}
+                          canInteract={canEdit}
+                          imageUrl={getItemImageUrl(row)}
+                          onMove={(from, to) => moveItem(dayKey, from, to)}
+                          onDelete={() => deleteItem(dayKey, row.id, idx, row.location?.name || row.note)}
+                          onSuggest={() => handleOpenAiSuggest(row)}
+                          onEdit={() => openTimePicker(dayKey, row)}
+                        />
+                      ) : (
+                        <TripItemCard key={row.id || idx} item={row} showMenu={false} />
+                      )
                     ))
                   ) : (
                     <View style={styles.emptyDay}>
                       <Text style={styles.emptyDayText}>Không có hoạt động nào.</Text>
+                    </View>
+                  )}
+
+                  {isSetupMode && canEdit && (
+                    <View className="mx-4 mt-2 flex-row items-center justify-center gap-3">
+                      <TouchableOpacity
+                        onPress={() => {
+                          setSelectedDayKey(dayKey);
+                          setAdjustModalVisible(true);
+                        }}
+                        className="flex-1 flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3"
+                      >
+                        <Ionicons name="sparkles-outline" size={18} color="#059669" />
+                        <Text className="ml-2 font-semibold text-emerald-800">Điều chỉnh AI</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
@@ -279,6 +717,138 @@ export default function ItineraryDetailScreen() {
         itineraryTitle={title}
         budget={detail?.budget_estimate}
       />
+
+      <TimePickerModal
+        visible={timePickerVisible}
+        onClose={() => setTimePickerVisible(false)}
+        onSave={handleSaveTime}
+        initialStartTime={editingTimeSlot?.item.start_time ? new Date(editingTimeSlot.item.start_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "08:00"}
+        initialEndTime={(() => {
+          const start = editingTimeSlot?.item.start_time ? new Date(editingTimeSlot.item.start_time) : new Date();
+          const dur = editingTimeSlot?.item.duration || 60;
+          const end = new Date(start.getTime() + dur * 60000);
+          return end.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        })()}
+      />
+
+      <AppDialogModal
+        visible={deleteConfirmVisible}
+        variant="warning"
+        title="Xác nhận xóa"
+        message={`Bạn có chắc chắn muốn xóa "${itemToDelete?.name || "địa điểm này"}"?`}
+        primaryLabel="Xóa"
+        primaryDestructive
+        onPrimaryPress={confirmDeleteItem}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setDeleteConfirmVisible(false)}
+      />
+
+      <AppDialogModal
+        visible={swapConfirmVisible}
+        variant="info"
+        title="Thay đổi thứ tự"
+        message="Bạn có chắc chắn muốn hoán đổi vị trí và thời gian của hai địa điểm này?"
+        primaryLabel="Hoán đổi"
+        onPrimaryPress={confirmSwapItems}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setSwapConfirmVisible(false)}
+      />
+
+      <AppDialogModal
+        visible={timeConfirmVisible}
+        variant="info"
+        title="Cập nhật thời gian"
+        message="Bạn có chắc chắn muốn cập nhật thời gian cho địa điểm này?"
+        primaryLabel="Cập nhật"
+        onPrimaryPress={confirmTimeEdit}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setTimeConfirmVisible(false)}
+      />
+
+      {/* AI Suggestion Modal */}
+      <Modal visible={suggestionModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView className="flex-1 bg-white">
+          <View className="flex-row items-center border-b border-gray-200 px-4 py-4">
+            <TouchableOpacity onPress={() => setSuggestionModalVisible(false)}>
+              <Ionicons name="close" size={26} color="#111827" />
+            </TouchableOpacity>
+            <Text className="flex-1 text-center text-lg font-bold">Gợi ý địa điểm</Text>
+            <View className="w-6" />
+          </View>
+          <ScrollView className="p-4">
+            {aiSuggestMutation.isPending ? <AiLoadingView message="Đang tìm địa điểm thay thế..." /> : 
+              aiSuggestions.length === 0 ? (
+                <View className="py-20 items-center justify-center">
+                  <Ionicons name="search-outline" size={48} color="#D1D5DB" />
+                  <Text className="mt-4 text-gray-500">Không tìm thấy địa điểm nào phù hợp.</Text>
+                </View>
+              ) : (
+                aiSuggestions.map((s, i) => (
+                  <TouchableOpacity key={i} className="mb-3 flex-row items-center rounded-2xl border border-gray-100 bg-white p-3 shadow-sm" onPress={() => handleSelectAiSuggestion(s)}>
+                    <LocationImage location={s.location} style={{ width: 64, height: 64 }} containerStyle={{ borderRadius: 12 }} />
+                    <View className="ml-4 flex-1">
+                      <Text className="text-base font-bold text-gray-900">{s.location?.name || "Địa điểm mới"}</Text>
+                      <Text className="text-xs text-gray-500" numberOfLines={1}>{s.location?.address || "Gợi ý từ AI"}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                  </TouchableOpacity>
+                ))
+              )
+            }
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* AI Modify Modal */}
+      <Modal visible={adjustModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView className="flex-1 bg-white">
+          <View className="flex-row items-center border-b border-gray-200 px-4 py-4">
+            <TouchableOpacity onPress={() => setAdjustModalVisible(false)}>
+              <Ionicons name="close" size={26} color="#111827" />
+            </TouchableOpacity>
+            <Text className="flex-1 text-center text-lg font-bold">Điều chỉnh AI</Text>
+            <View className="w-6" />
+          </View>
+          <ScrollView className="px-4 pt-4">
+            {aiModifyMutation.isPending ? (
+              <AiLoadingView message="AI đang điều chỉnh lịch trình..." />
+            ) : (
+              <>
+                <Text className="mb-4 text-sm text-gray-600">Chọn các địa điểm bạn muốn AI gợi ý thay thế:</Text>
+                {placesForAiModify.map((p) => (
+                  <TouchableOpacity 
+                    key={p.placeId} 
+                    className={`mb-2 flex-row items-center rounded-xl border p-3 ${selectedUnwantedIds.includes(p.placeId) ? "border-primary bg-emerald-50" : "border-gray-200 bg-white"}`}
+                    onPress={() => setSelectedUnwantedIds(prev => prev.includes(p.placeId) ? prev.filter(x => x !== p.placeId) : [...prev, p.placeId])}
+                  >
+                    <Ionicons name={selectedUnwantedIds.includes(p.placeId) ? "checkbox" : "square-outline"} size={24} color={selectedUnwantedIds.includes(p.placeId) ? "#2BB673" : "#9CA3AF"} />
+                    {p.imageUrl && (
+                      <Image 
+                        source={{ uri: p.imageUrl }} 
+                        style={{ width: 48, height: 48, borderRadius: 8, marginLeft: 12 }} 
+                        contentFit="cover" 
+                      />
+                    )}
+                    <View className="ml-3 flex-1">
+                      <Text className="text-base font-semibold" numberOfLines={1}>{p.label}</Text>
+                      {p.dayHint && <Text className="text-xs text-gray-500">{p.dayHint}</Text>}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </>
+            )}
+          </ScrollView>
+          <View className="border-t border-gray-200 p-4">
+            <TouchableOpacity 
+              className={`rounded-full py-3.5 ${selectedUnwantedIds.length === 0 || aiModifyMutation.isPending ? "bg-gray-300" : "bg-primary"}`}
+              onPress={handleSubmitAiModify}
+              disabled={selectedUnwantedIds.length === 0 || aiModifyMutation.isPending}
+            >
+              {aiModifyMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text className="text-center font-bold text-white">Xác nhận thay thế ({selectedUnwantedIds.length})</Text>}
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -295,6 +865,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#111827",
+  },
+  headerAction: {
+    padding: 8,
+    marginRight: 4,
   },
   centerContent: {
     flex: 1,
@@ -352,6 +926,21 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    position: 'relative',
+  },
+  favoriteButtonAbsolute: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: 20,
+    padding: 8,
+    zIndex: 10,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
   },
   coverImage: {
     width: "100%",
@@ -412,14 +1001,28 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#5B21B6",
   },
-  setupButton: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#BFDBFE",
-  },
   setupText: {
     fontSize: 13,
     fontWeight: "600",
     color: "#1E40AF",
+  },
+  saveButton: {
+    backgroundColor: "#10B981",
+    borderColor: "#059669",
+  },
+  saveText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  cancelButton: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#D1D5DB",
+  },
+  cancelText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4B5563",
   },
   daysList: {
     marginTop: 24,

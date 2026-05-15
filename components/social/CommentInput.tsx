@@ -16,7 +16,7 @@ interface CommentInputProps {
 
 const MAX_CHARS = 500;
 
-export const CommentInput: React.FC<CommentInputProps> = ({
+export const CommentInput = React.forwardRef<any, CommentInputProps>(({
   onSubmit,
   isSubmitting = false,
   replyToUsername,
@@ -24,7 +24,7 @@ export const CommentInput: React.FC<CommentInputProps> = ({
   placeholder = "Nhập bình luận...",
   useBottomSheetInput = true,
   autoFocus = false,
-}) => {
+}, ref) => {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState("");
   const isValid = text.trim().length > 0 && text.length <= MAX_CHARS;
@@ -32,6 +32,15 @@ export const CommentInput: React.FC<CommentInputProps> = ({
   const isOverLimit = charCount > MAX_CHARS;
 
   const inputRef = React.useRef<any>(null);
+
+  React.useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+    },
+    clear: () => {
+      setText("");
+    }
+  }));
 
   React.useEffect(() => {
     if (replyToUsername) {
@@ -112,7 +121,7 @@ export const CommentInput: React.FC<CommentInputProps> = ({
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -46,12 +46,20 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.datntripjoy.app",
+      "config": {
+        "googleMapsApiKey": "AIzaSyDxDhaPlIoyQOffyLRA1UBH4WCaq7sFi-M"
+      },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "TripJoy cần vị trí để ước lượng thời gian di chuyển và hiển thị bản đồ."
       }
     },
     "android": {
       "package": "com.datntripjoy.app",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDxDhaPlIoyQOffyLRA1UBH4WCaq7sFi-M"
+        }
+      },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]

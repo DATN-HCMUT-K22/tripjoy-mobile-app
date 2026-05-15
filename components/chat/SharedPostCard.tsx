@@ -15,16 +15,26 @@ import { resolveUserAvatarUri } from "@/utils/userAvatar";
  */
 interface SharedPost {
   id: string;
-  content: string;
-  media_urls: string[];
-  created_by_user: {
+  content?: string;
+  content_snippet?: string;
+  media_urls?: string[];
+  thumbnail_url?: string;
+  location_name?: string;
+  hashtags?: string[];
+  author?: {
     id: string;
     username: string;
     fullName: string;
     avatarUrl?: string;
   };
-  like_count: number;
-  comment_count: number;
+  created_by_user?: {
+    id: string;
+    username: string;
+    fullName: string;
+    avatarUrl?: string;
+  };
+  like_count?: number;
+  comment_count?: number;
 }
 
 interface SharedPostCardProps {
@@ -33,14 +43,14 @@ interface SharedPostCardProps {
 }
 
 /**
- * Rich preview card for shared posts in chat
- *
- * Shows:
- * - 60x60 thumbnail (first media or fallback icon)
- * - Author avatar + name
- * - Content preview (2 lines max)
- * - Like/comment counts
- * - "Xem chi tiết" call-to-action
+ * Premium shared post card - Matching the user provided UI design
+ * 
+ * Layout:
+ * [     Large Image     ]
+ * [ 📍 Title      Flag  ]
+ * [ #hashtags           ]
+ * [ Content snippet     ]
+ * [         Xem chi tiết]
  */
 export const SharedPostCard: React.FC<SharedPostCardProps> = React.memo(
   ({ post, onPress }) => {
@@ -51,113 +61,85 @@ export const SharedPostCard: React.FC<SharedPostCardProps> = React.memo(
     const [thumbnailError, setThumbnailError] = useState(false);
 
     // Colors
-    const cardBg = isDark ? "#1F2937" : "#F3F4F6";
+    const cardBg = isDark ? "#1F2937" : "#FFFFFF";
     const cardBorder = isDark ? "#374151" : "#E5E7EB";
     const titleColor = isDark ? "#F3F4F6" : "#111827";
-    const authorColor = isDark ? "#D1D5DB" : "#374151";
-    const statsColor = isDark ? "#9CA3AF" : "#6B7280";
+    const snippetColor = isDark ? "#D1D5DB" : "#374151";
+    const hashtagColor = isDark ? "#9CA3AF" : "#9CA3AF";
     const linkColor = "#34B27D";
 
-    // Avatar
-    const author = post.created_by_user;
-    const authorAvatarUri = resolveUserAvatarUri(
-      author.avatarUrl,
-      author.fullName || author.username
-    );
-
-    // Thumbnail: first media or fallback
-    const hasThumbnail = post.media_urls && post.media_urls.length > 0 && !thumbnailError;
-    const thumbnailUri = hasThumbnail ? post.media_urls[0] : null;
-    const hasMultipleMedia = (post.media_urls?.length || 0) > 1;
+    // Normalize data from multiple possible backend formats
+    const author = post?.author || post?.created_by_user;
+    const thumbnailUri = post?.thumbnail_url || (post?.media_urls && post.media_urls[0]);
+    const locationName = post?.location_name || "Địa điểm khám phá";
+    const contentSnippet = post?.content_snippet || post?.content || "";
+    const hashtags = post?.hashtags || [];
 
     return (
       <TouchableOpacity
-        activeOpacity={0.8}
+        activeOpacity={0.9}
         onPress={onPress}
         style={[
           styles.card,
           { backgroundColor: cardBg, borderColor: cardBorder },
         ]}
       >
-        {/* Header: Thumbnail + Author */}
-        <View style={styles.header}>
-          {/* Thumbnail */}
-          <View style={styles.thumbnailContainer}>
-            {thumbnailUri ? (
-              <>
-                <Image
-                  source={{ uri: thumbnailUri }}
-                  style={styles.thumbnail}
-                  contentFit="cover"
-                  cachePolicy="memory-disk"
-                  onError={() => setThumbnailError(true)}
-                />
-                {hasMultipleMedia && (
-                  <View style={styles.mediaBadge}>
-                    <Text style={styles.mediaBadgeText}>
-                      +{post.media_urls.length - 1}
-                    </Text>
-                  </View>
-                )}
-              </>
-            ) : (
-              <View style={[styles.thumbnail, styles.thumbnailFallback]}>
-                <Ionicons name="document-text" size={28} color="#9CA3AF" />
-              </View>
+        {/* 1. Large Top Image */}
+        <View style={styles.imageContainer}>
+          {thumbnailUri && !thumbnailError ? (
+            <Image
+              source={{ uri: thumbnailUri }}
+              style={styles.image}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              onError={() => setThumbnailError(true)}
+            />
+          ) : (
+            <View style={[styles.image, styles.imageFallback]}>
+              <Ionicons name="image-outline" size={48} color="#9CA3AF" />
+            </View>
+          )}
+        </View>
+
+        {/* 2. Content Area */}
+        <View style={styles.contentContainer}>
+          {/* Title Row: Location + Optional Flag Icon placeholder */}
+          <View style={styles.titleRow}>
+            <View style={styles.locationContainer}>
+              <Ionicons name="location-sharp" size={18} color="#EF4444" />
+              <Text style={[styles.title, { color: titleColor }]} numberOfLines={1}>
+                {locationName}
+              </Text>
+            </View>
+            
+            {/* Example Flag / Region Indicator */}
+            {locationName.includes("Việt Nam") && (
+               <View style={styles.flagContainer}>
+                  <Text style={styles.flagEmoji}>🇻🇳</Text>
+               </View>
             )}
           </View>
 
-          {/* Author Info */}
-          <View style={styles.authorInfo}>
-            <Image
-              source={{ uri: authorAvatarUri }}
-              style={styles.authorAvatar}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-            />
-            <Text
-              style={[styles.authorName, { color: authorColor }]}
-              numberOfLines={1}
-            >
-              {author.fullName || author.username}
+          {/* Hashtags Row */}
+          {hashtags.length > 0 && (
+            <Text style={[styles.hashtag, { color: hashtagColor }]} numberOfLines={1}>
+              {hashtags.map(tag => `#${tag.replace("#", "")}`).join(" ")}
             </Text>
-          </View>
-        </View>
+          )}
 
-        {/* Content Preview */}
-        {post.content ? (
-          <Text
-            style={[styles.contentPreview, { color: titleColor }]}
+          {/* Snippet Row */}
+          <Text 
+            style={[styles.snippet, { color: snippetColor }]} 
             numberOfLines={2}
           >
-            {post.content}
+            {contentSnippet}
           </Text>
-        ) : null}
 
-        {/* Footer: Stats + CTA */}
-        <View style={styles.footer}>
-          {/* Stats */}
-          <View style={styles.stats}>
-            <View style={styles.statItem}>
-              <Ionicons name="heart" size={14} color="#EF4444" />
-              <Text style={[styles.statText, { color: statsColor }]}>
-                {post.like_count || 0}
-              </Text>
-            </View>
-            <View style={styles.statItem}>
-              <Ionicons name="chatbubble" size={14} color="#3B82F6" />
-              <Text style={[styles.statText, { color: statsColor }]}>
-                {post.comment_count || 0}
-              </Text>
-            </View>
-          </View>
-
-          {/* CTA */}
-          <View style={styles.cta}>
+          {/* CTA Row */}
+          <View style={styles.footer}>
             <Text style={[styles.ctaText, { color: linkColor }]}>
               Xem chi tiết
             </Text>
-            <Ionicons name="chevron-forward" size={14} color={linkColor} />
           </View>
         </View>
       </TouchableOpacity>
@@ -167,9 +149,7 @@ export const SharedPostCard: React.FC<SharedPostCardProps> = React.memo(
 
 SharedPostCard.displayName = "SharedPostCard";
 
-const CARD_WIDTH = 240;
-const THUMBNAIL_SIZE = 60;
-const AVATAR_SIZE = 24;
+const CARD_WIDTH = 260;
 
 const styles = StyleSheet.create({
   card: {
@@ -178,90 +158,75 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "hidden",
     alignSelf: "flex-start",
+    // Subtle shadow for premium feel
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    gap: 12,
+  imageContainer: {
+    width: "100%",
+    height: 140,
+    backgroundColor: "#F3F4F6",
   },
-  thumbnailContainer: {
-    position: "relative",
+  image: {
+    width: "100%",
+    height: "100%",
   },
-  thumbnail: {
-    width: THUMBNAIL_SIZE,
-    height: THUMBNAIL_SIZE,
-    borderRadius: 8,
-  },
-  thumbnailFallback: {
-    backgroundColor: "rgba(0,0,0,0.05)",
+  imageFallback: {
     alignItems: "center",
     justifyContent: "center",
   },
-  mediaBadge: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+  contentContainer: {
+    padding: 12,
   },
-  mediaBadgeText: {
-    color: "#FFF",
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  authorInfo: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  authorAvatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-  },
-  authorName: {
-    fontSize: 13,
-    fontWeight: "600",
-    flex: 1,
-  },
-  contentPreview: {
-    fontSize: 14,
-    lineHeight: 20,
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-  },
-  footer: {
+  titleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingBottom: 12,
+    marginBottom: 4,
   },
-  stats: {
+  locationContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-  },
-  statItem: {
-    flexDirection: "row",
-    alignItems: "center",
+    flex: 1,
     gap: 4,
   },
-  statText: {
+  title: {
+    fontSize: 16,
+    fontWeight: "700",
+    flex: 1,
+  },
+  flagContainer: {
+    width: 28,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 0.5,
+    borderColor: "#E5E7EB",
+  },
+  flagEmoji: {
     fontSize: 12,
-    fontWeight: "500",
   },
-  cta: {
+  hashtag: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  snippet: {
+    fontSize: 14,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  footer: {
     flexDirection: "row",
+    justifyContent: "flex-end",
     alignItems: "center",
-    gap: 4,
   },
   ctaText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
   },
 });

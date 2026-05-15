@@ -1,5 +1,6 @@
 import { LocationSuggestionsSection } from "@/components/group/LocationSuggestionsSection";
-import { useGroup, useGroupMembers } from "@/hooks/useGroups";
+import { useGroup, useGroupMembers, useDeleteGroup } from "@/hooks/useGroups";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import {
   useGroupItinerariesByTab,
@@ -61,8 +62,14 @@ export default function GroupInfoScreen() {
   const [itineraryTab, setItineraryTab] = useState<GroupItineraryTab>("ongoing");
   const [isMembersExpanded, setIsMembersExpanded] = useState(false);
   const [isItineraryExpanded, setIsItineraryExpanded] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { mutateAsync: confirmItinerary, isPending: isConfirming } = useConfirmItinerary();
+  const { mutate: deleteGroup } = useDeleteGroup();
+
+  const handleDeleteGroup = () => {
+    setShowDeleteConfirm(true);
+  };
 
   const handleApplyItinerary = async (itinerary: GroupInfoItineraryListItem) => {
     if (!itinerary.raw) return;
@@ -141,6 +148,7 @@ export default function GroupInfoScreen() {
   const groupThemeColor = group.theme_color || "#16A34A";
   const canEditGroupInfo =
     currentUserRole === "LEADER" || currentUserRole === "CO_LEADER";
+  const isLeader = currentUserRole === "LEADER";
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -440,6 +448,7 @@ export default function GroupInfoScreen() {
                   <TouchableOpacity
                     style={[styles.itineraryBtn, { backgroundColor: tabStyle.borderColor }]}
                     activeOpacity={0.8}
+                    onPress={() => router.push(`/itinerary/detail?id=${it.id}`)}
                   >
                     <Ionicons name="chevron-forward" size={18} color="#fff" />
                   </TouchableOpacity>
@@ -455,7 +464,34 @@ export default function GroupInfoScreen() {
           currentUserId={currentUser?.id}
           currentUserRole={currentUserRole}
         />
+
+        {isLeader && (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={handleDeleteGroup}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={20} color="#DC2626" />
+            <Text style={styles.deleteButtonText}>Giải tán nhóm</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      <AppDialogModal
+        visible={showDeleteConfirm}
+        variant="warning"
+        title="Giải tán nhóm"
+        message="Bạn có chắc chắn muốn giải tán nhóm này không? Hành động này không thể hoàn tác."
+        primaryLabel="Giải tán"
+        primaryDestructive
+        onPrimaryPress={() => {
+          setShowDeleteConfirm(false);
+          if (id) deleteGroup(id);
+        }}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setShowDeleteConfirm(false)}
+        onRequestClose={() => setShowDeleteConfirm(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -812,6 +848,24 @@ const styles = StyleSheet.create({
   },
   memberRoleText: {
     fontSize: 12,
+    fontWeight: "600",
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FEF2F2",
+    marginTop: 24,
+    marginBottom: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#FEE2E2",
+    gap: 8,
+  },
+  deleteButtonText: {
+    color: "#DC2626",
+    fontSize: 16,
     fontWeight: "600",
   },
 });

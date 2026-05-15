@@ -18,8 +18,13 @@ export function expoImageSourceForGoogleRaster(uri: string) {
     (u.includes("places.googleapis.com") ||
       u.includes("maps.googleapis.com/maps/api/staticmap") ||
       // Places API (New) photo media endpoint
+      u.includes("/media?maxHeightPx=") ||
       u.includes("/media?maxWidthPx="))
   ) {
+    // Nếu URL đã có key= thì không add header để tránh conflict
+    if (u.includes("key=")) {
+      return { uri: u };
+    }
     return { uri: u, headers: { "X-Goog-Api-Key": key } };
   }
   return { uri: u };

@@ -13,6 +13,8 @@ export interface SuggestionLocationResponse {
   /** Một số bản BE trả thêm — giữ để UI tương thích */
   full_address?: string;
   place_formatted?: string;
+  provider_id?: string;
+  provider?: string;
 }
 
 export interface LocationSuggestionUser {
@@ -43,10 +45,11 @@ export interface SuggestLocationRequest {
     provider: string;
     provider_id: string;
     name: string;
-    latitude: number;
-    longitude: number;
+    latitude?: number;
+    longitude?: number;
     full_address?: string;
     location_type?: string;
+    primary_type?: string;
   };
 }
 

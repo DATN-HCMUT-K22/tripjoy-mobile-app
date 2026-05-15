@@ -20,12 +20,14 @@ const FALLBACK_IMAGE =
 export function mapLocationDtoToTripLocation(dto: LocationDto): Location {
   const lat = dto.latitude ?? dto.lat;
   const lon = dto.longitude ?? dto.lng;
+  const latNum = Number(lat);
+  const lonNum = Number(lon);
   const hasCoords =
-    typeof lat === "number" &&
-    typeof lon === "number" &&
-    !Number.isNaN(lat) &&
-    !Number.isNaN(lon);
-  const coordLine = hasCoords ? formatLatLngForDisplay(lat, lon) : null;
+    lat != null &&
+    lon != null &&
+    !Number.isNaN(latNum) &&
+    !Number.isNaN(lonNum);
+  const coordLine = hasCoords ? formatLatLngForDisplay(latNum, lonNum) : null;
 
   const baseLabel =
     dto.address ||
@@ -43,6 +45,10 @@ export function mapLocationDtoToTripLocation(dto: LocationDto): Location {
     DISTRICT: "Quận / Huyện",
     WARD: "Phường / Xã",
     REGION: "Khu vực / Vùng",
+    TOURIST_ATTRACTION: "Điểm tham quan",
+    MUSEUM: "Bảo tàng",
+    PARK: "Công viên",
+    LANDMARK: "Địa danh",
   };
   const typeText = locType ? (typeMap[locType] || dto.location_type) : "";
 
@@ -58,7 +64,7 @@ export function mapLocationDtoToTripLocation(dto: LocationDto): Location {
   /** Ảnh preview khớp địa lý: bản đồ tĩnh tại tâm tỉnh (không dùng ảnh stock xoay vòng — dễ lệch cảnh như Hạ Long). */
   const image = hasCoords
     ? buildStaticMapImageUrl(
-        [{ latitude: lat, longitude: lon }],
+        [{ latitude: latNum, longitude: lonNum }],
         { width: 800, height: 512, zoom: 10 }
       )
     : FALLBACK_IMAGE;
@@ -73,8 +79,8 @@ export function mapLocationDtoToTripLocation(dto: LocationDto): Location {
     rating: 0,
     priceRange: { min: 0, max: 0 },
     specialty: subtitle,
-    ...(hasCoords ? { latitude: lat, longitude: lon } : {}),
-    provider: dto.provider || "GOOGLE_MAPS",
+    ...(hasCoords ? { latitude: latNum, longitude: lonNum } : {}),
+    provider: (dto as any).provider || "GOOGLE_MAPS",
     provider_id: dto.provider_id,
   };
 }
@@ -92,13 +98,13 @@ export function locationSearchHitToExternalSnapshot(
   const types = (hit.poiCategories ?? hit.poi_categories ?? []).filter(
     (t): t is string => typeof t === "string"
   );
+  const latNum = lat != null ? Number(lat) : NaN;
+  const lngNum = lng != null ? Number(lng) : NaN;
   const imageUrl =
-    lat != null &&
-    lng != null &&
-    !Number.isNaN(lat) &&
-    !Number.isNaN(lng)
+    !Number.isNaN(latNum) &&
+    !Number.isNaN(lngNum)
       ? buildStaticMapImageUrl(
-          [{ latitude: lat, longitude: lng }],
+          [{ latitude: latNum, longitude: lngNum }],
           { width: 400, height: 400, zoom: 16 }
         )
       : "";
@@ -106,8 +112,8 @@ export function locationSearchHitToExternalSnapshot(
     name: hit.name,
     subtitle: addr || "Địa điểm",
     imageUrl,
-    latitude: lat,
-    longitude: lng,
+    latitude: !Number.isNaN(latNum) ? latNum : undefined,
+    longitude: !Number.isNaN(lngNum) ? lngNum : undefined,
     types: types.length ? types : ["point_of_interest"],
   };
 }

@@ -1,4 +1,5 @@
 import { ChatBubble } from "@/components/chat/ChatBubble";
+import { SwipeableMessage } from "@/components/chat/SwipeableMessage";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { MessageActionSheet } from "@/components/chat/MessageActionSheet";
 import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
@@ -9,6 +10,7 @@ import { MentionSuggestions, MentionUser } from "@/components/chat/MentionSugges
 import { mockItineraries } from "@/data/mockItineraries";
 import { useMessages } from "@/hooks/useMessages";
 import { usePinnedMessages } from "@/hooks/usePinnedMessages";
+import { useGroupConfirmedItinerary } from "@/hooks/useItineraries";
 import { conversationService } from "@/services/conversations";
 import { uploadImage, uploadVideo } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
@@ -96,7 +98,7 @@ const shouldShowDateSeparator = (
 
 type ListItem =
   | { type: "date"; key: string; date: string }
-  | { type: "message"; key: string; message: ChatMessageResponse; showSenderName: boolean };
+  | { type: "message"; key: string; message: ChatMessageResponse; showSenderName: boolean; showAvatar: boolean };
 
 export default function GroupChatScreen() {
   const router = useRouter();
@@ -163,8 +165,28 @@ export default function GroupChatScreen() {
     return Number.isFinite(n) ? n : undefined;
   })();
 
-  // ConversationId - chỉ dùng từ params, không cần load toàn bộ danh sách
-  const conversationId = paramConversationId || null;
+  // 1. Resolve conversationId if missing (e.g. navigation from Group Info/Detail without conversationId)
+  const { data: resolvedConversationId, isLoading: isResolving } = useQuery({
+    queryKey: ["resolve-group-conversation", groupId],
+    queryFn: async () => {
+      if (paramConversationId) return paramConversationId;
+      if (!groupId) return null;
+      
+      console.log(`🔍 [GROUP CHAT] Resolving conversationId for groupId: ${groupId}`);
+      const res = await conversationService.getConversations();
+      if (isApiSuccess(res.code)) {
+        const found = res.data?.find(c => String(c.group_id) === String(groupId));
+        console.log(`✅ [GROUP CHAT] Resolved conversationId: ${found?.id || "NOT FOUND"}`);
+        return found?.id || null;
+      }
+      return null;
+    },
+    enabled: !paramConversationId && !!groupId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // ConversationId - ưu tiên param, sau đó đến resolved
+  const conversationId = paramConversationId || resolvedConversationId || null;
 
   // Conversation đang mở — dùng để không hiện banner tin nhắn từ chính conversation này
   useEffect(() => {
@@ -265,6 +287,7 @@ export default function GroupChatScreen() {
     sendMessage,
     likeMessage,
     unlikeMessage,
+    deleteMessage,
     pinMessage,
     unpinMessage,
     loadMore,
@@ -534,36 +557,8 @@ export default function GroupChatScreen() {
     setLikesModalVisible(true);
   }, []);
 
-  // Lấy lịch trình gần đây từ mockItineraries dựa trên groupId
-  const recentItinerary = useMemo(() => {
-    if (!params.id) return null;
-    const groupItineraries = mockItineraries.filter(
-      (it) => `${it.groupId}` === `${params.id}`
-    );
-    if (groupItineraries.length === 0) return null;
-
-    // Lấy lịch trình mới nhất (sắp xếp theo startDate)
-    const latest = groupItineraries.sort(
-      (a, b) =>
-        new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
-    )[0];
-
-    // Format date
-    const formatDate = (dateString: string) => {
-      const date = new Date(dateString);
-      const day = String(date.getDate()).padStart(2, "0");
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const year = date.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
-
-    return {
-      name: latest.name,
-      image: latest.image,
-      startDate: formatDate(latest.startDate),
-      endDate: formatDate(latest.endDate),
-    };
-  }, [params.id]);
+  // Lấy lịch trình CONFIRMED từ API
+  const { data: confirmedItinerary } = useGroupConfirmedItinerary(groupId);
 
   // FlatList data: date separators + messages; map messageId -> index
   const { listData, messageIdToIndex } = useMemo(() => {
@@ -572,12 +567,18 @@ export default function GroupChatScreen() {
     let prev: ChatMessageResponse | null = null;
     messages.forEach((msg) => {
       const showSep = shouldShowDateSeparator(msg, prev);
-      const showSender =
-        !prev || getChatSenderId(prev) !== getChatSenderId(msg);
+      const isNewSender = !prev || getChatSenderId(prev) !== getChatSenderId(msg);
+      const showSender = isNewSender || showSep;
       if (showSep) {
         list.push({ type: "date", key: `date-${msg.id}-${msg.created_at}`, date: msg.created_at });
       }
-      list.push({ type: "message", key: msg.id, message: msg, showSenderName: showSender });
+      list.push({ 
+        type: "message", 
+        key: msg.id, 
+        message: msg, 
+        showSenderName: showSender,
+        showAvatar: showSender 
+      });
       map.set(msg.id, list.length - 1);
       prev = msg;
     });
@@ -725,6 +726,34 @@ export default function GroupChatScreen() {
     [isPinning, unpinMessage]
   );
 
+  const handleDelete = useCallback(async (message: ChatMessageResponse) => {
+    const { Alert } = await import("react-native");
+    Alert.alert(
+      "Thu hồi tin nhắn",
+      "Bạn có chắc chắn muốn thu hồi tin nhắn này?",
+      [
+        {
+          text: "Hủy",
+          style: "cancel",
+        },
+        {
+          text: "Thu hồi",
+          style: "destructive",
+          onPress: async () => {
+            console.log(`\n🗑️ [UI ACTION] Deleting message: ${message.id}`);
+            try {
+              await deleteMessage(message.id);
+              console.log(`✅ [UI ACTION] Delete API success`);
+            } catch (err) {
+              console.error("❌ [UI ACTION] Delete failed:", err);
+              showErrorToast("Lỗi", "Không thể thu hồi tin nhắn");
+            }
+          },
+        },
+      ]
+    );
+  }, [deleteMessage]);
+
   const handlePinnedBarTap = useCallback(() => {
     if (pinnedMessages.length === 0) return;
     const msg = pinnedMessages[currentPinnedIndex];
@@ -750,16 +779,26 @@ export default function GroupChatScreen() {
         return <DateSeparator dateString={item.date} />;
       }
       return (
-        <ChatBubble
+        <SwipeableMessage
           message={item.message}
           currentUserId={currentUser?.id}
-          showSenderName={item.showSenderName}
-          onLike={handleLike}
-          onShowLikes={handleShowLikes}
-          onLongPress={() => handleLongPress(item.message)}
-          onImagePress={(url) => setPreviewImageUrl(url)}
-          isHighlighted={highlightMessageId === item.message.id}
-        />
+          onSwipeToReply={(msg) => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setReplyingToMessage(msg);
+          }}
+        >
+          <ChatBubble
+            message={item.message}
+            currentUserId={currentUser?.id}
+            showSenderName={item.showSenderName}
+            onLike={handleLike}
+            onShowLikes={handleShowLikes}
+            onLongPress={() => handleLongPress(item.message)}
+            onImagePress={(url) => setPreviewImageUrl(url)}
+            isHighlighted={highlightMessageId === item.message.id}
+            showAvatar={item.showAvatar}
+          />
+        </SwipeableMessage>
       );
     },
     [currentUser?.id, highlightMessageId, handleLike, handleLongPress]
@@ -828,7 +867,7 @@ export default function GroupChatScreen() {
             className="mr-3"
             activeOpacity={0.7}
           >
-            <Ionicons name="arrow-back" size={24} color="#000" />
+            <Ionicons name="arrow-back" size={24} color={isDark ? "#FFFFFF" : "#000000"} />
           </TouchableOpacity>
           {/* Group Avatar */}
           <TouchableOpacity
@@ -872,43 +911,51 @@ export default function GroupChatScreen() {
             }}
             className="flex-1 ml-3"
           >
-            <Text className="text-base font-bold text-black">
+            <Text style={{ fontSize: 16, fontWeight: "bold", color: isDark ? "#FFFFFF" : "#000000" }}>
               {groupName}
             </Text>
-            <Text className="text-xs text-gray-500 mt-0.5">
+            <Text style={{ fontSize: 12, color: isDark ? "#9CA3AF" : "#6B7280", marginTop: 2 }}>
               {memberCount} thành viên
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Information Banner - Lịch trình gần đây */}
-      {recentItinerary && (
+      {/* Information Banner - Lịch trình chính thức */}
+      {confirmedItinerary && (
         <TouchableOpacity
           activeOpacity={0.8}
           className="overflow-hidden"
           style={{
-            backgroundColor: "rgba(61, 158, 117, 0.58)", // #3D9E75 với opacity 58%
+            backgroundColor: "rgba(16, 185, 129, 0.7)", // Green CONFIRMED
             width: "100%",
+          }}
+          onPress={() => {
+            if (confirmedItinerary?.id) {
+              router.push(`/itinerary/detail?id=${confirmedItinerary.id}` as any);
+            }
           }}
         >
           <View className="flex-row items-center p-3">
             {/* Itinerary Image */}
             <Image
-              source={{ uri: recentItinerary.image }}
+              source={{ uri: confirmedItinerary.image }}
               style={{ width: 80, height: 80, borderRadius: 12 }}
               contentFit="cover"
             />
             {/* Text Content */}
             <View className="flex-1 ml-3">
-              <Text className="text-sm text-white mb-1 font-medium">
-                Lịch trình gần đây
-              </Text>
+              <View className="flex-row items-center mb-1">
+                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+                <Text className="text-sm text-white ml-1 font-medium">
+                  Lịch trình chính thức
+                </Text>
+              </View>
               <Text className="text-base font-bold text-white mb-1">
-                {recentItinerary.name}
+                {confirmedItinerary.name}
               </Text>
               <Text className="text-sm text-white">
-                {recentItinerary.startDate} - {recentItinerary.endDate}
+                {confirmedItinerary.startDate} - {confirmedItinerary.endDate}
               </Text>
             </View>
             {/* Arrow and View Details */}
@@ -942,7 +989,7 @@ export default function GroupChatScreen() {
         scrollEventThrottle={400}
         onScrollToIndexFailed={onScrollToIndexFailed}
         ListEmptyComponent={
-          loading && messages.length === 0 ? (
+          (loading || isResolving) && messages.length === 0 ? (
             <View className="py-8 items-center">
               <ActivityIndicator size="large" color="#34B27D" />
               <Text className="text-gray-500 mt-2">Đang tải tin nhắn...</Text>
@@ -1047,17 +1094,17 @@ export default function GroupChatScreen() {
         <View style={styles.inputWrapper}>
         <TouchableOpacity
           activeOpacity={0.7}
-          className="mr-3"
+          style={{ marginRight: 12 }}
           onPress={handlePickMedia}
           disabled={uploadingMedia || !conversationId}
         >
           <Ionicons
-            name="image-outline"
-            size={24}
-            color={uploadingMedia || !conversationId ? "#9CA3AF" : "#6B7280"}
+            name="images-outline"
+            size={26}
+            color={uploadingMedia || !conversationId ? "#9CA3AF" : (isDark ? "#9CA3AF" : "#6B7280")}
           />
         </TouchableOpacity>
-        <View className="flex-1">
+        <View style={{ flex: 1 }}>
           {showMentionSuggestions && (
             <View style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 100 }}>
               <MentionSuggestions
@@ -1093,7 +1140,15 @@ export default function GroupChatScreen() {
               setCursorPosition(event.nativeEvent.selection.start);
             }}
             placeholder="Nhắn tin..."
-            className="bg-gray-100 rounded-full px-4 py-3 text-sm"
+            style={{
+              backgroundColor: isDark ? "#2A2A2A" : "#F3F4F6",
+              borderRadius: 24,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              fontSize: 15,
+              color: isDark ? "#FFFFFF" : "#000000",
+              maxHeight: 120,
+            }}
             placeholderTextColor="#9CA3AF"
             multiline
             onSubmitEditing={handleSend}
@@ -1131,6 +1186,8 @@ export default function GroupChatScreen() {
         onReply={(msg) => {
           setReplyingToMessage(msg);
         }}
+        onDelete={handleDelete}
+        currentUserId={currentUser?.id}
       />
       <MessageLikesModal
         visible={likesModalVisible}

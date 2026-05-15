@@ -10,7 +10,7 @@ import {
   type TripItemResponse,
 } from "@/services/itineraries";
 import type { Itinerary as DisplayItinerary } from "@/types/group";
-import { parseItineraryDateToDayOnly } from "@/utils/itineraryDates";
+import { parseItineraryDateToDayOnly, tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { timeAgo } from "@/utils/format";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -88,7 +88,7 @@ function resolveTabByDates(startDate: string, endDate: string): GroupItineraryTa
   const endIncl = new Date(end);
   endIncl.setHours(23, 59, 59, 999);
   if (Number.isNaN(start.getTime()) && Number.isNaN(end.getTime())) return "draft";
-  if (!Number.isNaN(start.getTime()) && start > today) return "draft";
+  if (!Number.isNaN(start.getTime()) && start > today) return "ongoing";
   if (!Number.isNaN(endIncl.getTime()) && endIncl < today) return "completed";
   return "ongoing";
 }
@@ -185,16 +185,17 @@ export function useItineraries(options?: { enabled?: boolean }) {
   });
 }
 
-/** GET `/itineraries/favorites` */
-export function useFavoriteItineraries() {
+/** GET `/itineraries/{itineraryId}/favorites` */
+export function useFavoriteItineraries(itineraryId: string | undefined) {
   return useQuery({
-    queryKey: ["itineraries", "favorites"],
+    queryKey: ["itineraries", "favorites", itineraryId],
     queryFn: async (): Promise<DisplayItinerary[]> => {
+      if (!itineraryId) return [];
       if (EXPO_PUBLIC_MOCK_DATA) {
         await new Promise((r) => setTimeout(r, 200));
         return [];
       }
-      const res = await itineraryService.getFavoriteItineraries();
+      const res = await itineraryService.getFavoriteItineraries(itineraryId);
       const code = res?.code;
       if (code !== 0 && code !== 1000) {
         throw new Error(res?.message || "Không tải được lịch yêu thích");
@@ -202,6 +203,7 @@ export function useFavoriteItineraries() {
       const list = Array.isArray(res?.data) ? res.data : [];
       return list.map(mapApiItineraryToDisplay);
     },
+    enabled: !!itineraryId,
     staleTime: 60 * 1000,
   });
 }
@@ -395,6 +397,45 @@ export function useGroupItinerariesByTab(groupId: string | undefined) {
   });
 }
 
+/** GET group's CONFIRMED itinerary - hiển thị trong chat banner */
+export function useGroupConfirmedItinerary(groupId: string | undefined) {
+  return useQuery({
+    queryKey: ["itineraries", "group", groupId, "confirmed"],
+    queryFn: async () => {
+      if (!groupId) return null;
+
+      const res = await itineraryService.getItinerariesByGroupId(groupId);
+      const code = res?.code;
+      if (code !== 0 && code !== 1000) {
+        return null;
+      }
+
+      const list = Array.isArray(res?.data) ? res.data : [];
+
+      // Tìm itinerary có status CONFIRMED
+      const confirmed = list.find((it) => {
+        const status = normalizeStatus(it.status);
+        return status === ITINERARY_STATUS.CONFIRMED;
+      });
+
+      if (!confirmed) return null;
+
+      // Map sang display format
+      const display = mapApiItineraryToDisplay(confirmed);
+      return {
+        id: display.id,
+        name: display.name,
+        image: display.image || PLACEHOLDER_ITINERARY_IMAGE,
+        startDate: display.startDate,
+        endDate: display.endDate,
+        budget: display.budget,
+      };
+    },
+    enabled: !!groupId,
+    staleTime: 60 * 1000,
+  });
+}
+
 export function useCreateItinerary() {
   const queryClient = useQueryClient();
 
@@ -440,11 +481,12 @@ export function useAiModifyItinerary() {
   return useMutation({
     mutationFn: async (args: {
       itineraryId: string;
-      payload: AiModifyItineraryRequest;
+      payload: any; // Allow partial payload from UI
     }) => {
-      const res = await itineraryService.aiModifyItinerary(
-        args.payload
-      );
+      const res = await itineraryService.aiModifyItinerary({
+        ...args.payload,
+        itineraryId: args.itineraryId,
+      });
       const code = res?.code;
       if (code !== 0 && code !== 1000) {
         throw new Error(res?.message || "Không điều chỉnh được lịch bằng AI");
@@ -518,27 +560,77 @@ export function useUpdateItinerary() {
 
 export function useConfirmItinerary() {
   const updateMutation = useUpdateItinerary();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (itinerary: ItineraryResponse) => {
-      if (!itinerary.id) throw new Error("Missing itinerary id");
+      if (!itinerary.id || !itinerary.group_id) {
+        throw new Error("Missing itinerary id or group_id");
+      }
 
+      // Step 1: Lấy tất cả itineraries của nhóm
+      const res = await itineraryService.getItinerariesByGroupId(itinerary.group_id);
+      const code = res?.code;
+      if (code !== 0 && code !== 1000) {
+        throw new Error(res?.message || "Không tải được danh sách lịch trình");
+      }
+
+      const allItineraries = Array.isArray(res?.data) ? res.data : [];
+
+      // Step 2: Tìm các itinerary đang CONFIRMED (ngoài itinerary hiện tại)
+      const otherConfirmed = allItineraries.filter((it) => {
+        if (it.id === itinerary.id) return false;
+        const status = normalizeStatus(it.status);
+        return status === ITINERARY_STATUS.CONFIRMED;
+      });
+
+      // Step 3: Set các itinerary đang CONFIRMED về DRAFT
+      for (const other of otherConfirmed) {
+        if (!other.id) continue;
+
+        await itineraryService.updateItinerary(other.id, {
+          name: other.title || "",
+          description: other.description || "",
+          start_date: tripPickerDateToItineraryDateTime(other.start_date, "start"),
+          end_date: tripPickerDateToItineraryDateTime(other.end_date || other.start_date, "end"),
+          people_quantity: other.people_quantity,
+          budget_estimate: other.budget_estimate,
+          themes: other.themes,
+          group_id: other.group_id ?? undefined,
+          status: ITINERARY_STATUS.DRAFT, // ← Set về DRAFT
+        });
+      }
+
+      // Step 4: Confirm itinerary hiện tại
       const payload: ItineraryRequest = {
         name: itinerary.title || "",
         description: itinerary.description || "",
-        start_date: itinerary.start_date || "",
-        end_date: itinerary.end_date || "",
+        start_date: tripPickerDateToItineraryDateTime(itinerary.start_date, "start"),
+        end_date: tripPickerDateToItineraryDateTime(itinerary.end_date || itinerary.start_date, "end"),
         people_quantity: itinerary.people_quantity,
         budget_estimate: itinerary.budget_estimate,
         themes: itinerary.themes,
         group_id: itinerary.group_id ?? undefined,
-        status: ITINERARY_STATUS.CONFIRMED,
+        status: ITINERARY_STATUS.CONFIRMED, // ← Set CONFIRMED
       };
 
       return updateMutation.mutateAsync({
         itineraryId: itinerary.id,
         payload,
       });
+    },
+    onSuccess: async (_, variables) => {
+      // Invalidate tất cả queries liên quan
+      await queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+      if (variables.group_id) {
+        await queryClient.invalidateQueries({
+          queryKey: ["itineraries", "group", variables.group_id],
+        });
+      }
+      showSuccessToast("Đã áp dụng lịch trình chính thức!");
+    },
+    onError: (error: Error) => {
+      showErrorToast("Áp dụng lịch trình thất bại", error);
     },
   });
 }
@@ -652,22 +744,51 @@ export function useDeleteTripItem() {
 /** Usecase 3: Gợi ý địa điểm thay thế bằng AI */
 export function useAiSuggestLocation() {
   return useMutation({
-    mutationFn: async ({
-      itineraryId,
-      tripItemId,
-    }: {
-      itineraryId: string;
-      tripItemId: string;
-    }) => {
-      const res = await itineraryService.suggestAlternativeLocation(
-        itineraryId,
-        tripItemId // tripItemId ở đây đóng vai trò là unwantedPlaceId
-      );
+    mutationFn: async (payload: { itineraryId: string; unwantedPlaceId: string }) => {
+      const res = await itineraryService.suggestAlternativeLocation(payload);
       const code = res?.code;
       if (code === 0 || code === 1000) {
         return res.data ?? [];
       }
       throw new Error(res?.message || "Không thể lấy gợi ý địa điểm");
+    },
+  });
+}
+
+export function useFavoriteItinerary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (itineraryId: string) => {
+      const res = await itineraryService.favoriteItinerary(itineraryId);
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data;
+      }
+      throw new Error(res?.message || "Không thể yêu thích lịch trình");
+    },
+    onSuccess: (_, itineraryId) => {
+      queryClient.invalidateQueries({ queryKey: ["itineraries", "favorites"] });
+      showSuccessToast("Đã lưu vào danh sách yêu thích");
+    },
+  });
+}
+
+export function useUnfavoriteItinerary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (itineraryId: string) => {
+      const res = await itineraryService.unfavoriteItinerary(itineraryId);
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data;
+      }
+      throw new Error(res?.message || "Không thể bỏ yêu thích lịch trình");
+    },
+    onSuccess: (_, itineraryId) => {
+      queryClient.invalidateQueries({ queryKey: ["itineraries", "favorites"] });
+      showSuccessToast("Đã bỏ khỏi danh sách yêu thích");
     },
   });
 }
