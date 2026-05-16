@@ -54,7 +54,7 @@ export function useUserPosts(userId: string | null) {
         creatorId: userId, // Ensure Spring @ModelAttribute binding works regardless of naming strategy
         page: pageParam as number,
         size: 20,
-        sort: 'createdAt,desc',
+        sort: 'newest',
       });
 
       // Handle both array and paginated response formats

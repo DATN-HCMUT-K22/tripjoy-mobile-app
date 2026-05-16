@@ -7,9 +7,10 @@ export function placeListItemToSnapshot(
   row: GooglePlaceListItem
 ): ExternalPlaceSnapshot {
   return {
+    providerId: row.id,
     name: row.name,
     subtitle: row.subtitle,
-    imageUrl: row.imageUrl,
+    imageUrl: row.id ? "" : row.imageUrl,
     latitude: row.latitude,
     longitude: row.longitude,
     types: row.types,

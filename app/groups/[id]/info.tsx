@@ -425,7 +425,7 @@ export default function GroupInfoScreen() {
                         Ngân sách: {formatCurrencyVND(it.budget)}
                       </Text>
                     )}
-                    {itineraryTab === "draft" && (
+                    {itineraryTab === "draft" && isLeader && (
                       <TouchableOpacity
                         onPress={() => handleApplyItinerary(it)}
                         activeOpacity={0.7}

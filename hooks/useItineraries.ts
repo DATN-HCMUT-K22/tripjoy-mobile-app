@@ -16,7 +16,7 @@ import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-const PLACEHOLDER_ITINERARY_IMAGE =
+export const PLACEHOLDER_ITINERARY_IMAGE =
   "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400";
 
 export type GroupItineraryTab = "ongoing" | "completed" | "draft";
@@ -120,11 +120,12 @@ function resolveItineraryTab(
   if (s === ITINERARY_STATUS.IN_PROGRESS) {
     return "ongoing";
   }
+  if (s === ITINERARY_STATUS.CONFIRMED) {
+    // Confirmed itineraries will be shown in a separate Hero section at the top
+    return null;
+  }
   if (s === ITINERARY_STATUS.DRAFT) {
     return "draft";
-  }
-  if (s === ITINERARY_STATUS.CONFIRMED) {
-    return resolveTabByDates(startDate, endDate);
   }
 
   if (
@@ -429,6 +430,7 @@ export function useGroupConfirmedItinerary(groupId: string | undefined) {
         startDate: display.startDate,
         endDate: display.endDate,
         budget: display.budget,
+        raw: confirmed,
       };
     },
     enabled: !!groupId,
@@ -559,68 +561,23 @@ export function useUpdateItinerary() {
 }
 
 export function useConfirmItinerary() {
-  const updateMutation = useUpdateItinerary();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (itinerary: ItineraryResponse) => {
-      if (!itinerary.id || !itinerary.group_id) {
-        throw new Error("Missing itinerary id or group_id");
+      if (!itinerary.id) {
+        throw new Error("Missing itinerary id");
       }
 
-      // Step 1: Lấy tất cả itineraries của nhóm
-      const res = await itineraryService.getItinerariesByGroupId(itinerary.group_id);
+      const res = await itineraryService.updateItineraryStatus(itinerary.id, ITINERARY_STATUS.CONFIRMED);
       const code = res?.code;
-      if (code !== 0 && code !== 1000) {
-        throw new Error(res?.message || "Không tải được danh sách lịch trình");
+      if (code === 0 || code === 1000) {
+        return res.data ?? {};
       }
-
-      const allItineraries = Array.isArray(res?.data) ? res.data : [];
-
-      // Step 2: Tìm các itinerary đang CONFIRMED (ngoài itinerary hiện tại)
-      const otherConfirmed = allItineraries.filter((it) => {
-        if (it.id === itinerary.id) return false;
-        const status = normalizeStatus(it.status);
-        return status === ITINERARY_STATUS.CONFIRMED;
-      });
-
-      // Step 3: Set các itinerary đang CONFIRMED về DRAFT
-      for (const other of otherConfirmed) {
-        if (!other.id) continue;
-
-        await itineraryService.updateItinerary(other.id, {
-          name: other.title || "",
-          description: other.description || "",
-          start_date: tripPickerDateToItineraryDateTime(other.start_date, "start"),
-          end_date: tripPickerDateToItineraryDateTime(other.end_date || other.start_date, "end"),
-          people_quantity: other.people_quantity,
-          budget_estimate: other.budget_estimate,
-          themes: other.themes,
-          group_id: other.group_id ?? undefined,
-          status: ITINERARY_STATUS.DRAFT, // ← Set về DRAFT
-        });
-      }
-
-      // Step 4: Confirm itinerary hiện tại
-      const payload: ItineraryRequest = {
-        name: itinerary.title || "",
-        description: itinerary.description || "",
-        start_date: tripPickerDateToItineraryDateTime(itinerary.start_date, "start"),
-        end_date: tripPickerDateToItineraryDateTime(itinerary.end_date || itinerary.start_date, "end"),
-        people_quantity: itinerary.people_quantity,
-        budget_estimate: itinerary.budget_estimate,
-        themes: itinerary.themes,
-        group_id: itinerary.group_id ?? undefined,
-        status: ITINERARY_STATUS.CONFIRMED, // ← Set CONFIRMED
-      };
-
-      return updateMutation.mutateAsync({
-        itineraryId: itinerary.id,
-        payload,
-      });
+      throw new Error(res?.message || "Không thể áp dụng lịch trình");
     },
     onSuccess: async (_, variables) => {
-      // Invalidate tất cả queries liên quan
+      // Invalidate queries to refresh data
       await queryClient.invalidateQueries({ queryKey: ["itineraries"] });
       if (variables.group_id) {
         await queryClient.invalidateQueries({
@@ -629,8 +586,51 @@ export function useConfirmItinerary() {
       }
       showSuccessToast("Đã áp dụng lịch trình chính thức!");
     },
-    onError: (error: Error) => {
-      showErrorToast("Áp dụng lịch trình thất bại", error);
+    onError: (error: any) => {
+      const errorCode = error.response?.data?.code;
+      let message = error.message || "Áp dụng lịch trình thất bại";
+
+      if (errorCode === 3004) {
+        message = "Chỉ trưởng nhóm mới có quyền áp dụng lịch trình.";
+      } else if (errorCode === 11001) {
+        message = "Nhóm đã có một lịch trình đang hoạt động. Hãy hoàn thành hoặc hủy lịch trình cũ trước khi áp dụng lịch trình mới.";
+      } else if (errorCode === 11002) {
+        message = "Trạng thái lịch trình không hợp lệ cho thao tác này.";
+      }
+
+      showErrorToast("Áp dụng thất bại", message);
+    },
+  });
+}
+
+export function useUpdateItineraryStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ itineraryId, status, groupId }: { itineraryId: string; status: string; groupId?: string }) => {
+      const res = await itineraryService.updateItineraryStatus(itineraryId, status);
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return { data: res.data, status, groupId };
+      }
+      throw new Error(res?.message || "Không thể cập nhật trạng thái");
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+      if (data.groupId) {
+        await queryClient.invalidateQueries({
+          queryKey: ["itineraries", "group", data.groupId],
+        });
+      }
+      
+      let msg = "Cập nhật trạng thái thành công!";
+      if (data.status === ITINERARY_STATUS.IN_PROGRESS) msg = "Bắt đầu chuyến đi! Chúc bạn có một hành trình vui vẻ.";
+      if (data.status === ITINERARY_STATUS.COMPLETED) msg = "Chúc mừng bạn đã hoàn thành chuyến đi!";
+      
+      showSuccessToast(msg);
+    },
+    onError: (error: any) => {
+      showErrorToast("Lỗi", error.message || "Không thể cập nhật trạng thái");
     },
   });
 }

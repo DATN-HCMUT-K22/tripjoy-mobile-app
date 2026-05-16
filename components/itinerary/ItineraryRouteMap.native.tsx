@@ -267,8 +267,6 @@ const styles = StyleSheet.create({
   /** Fills the clip region. Matches height via flex. */
   mapContainer: {
     flex: 1,
-    borderRadius: 16,
-    overflow: "hidden", // Move overflow here to ensure standard container behavior
   },
   /** Shown when native map is unavailable. */
   fallback: {

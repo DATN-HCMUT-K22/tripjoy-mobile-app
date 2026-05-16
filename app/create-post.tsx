@@ -2,6 +2,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useItineraries } from "@/hooks/useItineraries";
 import { useAppSelector } from "@/store/hooks";
 import { uploadImage, uploadVideo, type MediaUploadResponse } from "@/services/media";
+import { getPostById } from "@/services/social";
 import type { Itinerary } from "@/types/group";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
@@ -32,7 +33,9 @@ import {
   clearPendingItinerary,
   getPendingItinerary,
 } from "@/utils/pendingItinerarySelection";
-import { useCreatePost } from "@/hooks/usePostManagement";
+import { useCreatePost, useUpdatePost } from "@/hooks/usePostManagement";
+import { useQuery } from "@tanstack/react-query";
+import { mapPostData } from "@/utils/mappers";
 
 const ITINERARY_PLACEHOLDER_IMAGE = require("@/assets/images/loading_img.jpg");
 const MAX_CONTENT_LENGTH = 5000;
@@ -60,7 +63,6 @@ function computeDurationLabel(start: string, end: string): string {
 }
 
 function extractHashtags(content: string): string[] {
-  // Use Unicode-aware regex to support Vietnamese characters
   const regex = /#([\p{L}\p{N}_]+)/gu;
   const matches = content.match(regex) || [];
   return matches.map(tag => tag.slice(1).toLowerCase());
@@ -68,7 +70,10 @@ function extractHashtags(content: string): string[] {
 
 export default function CreatePostScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ itineraryId?: string }>();
+  const params = useLocalSearchParams<{ itineraryId?: string; postId?: string; id?: string }>();
+  const editPostId = params.postId || params.id;
+  const isEditing = !!editPostId;
+
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const accessToken = useAppSelector((state) => state.auth.accessToken);
   const shouldLoadAuthenticatedData = isAuthenticated || !!accessToken;
@@ -77,7 +82,28 @@ export default function CreatePostScreen() {
   });
   const { requireAuth, checkAuth, showLoginModal, setShowLoginModal } = useRequireAuth();
   const currentUser = useAppSelector((state) => state.auth.user);
+  
   const createPostMutation = useCreatePost();
+  const updatePostMutation = useUpdatePost();
+
+  // Fetch existing post if editing
+  const { data: postResponse, isLoading: isLoadingPost } = useQuery({
+    queryKey: ['posts', editPostId],
+    queryFn: async () => {
+      const response = await getPostById(editPostId as string);
+      if (response?.data) {
+        return {
+          ...response,
+          data: mapPostData(response.data)
+        };
+      }
+      return response;
+    },
+    enabled: isEditing,
+  });
+
+  const post = postResponse?.data;
+
   const [content, setContent] = useState("");
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [hashtagInput, setHashtagInput] = useState("");
@@ -99,14 +125,37 @@ export default function CreatePostScreen() {
     }
   }, [checkAuth, shouldLoadAuthenticatedData]);
 
-  // Load default post visibility preference
+  // Load default post visibility preference (only if not editing)
   useEffect(() => {
-    const loadDefaultVisibility = async () => {
-      const defaultVisibility = await storage.getDefaultPostVisibility();
-      setPrivacy(defaultVisibility.toLowerCase() as PrivacyType);
-    };
-    void loadDefaultVisibility();
-  }, []);
+    if (!isEditing) {
+      const loadDefaultVisibility = async () => {
+        const defaultVisibility = await storage.getDefaultPostVisibility();
+        setPrivacy(defaultVisibility.toLowerCase() as PrivacyType);
+      };
+      void loadDefaultVisibility();
+    }
+  }, [isEditing]);
+
+  // Pre-fill form if editing
+  useEffect(() => {
+    if (post && isEditing) {
+      setContent(post.content || post.caption || "");
+      setPrivacy(post.visibility === "PRIVATE" ? "private" : "public");
+      setHashtags(post.hashtags || []);
+      
+      if (post.media_urls && post.media_urls.length > 0) {
+        setSelectedMedia(post.media_urls.map(url => ({
+          uri: url,
+          kind: url.includes('.mp4') || url.includes('.mov') ? 'video' : 'image', // Basic check
+        })));
+      }
+
+      if (post.itinerary) {
+        const itFromList = myItineraries.find(x => String(x.id) === String(post.itinerary!.id));
+        setSelectedItinerary(itFromList || (post.itinerary as any as Itinerary));
+      }
+    }
+  }, [post, isEditing, myItineraries]);
 
   const formatItineraryDateRange = (start: string, end: string) => {
     const f = (s: string) => {
@@ -255,14 +304,15 @@ export default function CreatePostScreen() {
       setIsSubmitting(true);
       try {
         const uploadedUrls: string[] = [];
-        const uploadedPublicIds: string[] = []; // Track for potential cleanup
+        const existingRemoteUrls = selectedMedia.filter(m => m.uri.startsWith('http')).map(m => m.uri);
+        const newLocalMedia = selectedMedia.filter(m => !m.uri.startsWith('http'));
 
-        if (selectedMedia.length > 0) {
+        if (newLocalMedia.length > 0) {
           const folder = currentUser?.id ? `tripjoy/posts/${currentUser.id}` : "tripjoy/posts";
 
-          for (let i = 0; i < selectedMedia.length; i++) {
-            const item = selectedMedia[i];
-            setUploadProgress(`Đang tải ${i + 1}/${selectedMedia.length}...`);
+          for (let i = 0; i < newLocalMedia.length; i++) {
+            const item = newLocalMedia[i];
+            setUploadProgress(`Đang tải ${i + 1}/${newLocalMedia.length}...`);
 
             try {
               let result: MediaUploadResponse;
@@ -282,46 +332,107 @@ export default function CreatePostScreen() {
                 });
               }
               uploadedUrls.push(result.secure_url);
-              uploadedPublicIds.push(result.public_id); // For cleanup tracking
             } catch (uploadError) {
               console.error(`Upload failed for media ${i + 1}:`, uploadError);
-
-              // NOTE: Cloudinary cleanup requires admin API key (backend should handle this)
-              // For now, just report the error and stop the process
-
               showErrorToast(
                 "Lỗi tải ảnh",
-                `Không thể tải file ${i + 1}/${selectedMedia.length}. Vui lòng thử lại.`
+                `Không thể tải file ${i + 1}/${newLocalMedia.length}. Vui lòng thử lại.`
               );
-              return; // Stop the upload process
+              return;
             }
           }
         }
 
+        const finalMediaUrls = [...existingRemoteUrls, ...uploadedUrls];
         const extractedHashtags = extractHashtags(content);
         const allHashtags = Array.from(new Set([...hashtags, ...extractedHashtags]));
 
-        setUploadProgress("Đang đăng bài...");
+        setUploadProgress(isEditing ? "Đang cập nhật bài viết..." : "Đang đăng bài...");
 
-        await createPostMutation.mutateAsync({
-          content: content.trim(),
-          media_urls: uploadedUrls,
-          hashtags: allHashtags,
-          visibility: privacy.toUpperCase() as 'PUBLIC' | 'PRIVATE',
-          itinerary_id: selectedItinerary?.id,
-        });
+        if (isEditing) {
+          await updatePostMutation.mutateAsync({
+            postId: editPostId as string,
+            payload: {
+              content: content.trim(),
+              media_urls: finalMediaUrls,
+              hashtags: allHashtags,
+              visibility: privacy.toUpperCase() as 'PUBLIC' | 'PRIVATE',
+              itinerary_id: selectedItinerary?.id,
+            },
+          });
+        } else {
+          await createPostMutation.mutateAsync({
+            content: content.trim(),
+            media_urls: finalMediaUrls,
+            hashtags: allHashtags,
+            visibility: privacy.toUpperCase() as 'PUBLIC' | 'PRIVATE',
+            itinerary_id: selectedItinerary?.id,
+          });
+        }
       } catch (error: unknown) {
         const msg =
           error instanceof Error
             ? error.message
-            : "Không thể đăng bài. Vui lòng thử lại.";
-        showErrorToast("Đăng bài thất bại", msg);
+            : "Thao tác thất bại. Vui lòng thử lại.";
+        showErrorToast(isEditing ? "Cập nhật thất bại" : "Đăng bài thất bại", msg);
       } finally {
         setIsSubmitting(false);
         setUploadProgress("");
       }
     });
   };
+
+  if (isEditing && isLoadingPost) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#34B27D" />
+          <Text style={styles.loadingText}>Đang tải bài viết...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Check ownership if editing
+  const isOwner = post && currentUser && (post.creator_id === currentUser.id);
+  if (isEditing && post && !isOwner) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="lock-closed-outline" size={64} color="#DC2626" />
+          <Text style={styles.errorTitle}>Không có quyền truy cập</Text>
+          <Text style={styles.errorText}>Bạn không có quyền chỉnh sửa bài viết này</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.backButtonText}>Quay lại</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Handle post not found
+  if (isEditing && !isLoadingPost && !post) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={64} color="#DC2626" />
+          <Text style={styles.errorTitle}>Không tìm thấy bài viết</Text>
+          <Text style={styles.errorText}>Bài viết không tồn tại hoặc đã bị xóa</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.backButtonText}>Quay lại</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -338,7 +449,7 @@ export default function CreatePostScreen() {
           >
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Tạo bài viết</Text>
+          <Text style={styles.headerTitle}>{isEditing ? "Chỉnh sửa bài viết" : "Tạo bài viết"}</Text>
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={isSubmitting || (!content.trim() && selectedMedia.length === 0) || !selectedItinerary}
@@ -351,7 +462,7 @@ export default function CreatePostScreen() {
                   styles.postButtonDisabled,
               ]}
             >
-              Đăng
+              {isEditing ? "Lưu" : "Đăng"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1083,5 +1194,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4B5563',
     lineHeight: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#6B7280",
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  backButton: {
+    backgroundColor: "#34B27D",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  itineraryRemoveLink: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#DC2626",
   },
 });

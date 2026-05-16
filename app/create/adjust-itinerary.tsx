@@ -11,6 +11,9 @@ import {
   parseLatLngFromGoogleMapsUrl,
 } from "@/utils/mapLocations";
 import { buildItineraryItemForLocationId } from "@/utils/placeItinerary";
+import {
+  useDeleteTripItem,
+} from "@/hooks/useItineraries";
 import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import TimePickerModal from "@/components/TimePickerModal";
@@ -18,6 +21,7 @@ import { AppDialogModal } from "@/components/common/AppDialogModal";
 import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { LocationImage } from "@/components/location/LocationImage";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -136,11 +140,17 @@ function AdjustableItem({
               />
             </View>
 
-            {/* Hình ảnh bo góc - tăng kích thước */}
-            <Image
-              source={expoImageSourceForGoogleRaster(item.image)}
+            {/* Hình ảnh bo góc - tự động fetch ảnh từ providerId */}
+            <LocationImage
+              location={{
+                id: item.locationId,
+                name: item.name,
+                provider_id: item.providerId,
+                content: item.image,
+                latitude: ext?.latitude ?? attraction?.latitude,
+                longitude: ext?.longitude ?? attraction?.longitude,
+              } as any}
               style={{ width: 135, height: 80, borderRadius: 12 }}
-              contentFit="cover"
             />
 
             {/* Tên và subtitle */}
@@ -196,7 +206,11 @@ export default function AdjustItineraryScreen() {
     addItineraryItemsToDay,
   } = useItinerary();
   const { pendingLocationIds, clearPendingLocationIds } = useTempLocation();
-  const { dayKey: scrollDayKey } = useLocalSearchParams<{ dayKey?: string }>();
+  const { dayKey: scrollDayKey, itineraryId } = useLocalSearchParams<{ 
+    dayKey?: string;
+    itineraryId?: string;
+  }>();
+  const deleteTripItemMutation = useDeleteTripItem();
 
   // Tạo danh sách các ngày
   const days = useMemo(() => {
@@ -569,10 +583,24 @@ export default function AdjustItineraryScreen() {
     setDeleteConfirmVisible(true);
   };
 
-  const confirmDeleteItem = () => {
+  const confirmDeleteItem = async () => {
     if (!itemToDelete) return;
     const item = itemToDelete;
     
+    // Nếu có itineraryId và item có ID thật (không phải id fake "it-..."), thực hiện xóa trên server
+    if (itineraryId && item.id && !item.id.startsWith("it-")) {
+      try {
+        await deleteTripItemMutation.mutateAsync({
+          itineraryId,
+          tripItemId: item.id
+        });
+      } catch (err) {
+        console.warn("[AdjustItinerary] Failed to delete item from server:", err);
+        // Vẫn tiếp tục xóa local state để UI mượt mà, 
+        // hoặc show toast lỗi nếu cần thiết.
+      }
+    }
+
     // Tìm dayKey nơi item đó tồn tại
     let targetDayKey = "";
     for (const key of Object.keys(draftItemsByDay)) {

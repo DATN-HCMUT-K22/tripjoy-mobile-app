@@ -89,12 +89,21 @@ const InteractiveMap: React.FC<Props> = ({
   );
 
   if (!center || !useNativeGoogleMap) {
+    const [imgUri, setImgUri] = useState(fallbackUri);
+    
     return (
       <View style={{ height }} className="w-full bg-gray-200 overflow-hidden rounded-2xl">
         <Image
-          source={expoImageSourceForGoogleRaster(fallbackUri)}
+          source={expoImageSourceForGoogleRaster(imgUri)}
           style={{ width: "100%", height: "100%" }}
           contentFit="cover"
+          onError={() => {
+            console.log(`[InteractiveMap] Failed to load fallback image: ${imgUri}`);
+            if (imgUri.includes("googleapis.com") && center) {
+              const yandex = `https://static-maps.yandex.ru/1.x/?ll=${center.longitude},${center.latitude}&z=14&l=map&size=450,450`;
+              setImgUri(yandex);
+            }
+          }}
         />
       </View>
     );

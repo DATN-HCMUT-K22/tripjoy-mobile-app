@@ -30,6 +30,9 @@ import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Video, ResizeMode } from "expo-av";
 import { Image } from "expo-image";
+import { useDeleteTripItems, useItineraryTripItems, useUpdateTripItem } from "@/hooks/useItineraries";
+import { LocationImage } from "@/components/location/LocationImage";
+import { PLACEHOLDER_ITINERARY_IMAGE } from "@/hooks/useItineraries";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -99,6 +102,28 @@ const shouldShowDateSeparator = (
 type ListItem =
   | { type: "date"; key: string; date: string }
   | { type: "message"; key: string; message: ChatMessageResponse; showSenderName: boolean; showAvatar: boolean };
+
+const ItineraryBannerImage = ({ itineraryId, defaultImage, style }: { itineraryId: string, defaultImage?: string, style: any }) => {
+  const { data: items, isLoading } = useItineraryTripItems(itineraryId);
+  const firstLocation = items?.[0]?.location;
+  
+  if (isLoading) {
+    return <Image source={{ uri: defaultImage || PLACEHOLDER_ITINERARY_IMAGE }} style={style} contentFit="cover" />;
+  }
+
+  if (!firstLocation || (defaultImage && defaultImage !== PLACEHOLDER_ITINERARY_IMAGE)) {
+    return <Image source={{ uri: defaultImage || PLACEHOLDER_ITINERARY_IMAGE }} style={style} contentFit="cover" />;
+  }
+
+  return (
+    <LocationImage
+      location={firstLocation}
+      style={style}
+      containerStyle={style}
+      placeholderIcon="map"
+    />
+  );
+};
 
 export default function GroupChatScreen() {
   const router = useRouter();
@@ -937,11 +962,11 @@ export default function GroupChatScreen() {
           }}
         >
           <View className="flex-row items-center p-3">
-            {/* Itinerary Image */}
-            <Image
-              source={{ uri: confirmedItinerary.image }}
+            {/* Itinerary Image - Dynamic from first location */}
+            <ItineraryBannerImage
+              itineraryId={confirmedItinerary.id}
+              defaultImage={confirmedItinerary.image}
               style={{ width: 80, height: 80, borderRadius: 12 }}
-              contentFit="cover"
             />
             {/* Text Content */}
             <View className="flex-1 ml-3">

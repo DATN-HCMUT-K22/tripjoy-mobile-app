@@ -109,9 +109,10 @@ export function locationSearchHitToExternalSnapshot(
         )
       : "";
   return {
+    providerId: hit.provider_id,
     name: hit.name,
     subtitle: addr || "Địa điểm",
-    imageUrl,
+    imageUrl: hit.provider_id ? "" : imageUrl,
     latitude: !Number.isNaN(latNum) ? latNum : undefined,
     longitude: !Number.isNaN(lngNum) ? lngNum : undefined,
     types: types.length ? types : ["point_of_interest"],

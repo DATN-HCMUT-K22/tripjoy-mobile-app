@@ -43,7 +43,7 @@ import { AppDialogModal } from "@/components/common/AppDialogModal";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 
 function dayKeyFromItem(row: TripItemResponse): string {
-  const raw = (row.start_time || "").trim();
+  const raw = typeof row.start_time === "string" ? row.start_time.trim() : "";
   if (!raw) return "_nodate";
   return parseItineraryDateToDayOnly(raw) || "_nodate";
 }
@@ -77,9 +77,9 @@ function coordsFromTripItem(row: TripItemResponse): { latitude: number; longitud
 
 function locationDisplayName(loc?: TripItemResponse["location"] | null, note?: string): string {
   if (loc) {
-    if (loc.name?.trim()) return loc.name.trim();
-    if (loc.place_formatted?.trim()) return loc.place_formatted.trim();
-    if (loc.full_address?.trim()) return loc.full_address.trim();
+    if (typeof loc.name === "string" && loc.name.trim()) return loc.name.trim();
+    if (typeof loc.place_formatted === "string" && loc.place_formatted.trim()) return loc.place_formatted.trim();
+    if (typeof loc.full_address === "string" && loc.full_address.trim()) return loc.full_address.trim();
   }
   if (note?.trim()) {
     const cleanNote = note.trim();
@@ -555,7 +555,7 @@ export default function AiItineraryWaitScreen() {
       const rows = draftItemsByDay[dayKey] || [];
       const locationIds = rows
         .map((row) => row.location_id || row.location?.id || "")
-        .filter((id): id is string => id.trim().length > 0);
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
       
       const contextItems: ItineraryItem[] = rows.map((row, idx) => {
         const start = toHHmm(row.start_time);

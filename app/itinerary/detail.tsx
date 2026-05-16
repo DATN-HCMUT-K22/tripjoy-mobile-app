@@ -9,6 +9,7 @@ import {
   useUpdateItinerary,
   useDeleteTripItem,
   useUpdateTripItem,
+  useUpdateItineraryStatus,
   useAiSuggestLocation,
   useAiModifyItinerary,
   useFavoriteItineraries,
@@ -22,6 +23,7 @@ import {
 } from "@/services/itineraries";
 import { parseItineraryDateToDayOnly, tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
+import { StatusBadge } from "@/components/itinerary/StatusBadge";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, router } from "expo-router";
@@ -255,6 +257,19 @@ export default function ItineraryDetailScreen() {
   const updateTripItemMutation = useUpdateTripItem();
   const aiSuggestMutation = useAiSuggestLocation();
   const aiModifyMutation = useAiModifyItinerary();
+  const updateStatusMutation = useUpdateItineraryStatus();
+
+  const handleUpdateStatus = async (newStatus: string) => {
+    if (!itineraryId) return;
+    try {
+      await updateStatusMutation.mutateAsync({
+        itineraryId,
+        status: newStatus,
+        groupId: detail?.group_id
+      });
+      refetchDetail();
+    } catch {}
+  };
 
   const { data: favoriteList = [] } = useFavoriteItineraries(itineraryId);
   const favoriteMutation = useFavoriteItinerary();
@@ -448,7 +463,27 @@ export default function ItineraryDetailScreen() {
   }, [itineraryId, activeTripItem, updateTripItemMutation, refetchItems]);
 
   const normItineraryStatus = (s?: string) => (s || "").toUpperCase();
-  const canEdit = normItineraryStatus(detail?.status) === ITINERARY_STATUS.DRAFT || normItineraryStatus(detail?.status) === ITINERARY_STATUS.FAILED;
+  const status = normItineraryStatus(detail?.status);
+  const canEdit = status === ITINERARY_STATUS.DRAFT || status === ITINERARY_STATUS.FAILED;
+  const canUseAi = status !== ITINERARY_STATUS.COMPLETED && 
+                  status !== ITINERARY_STATUS.GENERATING && 
+                  status !== ITINERARY_STATUS.PENDING;
+  
+  // Date comparisons for Start/Complete trip
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  
+  const startDate = detail?.start_date ? new Date(detail.start_date) : null;
+  if (startDate) startDate.setHours(0, 0, 0, 0);
+  
+  const endDate = detail?.end_date ? new Date(detail.end_date) : startDate;
+  if (endDate) endDate.setHours(0, 0, 0, 0);
+  
+  const isWithinTripRange = startDate && endDate && now >= startDate && now <= endDate;
+  const isPastTripEnd = endDate && now > endDate;
+  
+  const showStartTrip = status === ITINERARY_STATUS.CONFIRMED && isWithinTripRange;
+  const showCompleteTrip = (status === ITINERARY_STATUS.CONFIRMED || status === ITINERARY_STATUS.IN_PROGRESS) && isPastTripEnd;
   
   const placesForAiModify = useMemo(() => {
     const map = new Map<string, any>();
@@ -583,6 +618,9 @@ export default function ItineraryDetailScreen() {
             </TouchableOpacity>
 
             <View style={styles.coverInfo}>
+              <View style={styles.statusBadgeContainer}>
+                <StatusBadge status={detail?.status} size="sm" />
+              </View>
               <Text style={styles.itineraryTitle} numberOfLines={2}>
                 {title}
               </Text>
@@ -611,7 +649,7 @@ export default function ItineraryDetailScreen() {
               <Text style={styles.notebookText}>Hướng dẫn</Text>
             </TouchableOpacity>
             
-            {isOwner && (
+            {isOwner && canUseAi && (
               !isSetupMode ? (
                 <TouchableOpacity
                   onPress={() => setIsSetupMode(true)}
@@ -629,6 +667,26 @@ export default function ItineraryDetailScreen() {
                   <Text style={styles.saveText}>Xong</Text>
                 </TouchableOpacity>
               )
+            )}
+
+            {isOwner && showStartTrip && (
+              <TouchableOpacity
+                onPress={() => handleUpdateStatus(ITINERARY_STATUS.IN_PROGRESS)}
+                style={[styles.actionButton, styles.startButton]}
+              >
+                <Ionicons name="play-outline" size={20} color="#fff" />
+                <Text style={styles.startText}>Bắt đầu</Text>
+              </TouchableOpacity>
+            )}
+
+            {isOwner && showCompleteTrip && (
+              <TouchableOpacity
+                onPress={() => handleUpdateStatus(ITINERARY_STATUS.COMPLETED)}
+                style={[styles.actionButton, styles.completeButton]}
+              >
+                <Ionicons name="flag-outline" size={20} color="#fff" />
+                <Text style={styles.completeText}>Kết thúc</Text>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -673,6 +731,7 @@ export default function ItineraryDetailScreen() {
                           index={idx}
                           total={(draftItemsByDay[dayKey] || []).length}
                           canInteract={canEdit}
+                          canUseAi={canUseAi}
                           imageUrl={getItemImageUrl(row)}
                           onMove={(from, to) => moveItem(dayKey, from, to)}
                           onDelete={() => deleteItem(dayKey, row.id, idx, row.location?.name || row.note)}
@@ -680,7 +739,13 @@ export default function ItineraryDetailScreen() {
                           onEdit={() => openTimePicker(dayKey, row)}
                         />
                       ) : (
-                        <TripItemCard key={row.id || idx} item={row} showMenu={false} />
+                        <TripItemCard 
+                          key={row.id || idx} 
+                          item={row} 
+                          showMenu={false}
+                          showTimeline={status !== ITINERARY_STATUS.DRAFT && status !== ""}
+                          isLast={idx === itemsForDay.length - 1}
+                        />
                       )
                     ))
                   ) : (
@@ -689,7 +754,7 @@ export default function ItineraryDetailScreen() {
                     </View>
                   )}
 
-                  {isSetupMode && canEdit && (
+                  {isSetupMode && canUseAi && (
                     <View className="mx-4 mt-2 flex-row items-center justify-center gap-3">
                       <TouchableOpacity
                         onPress={() => {
@@ -944,7 +1009,7 @@ const styles = StyleSheet.create({
   },
   coverImage: {
     width: "100%",
-    height: 200,
+    height: 240,
   },
   placeholderImage: {
     width: "100%",
@@ -959,9 +1024,10 @@ const styles = StyleSheet.create({
     borderTopColor: "#F3F4F6",
   },
   itineraryTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 24,
+    fontWeight: "800",
     color: "#111827",
+    letterSpacing: -0.5,
   },
   itineraryDates: {
     marginTop: 4,
@@ -1032,11 +1098,11 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   dayHeader: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    fontWeight: "800",
     color: "#111827",
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   mapContainer: {
     marginHorizontal: 16,
@@ -1054,5 +1120,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#9CA3AF",
     fontStyle: "italic",
+  },
+  statusBadgeContainer: {
+    marginBottom: 6,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  startButton: {
+    backgroundColor: "#2BB673",
+    borderColor: "#059669",
+    paddingHorizontal: 16,
+  },
+  startText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  completeButton: {
+    backgroundColor: "#6366F1",
+    borderColor: "#4F46E5",
+    paddingHorizontal: 16,
+  },
+  completeText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });

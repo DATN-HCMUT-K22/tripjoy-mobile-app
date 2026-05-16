@@ -19,16 +19,25 @@ export function getLocationImageUrl(location?: LocationResponse | null): string 
 
   // Check if content field contains image URL
   if (location.content) {
-    const urlMatch = location.content.match(/https?:\/\/[^\s"']+\.(jpg|jpeg|png|webp)(\?[^\s"']*)?/i);
-    if (urlMatch) return urlMatch[0];
+    const urlMatch = location.content.match(/https?:\/\/[^\s"']+/i);
+    if (urlMatch) {
+      const url = urlMatch[0];
+      // Simple check to see if it's likely an image URL or if it's the only thing in content
+      if (url.match(/\.(jpg|jpeg|png|webp|gif|svg)/i) || location.content.trim() === url) {
+        return url;
+      }
+    }
   }
 
   // Fallback to static map if coordinates exist and are not (0,0)
+  // Skip map if we have a provider_id and want to wait for async photo fetch
   const lat = location.lat ?? location.latitude;
   const lng = location.lng ?? location.longitude;
-  if (lat != null && lng != null &&
+  const hasCoords = lat != null && lng != null &&
       !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng)) &&
-      (Math.abs(Number(lat)) > 0.0001 || Math.abs(Number(lng)) > 0.0001)) {
+      (Math.abs(Number(lat)) > 0.0001 || Math.abs(Number(lng)) > 0.0001);
+
+  if (hasCoords && !location.provider_id) {
     const latNum = Number(lat);
     const lngNum = Number(lng);
     return buildStaticMapImageUrl(
@@ -57,12 +66,11 @@ export async function getLocationImageUrlAsync(
   if (providerId) {
     const cached = getCachedLocationImage(providerId);
     if (cached) {
-      console.log(`⚡ [CACHE HIT] Using cached image for: ${providerId}`);
       return cached;
     }
   }
 
-  console.log(`📂 [LOCATION IMAGES] Resolving image for: ${location.name || 'unnamed'}`);
+
   
   // First try: Google Places API if provider_id exists (most reliable)
   // Auto-default to Google if provider is missing/NONE but provider_id exists
@@ -87,8 +95,13 @@ export async function getLocationImageUrlAsync(
 
   // Fallback: check content field for embedded image URL
   if (location.content) {
-    const urlMatch = location.content.match(/https?:\/\/[^\s"']+\.(jpg|jpeg|png|webp)(\?[^\s"']*)?/i);
-    if (urlMatch) return urlMatch[0];
+    const urlMatch = location.content.match(/https?:\/\/[^\s"']+/i);
+    if (urlMatch) {
+      const url = urlMatch[0];
+      if (url.match(/\.(jpg|jpeg|png|webp|gif|svg)/i) || location.content.trim() === url) {
+        return url;
+      }
+    }
   }
 
   // Final fallback: static map from coordinates (ignore 0,0)

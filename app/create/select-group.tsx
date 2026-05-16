@@ -138,8 +138,6 @@ export default function SelectGroupScreen() {
     const themeList = tripTypeIdsToItineraryThemes(tripData.tripTypes);
     const itineraryName = destination ? `Khám phá ${destination}` : "Lịch trình mới";
 
-    // Không gửi trip_items / expenses trong create — BE không xử lý cascade.
-    // Sau khi tạo xong itinerary sẽ POST từng item riêng qua /itineraries/{id}/items.
     return {
       name: itineraryName,
       description: destination
@@ -153,6 +151,7 @@ export default function SelectGroupScreen() {
       destination: destination || undefined,
       themes: themeList.length > 0 ? themeList : undefined,
       group_id: groupId,
+      trip_items: buildTripItems(), // Send items directly in the main request
     };
   };
 
@@ -161,13 +160,27 @@ export default function SelectGroupScreen() {
     return dayKeys.flatMap((dayKey) => {
       const items = itineraryItemsByDay[dayKey] || [];
       return items
-        .filter((item) => !!item.locationId) // chỉ gửi item có location_id hợp lệ
-        .map((item) => ({
-          duration: computeDurationMinutes(item.timeRange.start, item.timeRange.end),
-          note: item.name,
-          start_time: mapDayAndTimeToLocalDateTime(dayKey, item.timeRange.start),
-          location_id: item.locationId,
-        }));
+        .filter((item) => !!item.locationId)
+        .map((item) => {
+          const isGooglePlace = 
+            item.locationId.startsWith("gmap:") || 
+            item.locationId.startsWith("ChIJ") || 
+            item.providerId != null;
+          
+          const placeId = isGooglePlace 
+            ? (item.providerId || (item.locationId.startsWith("gmap:") ? item.locationId.substring(5) : item.locationId))
+            : undefined;
+            
+          const locationId = !isGooglePlace ? item.locationId : undefined;
+
+          return {
+            duration: item.duration || computeDurationMinutes(item.timeRange.start, item.timeRange.end),
+            note: item.note || item.name,
+            start_time: mapDayAndTimeToLocalDateTime(dayKey, item.timeRange.start),
+            location_id: locationId,
+            place_id: placeId,
+          };
+        });
     });
   };
 
@@ -183,24 +196,9 @@ export default function SelectGroupScreen() {
         const created = await createItineraryMutation.mutateAsync(payload);
         console.log("[CreateItinerary][Response]", JSON.stringify(created, null, 2));
 
-        // POST từng trip item riêng sau khi có itinerary id
         const itineraryId = (created as any)?.id;
-        console.log("[CreateItinerary][ItineraryId]", itineraryId);
-        if (itineraryId) {
-          const tripItems = buildTripItems();
-          console.log("[CreateItinerary][TripItems] count:", tripItems.length, JSON.stringify(tripItems, null, 2));
-          for (let i = 0; i < tripItems.length; i++) {
-            const item = tripItems[i];
-            try {
-              console.log(`[CreateItinerary][AddTripItem][${i + 1}/${tripItems.length}]`, JSON.stringify(item, null, 2));
-              const itemRes = await itineraryService.addTripItem(itineraryId, item);
-              console.log(`[CreateItinerary][AddTripItem][${i + 1}] ✅ Response:`, JSON.stringify(itemRes, null, 2));
-            } catch (itemErr: any) {
-              console.error(`[CreateItinerary][AddTripItem][${i + 1}] ❌ Failed:`, itemErr?.message, JSON.stringify(item, null, 2));
-            }
-          }
-        } else {
-          console.warn("[CreateItinerary] ⚠️ No itinerary id returned — skipping addTripItem");
+        if (!itineraryId) {
+          console.warn("[CreateItinerary] ⚠️ No itinerary id returned");
         }
 
         resetItinerary();

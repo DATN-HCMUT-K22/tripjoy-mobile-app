@@ -211,8 +211,8 @@ function ItineraryItemCard({
           location={{
             id: item.locationId,
             name: item.name,
-            provider_id: item.locationId.startsWith("ChIJ") ? item.locationId : undefined,
-            provider: item.locationId.startsWith("ChIJ") ? "GOOGLE_MAPS" : undefined,
+            provider_id: item.providerId || (item.locationId.startsWith("gmap:") ? item.locationId.substring(5) : (item.locationId.startsWith("ChIJ") ? item.locationId : undefined)),
+            provider: (item.providerId || item.locationId.includes("ChIJ")) ? "GOOGLE_MAPS" : undefined,
             content: item.image, // URL ảnh hiện tại làm fallback
           }}
           style={{ width: "100%", height: 180 }}
@@ -504,11 +504,19 @@ export default function ManualItineraryScreen() {
       const rawName = destinationLocation?.name ?? destinationLocation?.nameEn;
       const locationName =
         typeof rawName === "string" ? rawName.trim() || undefined : undefined;
-      const photoUrl = await fetchPlacePhotoUrls(lat!, lon!, locationName, 800, 30_000);
+      const photoUrls = await fetchPlacePhotoUrls(
+        lat!,
+        lon!,
+        locationName,
+        800,
+        30_000,
+        5,
+        destinationLocation?.provider_id
+      );
       if (cancelled) return;
 
-      if (photoUrl) {
-        setDestinationImageUri(photoUrl);
+      if (photoUrls && photoUrls.length > 0) {
+        setDestinationImageUri(photoUrls[0]);
         return;
       }
 

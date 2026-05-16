@@ -9,9 +9,14 @@ import { getGoogleMapsApiKey } from "@/config/env";
  * Gửi kèm header X-Goog-Api-Key để expo-image có thể tải ảnh
  * từ các endpoint yêu cầu xác thực qua header.
  */
-export function expoImageSourceForGoogleRaster(uri: string) {
+export function expoImageSourceForGoogleRaster(uri: any) {
   const key = getGoogleMapsApiKey();
-  if (!uri?.trim()) return { uri: "" };
+  
+  // Early return if uri is not a valid string or empty
+  if (typeof uri !== "string" || !uri.trim()) {
+    return { uri: "" };
+  }
+  
   const u = uri.trim();
   if (
     key &&

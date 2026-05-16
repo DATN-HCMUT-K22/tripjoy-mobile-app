@@ -12,6 +12,8 @@ type TripItemCardProps = {
   onDelete?: () => void;
   showMenu?: boolean;
   showTransport?: boolean;
+  isLast?: boolean;
+  showTimeline?: boolean;
 };
 
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -87,6 +89,8 @@ export function TripItemCard({
   onDelete,
   showMenu = true,
   showTransport = false,
+  isLast = false,
+  showTimeline = false,
 }: TripItemCardProps) {
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -154,93 +158,99 @@ export function TripItemCard({
   };
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-      disabled={!onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Hoạt động ${displayName}`}
-    >
-      {/* Location Image */}
-      <LocationImage
-        location={location}
-        style={styles.locationImage}
-        containerStyle={styles.imageContainer}
-        placeholderIcon={icon}
-      />
-
-      <View style={styles.contentWrapper}>
-        {/* Time and Menu Row */}
-        <View style={styles.header}>
-        <Text style={styles.timeRange}>{timeRange}</Text>
-        {showMenu && (onEdit || onDelete) && (
-          <TouchableOpacity
-            onPress={handleMenuPress}
-            style={styles.menuButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityLabel="Tùy chọn"
-          >
-            <Ionicons name="ellipsis-vertical" size={20} color="#6B7280" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Location Name */}
-      <View style={styles.locationRow}>
-        <Ionicons name={icon} size={20} color="#2BB673" />
-        <Text style={styles.locationName} numberOfLines={2}>
-          {displayName}
-        </Text>
-      </View>
-
-      {/* Address */}
-      {location?.full_address && (
-        <View style={styles.infoRow}>
-          <Ionicons name="location-outline" size={16} color="#9CA3AF" />
-          <Text style={styles.infoText} numberOfLines={1}>
-            {location.full_address}
-          </Text>
+    <View style={styles.outerContainer}>
+      {showTimeline && (
+        <View style={styles.timelineContainer}>
+          <View style={[styles.timelineLine, isLast && { height: 20 }]} />
+          <View style={styles.timelineDot} />
         </View>
       )}
+      <TouchableOpacity
+        style={[styles.card, showTimeline && styles.cardWithTimeline]}
+        onPress={onPress}
+        activeOpacity={onPress ? 0.7 : 1}
+        disabled={!onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`Hoạt động ${displayName}`}
+      >
+        {/* Location Image */}
+        <LocationImage
+          location={location}
+          style={styles.locationImage}
+          containerStyle={styles.imageContainer}
+          placeholderIcon={icon}
+        />
 
-      {/* Transport Info */}
-      {showTransport && item.transport_duration && (
-        <View style={styles.infoRow}>
-          <Ionicons name="car-outline" size={16} color="#9CA3AF" />
-          <Text style={styles.infoText}>
-            {item.transport_duration} phút từ trước đó
-          </Text>
-        </View>
-      )}
+        <View style={styles.contentWrapper}>
+          {/* Time and Menu Row */}
+          <View style={styles.header}>
+            <Text style={styles.timeRange}>{timeRange}</Text>
+            {showMenu && (onEdit || onDelete) && (
+              <TouchableOpacity
+                onPress={handleMenuPress}
+                style={styles.menuButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Tùy chọn"
+              >
+                <Ionicons name="ellipsis-vertical" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            )}
+          </View>
 
-      {/* Price Range */}
-      {priceRange && (
-        <View style={styles.infoRow}>
-          <Ionicons name="wallet-outline" size={16} color="#9CA3AF" />
-          <Text style={styles.priceText}>{priceRange}</Text>
-        </View>
-      )}
+          {/* Location Name */}
+          <View style={styles.locationRow}>
+            <Ionicons name={icon} size={20} color="#2BB673" />
+            <Text style={styles.locationName} numberOfLines={2}>
+              {displayName}
+            </Text>
+          </View>
 
-      {/* Note */}
-      {item.note && (
-        <View style={styles.noteContainer}>
-          <Ionicons name="document-text-outline" size={16} color="#9CA3AF" />
-          <Text style={styles.noteText} numberOfLines={2}>
-            {item.note}
-          </Text>
+          {/* Address */}
+          {location?.full_address && (
+            <View style={styles.infoRow}>
+              <Ionicons name="location-outline" size={16} color="#9CA3AF" />
+              <Text style={styles.infoText} numberOfLines={1}>
+                {location.full_address}
+              </Text>
+            </View>
+          )}
+
+          {/* Transport Info */}
+          {showTransport && item.transport_duration && (
+            <View style={styles.infoRow}>
+              <Ionicons name="car-outline" size={16} color="#9CA3AF" />
+              <Text style={styles.infoText}>
+                {item.transport_duration} phút từ trước đó
+              </Text>
+            </View>
+          )}
+
+          {/* Price Range */}
+          {priceRange && (
+            <View style={styles.infoRow}>
+              <Ionicons name="wallet-outline" size={16} color="#9CA3AF" />
+              <Text style={styles.priceText}>{priceRange}</Text>
+            </View>
+          )}
+
+          {/* Note */}
+          {item.note && (
+            <View style={styles.noteContainer}>
+              <Ionicons name="document-text-outline" size={16} color="#9CA3AF" />
+              <Text style={styles.noteText} numberOfLines={2}>
+                {item.note}
+              </Text>
+            </View>
+          )}
         </View>
-      )}
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginVertical: 6,
     borderRadius: 12,
     borderLeftWidth: 3,
     borderLeftColor: '#2BB673',
@@ -250,10 +260,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     overflow: 'hidden',
+    flex: 1,
   },
   locationImage: {
     width: '100%',
-    height: 140,
+    height: 180,
     backgroundColor: '#F3F4F6',
   },
   placeholderImage: {
@@ -291,10 +302,10 @@ const styles = StyleSheet.create({
   },
   locationName: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
-    color: '#1F2937',
-    lineHeight: 22,
+    color: '#111827',
+    lineHeight: 26,
   },
   infoRow: {
     flexDirection: 'row',
@@ -331,7 +342,38 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     width: '100%',
-    height: 140,
+    height: 180,
     position: 'relative',
+  },
+  outerContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    paddingHorizontal: 16,
+    marginVertical: 6,
+  },
+  timelineContainer: {
+    width: 40,
+    alignItems: 'center',
+  },
+  timelineLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 19.5,
+    width: 2,
+    backgroundColor: '#E5E7EB',
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#2BB673',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    marginTop: 20,
+    zIndex: 1,
+  },
+  cardWithTimeline: {
+    marginLeft: 0,
   },
 });

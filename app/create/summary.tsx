@@ -35,8 +35,8 @@ export default function TripSummaryScreen() {
 
   const handleAiGenerate = async () => {
     const dest =
-      tripData.destinationLocation?.name?.trim() ||
-      tripData.location?.name?.trim();
+      (typeof tripData.destinationLocation?.name === "string" ? tripData.destinationLocation.name.trim() : "") ||
+      (typeof tripData.location?.name === "string" ? tripData.location.name.trim() : "");
     if (!dest) {
       showErrorToast(
         "Chưa chọn điểm đến",
@@ -102,7 +102,8 @@ export default function TripSummaryScreen() {
 
     if (!hasCoords) {
       // Không có coords: dùng image từ DTO nếu có, không thì trống
-      const fallback = destinationLocation?.image?.trim() ?? "";
+      const image = destinationLocation?.image;
+      const fallback = typeof image === "string" ? image.trim() : "";
       setDestinationImageUris(fallback ? [fallback] : []);
       return;
     }
@@ -131,7 +132,8 @@ export default function TripSummaryScreen() {
       }
 
       // 2. Fallback: dùng image DTO nếu có
-      const dtoImage = destinationLocation?.image?.trim();
+      const image = destinationLocation?.image;
+      const dtoImage = typeof image === "string" ? image.trim() : "";
       if (dtoImage) {
         setDestinationImageUris([dtoImage]);
         setImageLoading(false);

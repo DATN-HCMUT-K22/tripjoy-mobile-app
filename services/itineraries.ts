@@ -391,6 +391,16 @@ export const itineraryService = {
     }>>(
       `/itineraries/generation/${generationId}/status`
     ),
+
+  /**
+   * Update itinerary status (e.g., DRAFT, CONFIRMED, COMPLETED).
+   * Backend enforces rules like Leader Only and Only One Active.
+   */
+  updateItineraryStatus: (itineraryId: string, status: string) =>
+    httpClient.patch<ApiEnvelope<ItineraryResponse>>(
+      `/itineraries/${itineraryId}/status`,
+      { status }
+    ),
 };
 
 export const getItineraries = itineraryService.getItineraries;

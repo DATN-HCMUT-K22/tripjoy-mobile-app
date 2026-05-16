@@ -70,6 +70,7 @@ export const DraggableApiItineraryItemCard = React.memo(
     index,
     total,
     canInteract,
+    canUseAi = false,
     onMove,
     onDelete,
     onSuggest,
@@ -79,6 +80,7 @@ export const DraggableApiItineraryItemCard = React.memo(
     index: number;
     total: number;
     canInteract: boolean;
+    canUseAi?: boolean;
     onMove: (from: number, to: number) => void;
     onDelete: () => void;
     onSuggest?: () => void;
@@ -141,7 +143,7 @@ export const DraggableApiItineraryItemCard = React.memo(
   return (
     <Animated.View style={animatedStyle} className="mb-3">
       <GestureDetector gesture={panGesture}>
-        <View className="flex-row items-center py-4">
+        <View className="flex-row items-center py-4 px-4 w-full">
           {/* Drag handle - visual indicator */}
           {canInteract && (
             <View className="mr-3 flex-row items-center">
@@ -158,8 +160,8 @@ export const DraggableApiItineraryItemCard = React.memo(
           {/* Image */}
           <LocationImage
             location={row.location}
-            style={{ width: 135, height: 80 }}
-            containerStyle={{ borderRadius: 12 }}
+            style={{ width: '100%', height: '100%' }}
+            containerStyle={{ width: 135, height: 80, borderRadius: 12 }}
           />
 
           {/* Info */}
@@ -191,7 +193,7 @@ export const DraggableApiItineraryItemCard = React.memo(
 
           {/* Actions */}
           <View className="ml-2 flex-row items-center">
-            {canInteract && onSuggest && (
+            {canUseAi && onSuggest && (
               <TouchableOpacity
                 onPress={onSuggest}
                 activeOpacity={0.7}

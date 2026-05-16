@@ -21,6 +21,7 @@ import {
 import { parseItineraryDateToDayOnly, tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
 import { LocationForMap } from "@/utils/mapLocations";
+import { StatusBadge } from "@/components/itinerary/StatusBadge";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -488,6 +489,9 @@ export default function ItineraryDetailScreen() {
   const canEditItineraryItems =
     normalizedStatus === ITINERARY_STATUS.DRAFT ||
     normalizedStatus === ITINERARY_STATUS.FAILED;
+  const canUseAi = normalizedStatus !== ITINERARY_STATUS.COMPLETED &&
+                  normalizedStatus !== ITINERARY_STATUS.GENERATING &&
+                  normalizedStatus !== ITINERARY_STATUS.PENDING;
   const statusInteractionMessage = canEditItineraryItems
     ? "Bạn có thể xoá và sắp xếp lại địa điểm trong lịch."
     : "Lịch trình đã khóa chỉnh sửa do trạng thái hiện tại.";
@@ -499,7 +503,7 @@ export default function ItineraryDetailScreen() {
     !detailBlocking &&
     placesForAiModify.length > 0 &&
     !isGeneratingItinerary &&
-    canEditItineraryItems;
+    canUseAi;
   const showAddLocationButton = canEditItineraryItems;
 
   const title = detail?.title?.trim() || "Lịch trình";
@@ -607,12 +611,15 @@ export default function ItineraryDetailScreen() {
           <Ionicons name="arrow-back-outline" size={24} color="#000" />
         </TouchableOpacity>
         <View className="min-w-0 flex-1 items-center justify-center px-1">
-          <Text
-            className="text-center text-xl font-bold text-black"
-            numberOfLines={1}
-          >
-            Điều chỉnh lịch trình
-          </Text>
+          <View className="flex-row items-center justify-center">
+            <Text
+              className="text-center text-xl font-bold text-black mr-2"
+              numberOfLines={1}
+            >
+              Điều chỉnh
+            </Text>
+            <StatusBadge status={detail?.status} size="sm" />
+          </View>
         </View>
         <View className="h-10 w-12 items-center justify-center">
           {canEditItineraryItems && (
@@ -777,6 +784,7 @@ export default function ItineraryDetailScreen() {
                               index={index}
                               total={itemsForDay.length}
                               canInteract={canEditItineraryItems}
+                              canUseAi={canUseAi}
                               imageUrl={imageUrl}
                               onMove={(from, to) => moveItem(dayKey, from, to)}
                               onDelete={() => {

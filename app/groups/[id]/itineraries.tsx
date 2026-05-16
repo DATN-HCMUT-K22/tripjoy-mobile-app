@@ -1,5 +1,5 @@
 import { useGroup } from "@/hooks/useGroups";
-import { useGroupItinerariesByTab, GroupInfoItineraryListItem, useConfirmItinerary, useDeleteItinerary, ITINERARY_STATUS } from "@/hooks/useItineraries";
+import { useGroupItinerariesByTab, GroupInfoItineraryListItem, useConfirmItinerary, useDeleteItinerary, ITINERARY_STATUS, useGroupConfirmedItinerary, useItineraryTripItems, PLACEHOLDER_ITINERARY_IMAGE } from "@/hooks/useItineraries";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { isGroupManager } from "@/utils/roleUtils";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,8 +17,34 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LocationImage } from "@/components/location/LocationImage";
+import { useIsDark } from "@/hooks/useTheme";
 
 type TabType = "ongoing" | "completed" | "draft";
+
+const ItineraryCardImage = ({ itineraryId, defaultImage, style }: { itineraryId: string, defaultImage?: string, style: any }) => {
+  const { data: items, isLoading } = useItineraryTripItems(itineraryId);
+  const firstLocation = items?.[0]?.location;
+  
+  // Nếu đang load danh sách items, hiển thị ảnh mặc định trước để tránh bị trống (xám)
+  if (isLoading) {
+    return <Image source={{ uri: defaultImage || PLACEHOLDER_ITINERARY_IMAGE }} style={style} contentFit="cover" />;
+  }
+
+  // Nếu có ảnh thủ công hoặc không tìm thấy địa điểm nào, dùng ảnh mặc định
+  if (!firstLocation || (defaultImage && defaultImage !== PLACEHOLDER_ITINERARY_IMAGE)) {
+    return <Image source={{ uri: defaultImage || PLACEHOLDER_ITINERARY_IMAGE }} style={style} contentFit="cover" />;
+  }
+
+  return (
+    <LocationImage
+      location={firstLocation}
+      style={style}
+      containerStyle={style}
+      placeholderIcon="map"
+    />
+  );
+};
 
 export default function GroupItinerariesScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,9 +56,14 @@ export default function GroupItinerariesScreen() {
 
   const { data: group, isLoading: isGroupLoading } = useGroup(id);
   const { data: itinerariesByTab, isLoading: isItinerariesLoading } = useGroupItinerariesByTab(id);
+  const { data: confirmedItinerary, isLoading: isConfirmedLoading } = useGroupConfirmedItinerary(id);
   const { data: currentUser } = useCurrentUser();
 
   const isManager = useMemo(() => isGroupManager(group || undefined, currentUser?.id), [group, currentUser]);
+  const isLeader = useMemo(() => {
+    const role = group?.members?.find(m => m.user.id === currentUser?.id)?.role;
+    return role === 'LEADER';
+  }, [group, currentUser]);
   const { mutateAsync: confirmItinerary, isPending: isConfirming } = useConfirmItinerary();
 
   const handleApply = async (itinerary: GroupInfoItineraryListItem) => {
@@ -79,10 +110,10 @@ export default function GroupItinerariesScreen() {
       style={[styles.card, isDark && styles.cardDark]}
       onPress={() => router.push(`/itinerary/detail?id=${item.id}` as any)}
     >
-      <Image
-        source={{ uri: item.image }}
+      <ItineraryCardImage
+        itineraryId={item.id}
+        defaultImage={item.image}
         style={styles.cardImage}
-        contentFit="cover"
       />
       <View style={styles.cardOverlay} />
       
@@ -93,7 +124,7 @@ export default function GroupItinerariesScreen() {
           </Text>
           <View style={[
             styles.badge,
-            item.raw?.status === ITINERARY_STATUS.CONFIRMED
+            (item.raw?.status || "").toUpperCase() === ITINERARY_STATUS.CONFIRMED
               ? styles.badgeConfirmed
               : activeTab === "ongoing"
                 ? styles.badgeOngoing
@@ -102,8 +133,8 @@ export default function GroupItinerariesScreen() {
                   : styles.badgeDraft
           ]}>
             <Text style={styles.badgeText}>
-              {item.raw?.status === ITINERARY_STATUS.CONFIRMED
-                ? "Chính thức"
+              {(item.raw?.status || "").toUpperCase() === ITINERARY_STATUS.CONFIRMED
+                ? "Đã xác nhận"
                 : activeTab === "ongoing"
                   ? "Đang diễn ra"
                   : activeTab === "completed"
@@ -130,19 +161,37 @@ export default function GroupItinerariesScreen() {
           )}
 
           <View style={styles.actionRow}>
-            {activeTab === "draft" && isManager && (
-              <TouchableOpacity
-                style={styles.applyBtn}
-                onPress={() => handleApply(item)}
-                disabled={isConfirming}
-              >
-                <Text style={styles.applyBtnText}>
-                  {isConfirming ? "Đang xử lý..." : "Áp dụng lịch trình"}
-                </Text>
-              </TouchableOpacity>
-            )}
+            {activeTab === "draft" && isLeader && (() => {
+              const activeOfficial = confirmedItinerary || (itinerariesByTab?.ongoing?.[0]);
+              let canShowApply = true;
+              
+              if (activeOfficial) {
+                const draftStart = new Date(item.startDate);
+                const officialEnd = new Date(activeOfficial.endDate);
+                // Only allow apply if it starts AFTER the current official one ends
+                canShowApply = !Number.isNaN(draftStart.getTime()) && 
+                               !Number.isNaN(officialEnd.getTime()) && 
+                               draftStart > officialEnd;
+              }
+              
+              if (!canShowApply) return null;
 
-            {isManager && (
+              return (
+                <TouchableOpacity
+                  style={styles.applyBtn}
+                  onPress={() => handleApply(item)}
+                  disabled={isConfirming}
+                >
+                  <Text style={styles.applyBtnText}>
+                    {isConfirming ? "Đang xử lý..." : "Áp dụng lịch trình"}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })()}
+
+            {isManager && 
+             (item.raw?.status || "").toUpperCase() !== ITINERARY_STATUS.CONFIRMED && 
+             (item.raw?.status || "").toUpperCase() !== ITINERARY_STATUS.IN_PROGRESS && (
               <TouchableOpacity
                 style={styles.deleteBtn}
                 onPress={() => handleDelete(item)}
@@ -176,6 +225,19 @@ export default function GroupItinerariesScreen() {
       )}
     </View>
   );
+
+  const renderConfirmedSection = () => {
+    if (!confirmedItinerary) return null;
+    
+    return (
+      <View style={styles.confirmedSection}>
+        <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>
+          Lịch trình đã xác nhận
+        </Text>
+        {renderItineraryItem({ item: confirmedItinerary as any })}
+      </View>
+    );
+  };
 
   if (isGroupLoading || isItinerariesLoading) {
     return (
@@ -215,37 +277,43 @@ export default function GroupItinerariesScreen() {
         ) : <View style={{ width: 32 }} />}
       </View>
 
-      {/* Tabs */}
-      <View style={[styles.tabBar, isDark && styles.tabBarDark]}>
-        {(["ongoing", "completed", "draft"] as TabType[]).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            onPress={() => setActiveTab(tab)}
-            style={[
-              styles.tabItem,
-              activeTab === tab && styles.tabItemActive,
-              activeTab === tab && { borderBottomColor: "#0D9488" },
-            ]}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === tab && styles.tabTextActive,
-                isDark && styles.tabTextDark,
-              ]}
-            >
-              {tab === "ongoing" ? "Đang diễn ra" : tab === "completed" ? "Đã xong" : "Bản nháp"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* List */}
+      {/* List with Header */}
       <FlatList
         data={currentList}
         renderItem={renderItineraryItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <>
+            {renderConfirmedSection()}
+            
+            {/* Tabs inside ListHeader to scroll together or keep separate? 
+                User wants them below the confirmed itinerary. */}
+            <View style={[styles.tabBar, isDark && styles.tabBarDark, { marginHorizontal: -16, marginBottom: 16 }]}>
+              {(["ongoing", "completed", "draft"] as TabType[]).map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setActiveTab(tab)}
+                  style={[
+                    styles.tabItem,
+                    activeTab === tab && styles.tabItemActive,
+                    activeTab === tab && { borderBottomColor: "#0D9488" },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.tabText,
+                      activeTab === tab && styles.tabTextActive,
+                      isDark && styles.tabTextDark,
+                    ]}
+                  >
+                    {tab === "ongoing" ? "Đang diễn ra" : tab === "completed" ? "Đã xong" : "Bản nháp"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        }
         ListEmptyComponent={renderEmpty}
         showsVerticalScrollIndicator={false}
       />
@@ -464,5 +532,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(239, 68, 68, 0.8)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  confirmedSection: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#374151",
+    marginBottom: 12,
+  },
+  sectionTitleDark: {
+    color: "#E5E7EB",
   },
 });

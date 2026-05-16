@@ -16,6 +16,7 @@
  */
 
 import { getGoogleMapsApiKey } from "@/config/env";
+import { getCachedLocationImage, setCachedLocationImage } from "./locationImageCache";
 
 const PLACES_BASE = "https://places.googleapis.com/v1";
 const FIELD_MASK = "places.name,places.displayName,places.photos,places.types";
@@ -220,14 +221,28 @@ export async function fetchPlacePhotoUrls(
   maxPhotos = 5,
   placeId?: string
 ): Promise<string[]> {
+  // 1. Check cache first (by placeId or by coords)
+  const cacheKey = placeId || `coords:${lat.toFixed(4)},${lon.toFixed(4)}`;
+  const cached = getCachedLocationImage(cacheKey);
+  if (cached) {
+    return [cached];
+  }
+
   try {
-    // 0. Nếu có placeId, lấy trực tiếp (ưu tiên cao nhất)
+    // 2. Nếu có placeId, lấy trực tiếp (ưu tiên cao nhất)
     if (placeId) {
       const place = await getPlaceById(placeId);
       if (place?.photos?.length) {
-        return place.photos
+        const urls = place.photos
           .slice(0, maxPhotos)
           .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
+        
+        if (urls.length > 0) {
+          setCachedLocationImage(cacheKey, urls[0]);
+          return urls;
+        }
+      } else if (place === null) {
+        // HTTP 404 or other error - continue to search fallback
       }
     }
 
@@ -280,20 +295,29 @@ export async function fetchPlacePhotoUrls(
     const bestPlace = sortedPlaces[0];
     const photos = bestPlace?.photos || [];
 
+    let resultUrls: string[] = [];
+
     if (photos.length === 0 && sortedPlaces.length > 1) {
       // Nếu thực thể tốt nhất không có ảnh, thử thực thể tiếp theo
       for (let i = 1; i < sortedPlaces.length; i++) {
         if (sortedPlaces[i].photos?.length) {
-          return sortedPlaces[i].photos!
+          resultUrls = sortedPlaces[i].photos!
             .slice(0, maxPhotos)
             .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
+          break;
         }
       }
+    } else {
+      resultUrls = photos
+        .slice(0, maxPhotos)
+        .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
     }
 
-    return photos
-      .slice(0, maxPhotos)
-      .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
+    if (resultUrls.length > 0) {
+      setCachedLocationImage(cacheKey, resultUrls[0]);
+    }
+
+    return resultUrls;
   } catch (err) {
     console.warn("[googlePlacePhoto] fetchPlacePhotoUrls error:", err);
     return [];

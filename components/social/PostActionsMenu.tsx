@@ -23,7 +23,10 @@ export const PostActionsMenu: React.FC<PostActionsMenuProps> = ({ post, visible,
 
   const handleEdit = () => {
     onClose();
-    router.push(`/edit-post/${post.id}` as any);
+    router.push({
+      pathname: "/create-post",
+      params: { postId: post.id },
+    });
   };
 
   const handleDelete = () => {

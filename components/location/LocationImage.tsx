@@ -27,7 +27,6 @@ export const LocationImage: React.FC<LocationImageProps> = ({
   placeholderIcon = 'location',
   showAiBadge,
 }) => {
-  console.log(`[RENDER] LocationImage for: ${location?.name}`);
   const [imageUrl, setImageUrl] = useState<string | undefined>(getLocationImageUrl(location));
   const [loading, setLoading] = useState(false);
 
@@ -40,33 +39,26 @@ export const LocationImage: React.FC<LocationImageProps> = ({
     const resolveImage = async () => {
       if (!location) return;
       
-      const providerId = location.provider_id || (location as any).providerId;
-      const provider = location.provider || '';
+      const providerId = (location as any).provider_id || (location as any).providerId;
+      const provider = (location as any).provider || '';
       
       // Stability check: Avoid re-resolving if we already have a URL for this ID/Coords
       // and the location object is effectively the same.
-      const lat = location.lat ?? location.latitude;
-      const lng = location.lng ?? location.longitude;
+      const lat = (location as any).lat ?? (location as any).latitude;
+      const lng = (location as any).lng ?? (location as any).longitude;
       
       const isGoogle = !provider || 
-                       provider.toUpperCase() === 'NONE' ||
-                       provider.toUpperCase() === 'GOOGLE_MAPS' || 
-                       provider.toLowerCase().includes('google') ||
-                       (providerId && providerId.startsWith('ChI'));
-
-      console.log(`\n🚀 [LocationImage] Resolving for: ${location.name || 'unnamed'}`);
-      console.log(`   - Provider ID: ${providerId || 'NONE'}`);
-      console.log(`   - Provider: ${provider || 'NONE'}`);
-      console.log(`   - isGoogle: ${isGoogle}`);
-      console.log(`   - Coords: ${lat},${lng}`);
+                       String(provider).toUpperCase() === 'NONE' ||
+                       String(provider).toUpperCase() === 'GOOGLE_MAPS' || 
+                       String(provider).toLowerCase().includes('google') ||
+                       (typeof providerId === 'string' && providerId.startsWith('ChI'));
 
       // Chỉ cần có provider_id HOẶC được xác định là từ Google, ta sẽ thử fetch ảnh
       if (providerId || isGoogle) {
         if (!imageUrl) setLoading(true); // Only show loading if we don't have a sync URL
         try {
-          const url = await getLocationImageUrlAsync(location);
+          const url = await getLocationImageUrlAsync(location as any);
           if (isMounted && url && url !== imageUrl) {
-            console.log(`   - ✅ [RESOLVED URL]: ${url.substring(0, 60)}...`);
             setImageUrl(url);
           }
         } catch (error) {
@@ -75,7 +67,7 @@ export const LocationImage: React.FC<LocationImageProps> = ({
           if (isMounted) setLoading(false);
         }
       } else {
-        const syncUrl = getLocationImageUrl(location);
+        const syncUrl = getLocationImageUrl(location as any);
         if (isMounted && syncUrl && syncUrl !== imageUrl) {
           setImageUrl(syncUrl);
         }
@@ -87,7 +79,15 @@ export const LocationImage: React.FC<LocationImageProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [location?.id, location?.provider_id, (location as any)?.providerId, location?.lat, location?.latitude, location?.lng, location?.longitude]);
+  }, [
+    (location as any)?.id, 
+    (location as any)?.provider_id, 
+    (location as any)?.providerId, 
+    (location as any)?.lat, 
+    (location as any)?.latitude, 
+    (location as any)?.lng, 
+    (location as any)?.longitude
+  ]);
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -100,6 +100,17 @@ export const LocationImage: React.FC<LocationImageProps> = ({
           placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
           onError={() => {
             console.log(`[LocationImage] Failed to load image: ${imageUrl?.substring(0, 40)}...`);
+            // Fallback to a different map provider if Google Static Map fails
+            if (imageUrl?.includes("maps.googleapis.com") || imageUrl?.includes("places.googleapis.com")) {
+              const lat = (location as any)?.latitude || (location as any)?.lat;
+              const lng = (location as any)?.longitude || (location as any)?.lng;
+              if (lat && lng) {
+                // Use Yandex Static Maps as a reliable fallback (no key required for low traffic)
+                const fallback = `https://static-maps.yandex.ru/1.x/?ll=${lng},${lat}&z=14&l=map&size=450,450`;
+                setImageUrl(fallback);
+                return;
+              }
+            }
             setImageUrl(undefined);
           }}
         />

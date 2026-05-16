@@ -392,12 +392,7 @@ export default function AddLocationScreen() {
           providerId: suggestion.provider_id,
           name: suggestion.name,
           subtitle: suggestion.full_address || suggestion.secondary_text || "",
-          imageUrl: (typeof suggestion.latitude === "number" && typeof suggestion.longitude === "number")
-            ? buildStaticMapImageUrl(
-                [{ latitude: suggestion.latitude, longitude: suggestion.longitude }],
-                { width: 400, height: 400, zoom: 16 }
-              )
-            : "",
+          imageUrl: "", // Để LocationImage tự fetch ảnh từ providerId, tránh force map quá sớm
           latitude: suggestion.latitude,
           longitude: suggestion.longitude,
           types: suggestion.primary_type ? [suggestion.primary_type] : ["tourist_attraction"],
