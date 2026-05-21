@@ -73,8 +73,11 @@ export interface ChatMessageResponse {
     id: string;
     content?: string;
     content_snippet?: string;
+    contentSnippet?: string;
     media_urls?: string[];
+    mediaUrls?: string[];
     thumbnail_url?: string;
+    thumbnailUrl?: string;
     visibility?: string;
     author?: {
       id: string;

@@ -144,9 +144,30 @@ export default function GroupsScreen() {
       setActiveIcon(null);
       void checkAuth();
       if (!shouldLoadAuthenticatedData) return;
-      refetch().catch(() => {});
-      refetchConversations().catch(() => {});
-    }, [checkAuth, refetch, refetchConversations, shouldLoadAuthenticatedData])
+
+      // Tránh refetch ngay lập tức nếu dữ liệu vừa được cập nhật (ví dụ: tạo, cập nhật, rời nhóm)
+      // do database write propagation latency từ AWS EC2
+      const groupsState = queryClient.getQueryState(["groups"]);
+      const groupsLastUpdated = groupsState?.dataUpdatedAt ?? 0;
+      const isGroupsRecentlyUpdated = Date.now() - groupsLastUpdated < 5000;
+
+      if (!isGroupsRecentlyUpdated) {
+        console.log("🔍 [GroupsScreen] Refetching groups (not recently updated)");
+        refetch().catch(() => {});
+      } else {
+        console.log(`🔍 [GroupsScreen] Skipping groups refetch on focus: recently updated ${((Date.now() - groupsLastUpdated) / 1000).toFixed(1)}s ago`);
+      }
+
+      const convsState = queryClient.getQueryState(["conversations"]);
+      const convsLastUpdated = convsState?.dataUpdatedAt ?? 0;
+      const isConvsRecentlyUpdated = Date.now() - convsLastUpdated < 5000;
+
+      if (!isConvsRecentlyUpdated) {
+        refetchConversations().catch(() => {});
+      } else {
+        console.log("🔍 [GroupsScreen] Skipping conversations refetch on focus: recently updated");
+      }
+    }, [checkAuth, refetch, refetchConversations, shouldLoadAuthenticatedData, queryClient])
   );
 
   // Handle pull-to-refresh

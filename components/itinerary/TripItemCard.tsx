@@ -1,9 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
-import type { TripItemResponse } from '@/services/itineraries';
 import { LocationImage } from '@/components/location/LocationImage';
+import type { TripItemResponse } from '@/services/itineraries';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useMemo, useState } from 'react';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 type TripItemCardProps = {
   item: TripItemResponse;
@@ -216,11 +215,11 @@ export function TripItemCard({
           )}
 
           {/* Transport Info */}
-          {showTransport && item.transport_duration && (
+          {showTransport && item.duration && (
             <View style={styles.infoRow}>
               <Ionicons name="car-outline" size={16} color="#9CA3AF" />
               <Text style={styles.infoText}>
-                {item.transport_duration} phút từ trước đó
+                {item.duration} phút từ trước đó
               </Text>
             </View>
           )}

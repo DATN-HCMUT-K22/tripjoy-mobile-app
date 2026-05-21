@@ -169,8 +169,8 @@ export function SharedHeader({
       <DefaultRightIcons
         notificationCount={notificationCount}
         messageCount={messageCount}
-        onNotificationPress={onNotificationPress}
-        onMessagePress={onMessagePress}
+        onNotificationPress={onNotificationPress || (() => router.push("/notifications"))}
+        onMessagePress={onMessagePress || (() => router.push("/messages"))}
         activeIcon={activeIcon}
         iconColor={iconColor ?? "#666"}
         activeColor={activeColor}

@@ -14,8 +14,8 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -24,8 +24,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AttachedMediaGalleryModal } from "@/components/create-post/AttachedMediaGalleryModal";
 import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
@@ -436,12 +436,8 @@ export default function CreatePostScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.flex}
-      >
-        {/* Header */}
-        <View style={styles.header}>
+      {/* Header */}
+      <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
             activeOpacity={0.7}
@@ -465,9 +461,15 @@ export default function CreatePostScreen() {
               {isEditing ? "Lưu" : "Đăng"}
             </Text>
           </TouchableOpacity>
-        </View>
+      </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
+        keyboardOpeningTime={0}
+      >
           {/* Upload Progress Indicator */}
           {isSubmitting && uploadProgress && (
             <View style={styles.uploadProgressContainer}>
@@ -790,19 +792,18 @@ export default function CreatePostScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
+      </KeyboardAwareScrollView>
 
-        <AttachedMediaGalleryModal
-          visible={mediaGalleryVisible}
-          items={selectedMedia}
-          initialIndex={mediaGalleryIndex}
-          onClose={() => setMediaGalleryVisible(false)}
-        />
-        <LoginRequiredModal
-          visible={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
-        />
-      </KeyboardAvoidingView>
+      <AttachedMediaGalleryModal
+        visible={mediaGalleryVisible}
+        items={selectedMedia}
+        initialIndex={mediaGalleryIndex}
+        onClose={() => setMediaGalleryVisible(false)}
+      />
+      <LoginRequiredModal
+        visible={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+      />
     </SafeAreaView>
   );
 }

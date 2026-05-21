@@ -27,14 +27,13 @@ import React, {
   useState,
 } from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import DatePicker from "react-native-date-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -494,10 +493,7 @@ export default function EditProfileScreen() {
       className="flex-1 bg-[#F7F8FA]"
       edges={["top", "left", "right", "bottom"]}
     >
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+
         <SocialHeader
           notificationCount={notificationUnreadCount}
           messageCount={unreadConversationsCount}
@@ -539,9 +535,12 @@ export default function EditProfileScreen() {
           }
         />
 
-        <ScrollView
+        <KeyboardAwareScrollView
           className="flex-1"
           contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          enableOnAndroid={true}
+          extraScrollHeight={20}
+          keyboardOpeningTime={0}
         >
           <View className="bg-white rounded-2xl px-4 py-5 mb-4">
             <View style={{ alignItems: "center", marginBottom: 8 }}>
@@ -638,8 +637,7 @@ export default function EditProfileScreen() {
             onCancel={() => setShowDatePicker(false)}
             onDateChange={setPickerDate}
           />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
 
       <LoginRequiredModal
         visible={showLoginModal}

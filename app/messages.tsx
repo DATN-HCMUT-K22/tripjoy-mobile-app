@@ -792,10 +792,9 @@ export default function MessagesScreen() {
           <TouchableOpacity
             onPress={() => {
               try {
-                if (router.canGoBack()) router.back();
-                else router.replace("/(tabs)");
-              } catch {
                 router.replace("/(tabs)");
+              } catch {
+                // Ignore
               }
             }}
             activeOpacity={0.7}

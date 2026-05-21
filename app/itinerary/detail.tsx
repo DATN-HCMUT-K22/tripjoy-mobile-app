@@ -1,49 +1,48 @@
-import { DraggableApiItineraryItemCard } from "@/components/itinerary/DraggableApiItineraryItemCard";
-import { TripItemCard } from "@/components/itinerary/TripItemCard";
-import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
-import TimePickerModal from "@/components/TimePickerModal";
 import { AppDialogModal } from "@/components/common/AppDialogModal";
+import { SharedHeader } from "@/components/common/SharedHeader";
+import { DraggableApiItineraryItemCard } from "@/components/itinerary/DraggableApiItineraryItemCard";
+import { ExpensesOverlay } from "@/components/itinerary/ExpensesOverlay";
+import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
+import { StatusBadge } from "@/components/itinerary/StatusBadge";
+import { TripItemCard } from "@/components/itinerary/TripItemCard";
+import { LocationImage } from "@/components/location/LocationImage";
+import TimePickerModal from "@/components/TimePickerModal";
 import {
-  useItineraryDetail,
-  useItineraryTripItems,
-  useUpdateItinerary,
-  useDeleteTripItem,
-  useUpdateTripItem,
-  useUpdateItineraryStatus,
-  useAiSuggestLocation,
   useAiModifyItinerary,
+  useAiSuggestLocation,
+  useDeleteTripItem,
   useFavoriteItineraries,
   useFavoriteItinerary,
+  useItineraryDetail,
+  useItineraryTripItems,
   useUnfavoriteItinerary,
+  useUpdateItinerary,
+  useUpdateItineraryStatus,
+  useUpdateTripItem,
 } from "@/hooks/useItineraries";
-import { 
-  ITINERARY_STATUS, 
-  type TripItemResponse,
-  type LocationResponse 
+import {
+  ITINERARY_STATUS,
+  type TripItemResponse
 } from "@/services/itineraries";
+import { useAppSelector } from "@/store/hooks";
 import { parseItineraryDateToDayOnly, tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
-import { StatusBadge } from "@/components/itinerary/StatusBadge";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useLocalSearchParams, router } from "expo-router";
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   ScrollView,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  StyleSheet,
-  Animated,
-  Easing,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { SharedHeader } from "@/components/common/SharedHeader";
-import { useAppSelector } from "@/store/hooks";
-import { ExpensesOverlay } from "@/components/itinerary/ExpensesOverlay";
-import { LocationImage } from "@/components/location/LocationImage";
 
 function formatHeaderDate(iso?: string): string {
   if (!iso?.trim()) return "";
@@ -138,8 +137,7 @@ function getKeywordFallbackImage(note?: string): string {
 
 function placeIdFromTripItem(row: TripItemResponse): string | undefined {
   const loc = row.location;
-  // Fallback order: Google Place ID (provider_id) -> raw place_id -> internal UUID (id)
-  return loc?.provider_id || (row as any).place_id || row.id;
+  return loc?.provider_id || (row as any).place_id || (row as any).location_id || row.id;
 }
 
 function formatItemDateTime(dayKey: string, time: string): string {
@@ -225,7 +223,7 @@ export default function ItineraryDetailScreen() {
 
 
   const itemsByDay = useMemo(() => {
-    const map: Record<string, any[]> = {};
+    const map: Record<string, TripItemResponse[]> = {};
     for (const row of tripItems) {
       const k = row.start_time ? parseItineraryDateToDayOnly(row.start_time) || "_nodate" : "_nodate";
       if (!map[k]) map[k] = [];
@@ -233,8 +231,8 @@ export default function ItineraryDetailScreen() {
     }
     for (const k of Object.keys(map)) {
       map[k].sort((a, b) => {
-        const ta = Date.parse(a.start_time || "") || 0;
-        const tb = Date.parse(b.start_time || "") || 0;
+        const ta = a.start_time ? Date.parse(a.start_time) : 0;
+        const tb = b.start_time ? Date.parse(b.start_time) : 0;
         return ta - tb;
       });
     }
@@ -265,7 +263,7 @@ export default function ItineraryDetailScreen() {
       await updateStatusMutation.mutateAsync({
         itineraryId,
         status: newStatus,
-        groupId: detail?.group_id
+        groupId: detail?.group_id ?? ""
       });
       refetchDetail();
     } catch {}
@@ -276,7 +274,7 @@ export default function ItineraryDetailScreen() {
   const unfavoriteMutation = useUnfavoriteItinerary();
 
   const isFavorited = useMemo(() => {
-    return favoriteList.some((it) => it.id === itineraryId);
+    return Array.isArray(favoriteList) && favoriteList.some((it) => it && it.id === itineraryId);
   }, [favoriteList, itineraryId]);
 
   const toggleFavorite = useCallback(() => {
@@ -369,7 +367,7 @@ export default function ItineraryDetailScreen() {
       dayKey, 
       item, 
       newStart: formatItemDateTime(dayKey, timeRange.start),
-      newDuration: duration ?? item.duration
+      newDuration: duration ?? item.duration ?? 0
     });
     setTimePickerVisible(false);
     setTimeConfirmVisible(true);
@@ -474,13 +472,13 @@ export default function ItineraryDetailScreen() {
   now.setHours(0, 0, 0, 0);
   
   const startDate = detail?.start_date ? new Date(detail.start_date) : null;
-  if (startDate) startDate.setHours(0, 0, 0, 0);
+  if (startDate && !isNaN(startDate.getTime())) startDate.setHours(0, 0, 0, 0);
   
   const endDate = detail?.end_date ? new Date(detail.end_date) : startDate;
-  if (endDate) endDate.setHours(0, 0, 0, 0);
+  if (endDate && !isNaN(endDate.getTime())) endDate.setHours(0, 0, 0, 0);
   
-  const isWithinTripRange = startDate && endDate && now >= startDate && now <= endDate;
-  const isPastTripEnd = endDate && now > endDate;
+  const isWithinTripRange = !!(startDate && endDate && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && now >= startDate && now <= endDate);
+  const isPastTripEnd = !!(endDate && !isNaN(endDate.getTime()) && now > endDate);
   
   const showStartTrip = status === ITINERARY_STATUS.CONFIRMED && isWithinTripRange;
   const showCompleteTrip = (status === ITINERARY_STATUS.CONFIRMED || status === ITINERARY_STATUS.IN_PROGRESS) && isPastTripEnd;
@@ -596,7 +594,7 @@ export default function ItineraryDetailScreen() {
           <View style={styles.coverCard}>
             {detail?.cover_image_url || detail?.thumbnail_url ? (
               <Image 
-                source={{ uri: detail.cover_image_url || detail.thumbnail_url }} 
+                source={{ uri: detail.cover_image_url || detail.thumbnail_url || undefined }} 
                 style={styles.coverImage} 
                 contentFit="cover" 
               />
@@ -631,7 +629,7 @@ export default function ItineraryDetailScreen() {
           </View>
 
           <View style={styles.actionsRow}>
-            {isOwner && (
+            {(isOwner || status === ITINERARY_STATUS.DRAFT) && (
               <TouchableOpacity
                 onPress={() => setShowExpenses(true)}
                 style={[styles.actionButton, styles.expenseButton]}
@@ -649,7 +647,7 @@ export default function ItineraryDetailScreen() {
               <Text style={styles.notebookText}>Hướng dẫn</Text>
             </TouchableOpacity>
             
-            {isOwner && canUseAi && (
+            {(isOwner || status === ITINERARY_STATUS.DRAFT) && canUseAi && (
               !isSetupMode ? (
                 <TouchableOpacity
                   onPress={() => setIsSetupMode(true)}
@@ -732,7 +730,6 @@ export default function ItineraryDetailScreen() {
                           total={(draftItemsByDay[dayKey] || []).length}
                           canInteract={canEdit}
                           canUseAi={canUseAi}
-                          imageUrl={getItemImageUrl(row)}
                           onMove={(from, to) => moveItem(dayKey, from, to)}
                           onDelete={() => deleteItem(dayKey, row.id, idx, row.location?.name || row.note)}
                           onSuggest={() => handleOpenAiSuggest(row)}
@@ -789,8 +786,9 @@ export default function ItineraryDetailScreen() {
         onSave={handleSaveTime}
         initialStartTime={editingTimeSlot?.item.start_time ? new Date(editingTimeSlot.item.start_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "08:00"}
         initialEndTime={(() => {
-          const start = editingTimeSlot?.item.start_time ? new Date(editingTimeSlot.item.start_time) : new Date();
-          const dur = editingTimeSlot?.item.duration || 60;
+          if (!editingTimeSlot?.item.start_time) return "10:00";
+          const start = new Date(editingTimeSlot.item.start_time);
+          const dur = editingTimeSlot.item.duration || 60;
           const end = new Date(start.getTime() + dur * 60000);
           return end.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         })()}
@@ -806,6 +804,7 @@ export default function ItineraryDetailScreen() {
         onPrimaryPress={confirmDeleteItem}
         secondaryLabel="Hủy"
         onSecondaryPress={() => setDeleteConfirmVisible(false)}
+        onRequestClose={() => setDeleteConfirmVisible(false)}
       />
 
       <AppDialogModal
@@ -817,6 +816,7 @@ export default function ItineraryDetailScreen() {
         onPrimaryPress={confirmSwapItems}
         secondaryLabel="Hủy"
         onSecondaryPress={() => setSwapConfirmVisible(false)}
+        onRequestClose={() => setSwapConfirmVisible(false)}
       />
 
       <AppDialogModal
@@ -828,6 +828,7 @@ export default function ItineraryDetailScreen() {
         onPrimaryPress={confirmTimeEdit}
         secondaryLabel="Hủy"
         onSecondaryPress={() => setTimeConfirmVisible(false)}
+        onRequestClose={() => setTimeConfirmVisible(false)}
       />
 
       {/* AI Suggestion Modal */}
@@ -853,7 +854,7 @@ export default function ItineraryDetailScreen() {
                     <LocationImage location={s.location} style={{ width: 64, height: 64 }} containerStyle={{ borderRadius: 12 }} />
                     <View className="ml-4 flex-1">
                       <Text className="text-base font-bold text-gray-900">{s.location?.name || "Địa điểm mới"}</Text>
-                      <Text className="text-xs text-gray-500" numberOfLines={1}>{s.location?.address || "Gợi ý từ AI"}</Text>
+                      <Text className="text-xs text-gray-500" numberOfLines={1}>{s.location?.full_address || s.location?.place_formatted || "Gợi ý từ AI"}</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color="#ccc" />
                   </TouchableOpacity>
@@ -1071,6 +1072,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#1E40AF",
+  },
+  setupButton: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#BFDBFE",
   },
   saveButton: {
     backgroundColor: "#10B981",

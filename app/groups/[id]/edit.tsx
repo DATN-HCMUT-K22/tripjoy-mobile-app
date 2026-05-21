@@ -8,15 +8,14 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function EditGroupInfoScreen() {
@@ -179,15 +178,14 @@ export default function EditGroupInfoScreen() {
         <View style={styles.headerSide} />
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
+
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          enableOnAndroid={true}
+          extraScrollHeight={20}
         >
           <View style={styles.card}>
             <View style={styles.avatarSection}>
@@ -252,7 +250,7 @@ export default function EditGroupInfoScreen() {
               })}
             </View>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <View style={styles.bottomBar}>
           <TouchableOpacity
@@ -274,7 +272,6 @@ export default function EditGroupInfoScreen() {
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

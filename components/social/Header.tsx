@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
+import { router } from "expo-router";
 import { Text, TouchableOpacity, View } from "react-native";
 
 interface HeaderProps {
@@ -28,7 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Notification icons */}
       <View className="flex-row items-center gap-4">
         <TouchableOpacity
-          onPress={onNotificationPress}
+          onPress={onNotificationPress || (() => router.push("/notifications"))}
           className="relative"
           activeOpacity={0.7}
         >
@@ -43,7 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={onMessagePress}
+          onPress={onMessagePress || (() => router.push("/messages"))}
           className="relative"
           activeOpacity={0.7}
         >

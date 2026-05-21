@@ -5,9 +5,12 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import {
   useGroupItinerariesByTab,
   useConfirmItinerary,
+  useItineraryTripItems,
+  PLACEHOLDER_ITINERARY_IMAGE,
   type GroupInfoItineraryListItem,
   type GroupItineraryTab,
 } from "@/hooks/useItineraries";
+import { LocationImage } from "@/components/location/LocationImage";
 import { formatCurrencyVND, formatDateRange } from "@/utils/format";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
@@ -45,6 +48,50 @@ const TAB_CONFIG: Record<
   },
 };
 
+function GroupItineraryThumb({
+  itineraryId,
+  imageUri,
+  style,
+}: {
+  itineraryId: string;
+  imageUri: string;
+  style: any;
+}) {
+  const { data: items } = useItineraryTripItems(itineraryId);
+  const firstLocation = items?.[0]?.location;
+
+  if (imageUri && imageUri !== PLACEHOLDER_ITINERARY_IMAGE && imageUri.trim() !== "") {
+    return (
+      <Image
+        source={{ uri: imageUri }}
+        style={style}
+        contentFit="cover"
+        transition={200}
+      />
+    );
+  }
+
+  if (firstLocation) {
+    return (
+      <LocationImage
+        location={firstLocation}
+        style={style}
+        containerStyle={style}
+        placeholderIcon="map"
+      />
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: PLACEHOLDER_ITINERARY_IMAGE }}
+      style={style}
+      contentFit="cover"
+      transition={200}
+    />
+  );
+}
+
 export default function GroupInfoScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -53,15 +100,16 @@ export default function GroupInfoScreen() {
   const { data: currentUser } = useCurrentUser();
   const { data: membersRaw, isLoading: isLoadingMembers } = useGroupMembers(id);
   const members = useMemo(() => membersRaw || [], [membersRaw]);
+  const [isMembersExpanded, setIsMembersExpanded] = useState(false);
+  const [isItineraryExpanded, setIsItineraryExpanded] = useState(false);
+  
   const {
     data: itinerariesData,
     isLoading: isLoadingItineraries,
     isError: isItinerariesError,
     refetch: refetchItineraries,
-  } = useGroupItinerariesByTab(id);
+  } = useGroupItinerariesByTab(id, { enabled: isItineraryExpanded });
   const [itineraryTab, setItineraryTab] = useState<GroupItineraryTab>("ongoing");
-  const [isMembersExpanded, setIsMembersExpanded] = useState(false);
-  const [isItineraryExpanded, setIsItineraryExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { mutateAsync: confirmItinerary, isPending: isConfirming } = useConfirmItinerary();
@@ -318,7 +366,9 @@ export default function GroupInfoScreen() {
             </View>
             <View style={styles.cardTextWrap}>
               <Text style={styles.cardTitle}>Lịch trình đã đi</Text>
-              <Text style={styles.cardDesc}>{pastItinerariesCount} chuyến đi</Text>
+              <Text style={styles.cardDesc}>
+                {itinerariesData ? `${pastItinerariesCount} chuyến đi` : "Nhấn để xem"}
+              </Text>
             </View>
             <Ionicons
               name={isItineraryExpanded ? "chevron-up" : "chevron-down"}
@@ -400,10 +450,10 @@ export default function GroupInfoScreen() {
                     { borderColor: tabStyle.borderColor },
                   ]}
                 >
-                  <Image
-                    source={{ uri: it.image }}
+                  <GroupItineraryThumb
+                    itineraryId={it.id}
+                    imageUri={it.image}
                     style={styles.itineraryThumb}
-                    contentFit="cover"
                   />
                   <View style={styles.itineraryBody}>
                     <Text style={styles.itineraryName}>{it.name}</Text>

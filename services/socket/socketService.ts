@@ -118,12 +118,12 @@ class SocketService {
             token: accessToken,
             userId: userId,
           },
-          transports: ["websocket"], // Skip polling for better performance and to avoid XHR polling errors
+          transports: ["websocket", "polling"],
           forceNew: true,
           reconnection: true,
-          reconnectionDelay: 2000,
-          reconnectionDelayMax: 10000,
-          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          reconnectionAttempts: Infinity, // Set to Infinity to keep trying
           timeout: 20000,
         });
 
@@ -214,7 +214,9 @@ class SocketService {
       msg.includes("login") || 
       msg.includes("auth") ||
       msg.includes("token") ||
-      msg.includes("need to login")
+      msg.includes("need to login") ||
+      msg.includes("xhr poll error") || 
+      msg.includes("websocket error")
     );
   }
 

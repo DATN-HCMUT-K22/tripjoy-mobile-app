@@ -1,5 +1,6 @@
 import { MenuDrawer } from "@/components/common/MenuDrawer";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import { Image, TouchableOpacity, View } from "react-native";
 
@@ -41,7 +42,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         {/* Right Icons */}
         <View className="flex-row items-center gap-4">
           <TouchableOpacity
-            onPress={onNotificationPress}
+            onPress={onNotificationPress || (() => router.push("/notifications"))}
             activeOpacity={0.7}
             className="relative"
           >
@@ -53,7 +54,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             )}
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={onMessagePress}
+            onPress={onMessagePress || (() => router.push("/messages"))}
             activeOpacity={0.7}
             className="relative"
           >

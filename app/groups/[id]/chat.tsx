@@ -268,6 +268,9 @@ export default function GroupChatScreen() {
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      if (conversationId) {
+        conversationService.markConversationRead(conversationId).catch(() => {});
+      }
     };
   }, [conversationId, resetUnread, dispatch]);
   
@@ -868,12 +871,8 @@ export default function GroupChatScreen() {
     queryClient.invalidateQueries({ queryKey: ["conversations"] });
     queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
 
-    // Quay về màn hình trước đó
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.push("/messages");
-    }
+    // Luôn quay về danh sách tin nhắn
+    router.push("/messages");
   }, [conversationId, messages, queryClient, router]);
 
   return (

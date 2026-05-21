@@ -6,11 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   Pressable,
-  ScrollView,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Ionicons } from '@expo/vector-icons';
 import { ContentType, ReportType, REPORT_TYPE_LABELS } from '@/types/report';
 import { useReport } from '@/hooks/useReport';
@@ -76,69 +75,70 @@ export const ReportModal: React.FC<ReportModalProps> = ({
       onRequestClose={handleClose}
     >
       <Pressable style={styles.overlay} onPress={handleClose}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-        >
-          <Pressable style={styles.content} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.header}>
-              <View style={styles.headerTextContainer}>
-                <Text style={styles.headerTitle}>{title}</Text>
-                {contentTitle && (
-                  <Text style={styles.contentTitlePreview} numberOfLines={1}>
-                    "{contentTitle}"
-                  </Text>
-                )}
-              </View>
-              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
+        <Pressable style={styles.content} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.header}>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerTitle}>{title}</Text>
+              {contentTitle && (
+                <Text style={styles.contentTitlePreview} numberOfLines={1}>
+                  "{contentTitle}"
+                </Text>
+              )}
             </View>
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
-              <Text style={styles.sectionTitle}>Tại sao bạn báo cáo nội dung này?</Text>
-              <Text style={styles.sectionSubtitle}>
-                Báo cáo của bạn là ẩn danh. Nếu ai đó đang gặp nguy hiểm, hãy gọi cho dịch vụ khẩn cấp địa phương ngay lập tức.
-              </Text>
+          <KeyboardAwareScrollView
+            showsVerticalScrollIndicator={false}
+            style={styles.scroll}
+            enableOnAndroid={true}
+            extraScrollHeight={20}
+            keyboardOpeningTime={0}
+          >
+            <Text style={styles.sectionTitle}>Tại sao bạn báo cáo nội dung này?</Text>
+            <Text style={styles.sectionSubtitle}>
+              Báo cáo của bạn là ẩn danh. Nếu ai đó đang gặp nguy hiểm, hãy gọi cho dịch vụ khẩn cấp địa phương ngay lập tức.
+            </Text>
 
-              {Object.entries(REPORT_TYPE_LABELS).map(([type, label]) => (
-                <TouchableOpacity
-                  key={type}
+            {Object.entries(REPORT_TYPE_LABELS).map(([type, label]) => (
+              <TouchableOpacity
+                key={type}
+                style={[
+                  styles.reasonItem,
+                  selectedType === type && styles.reasonItemActive,
+                ]}
+                onPress={() => setSelectedType(type as ReportType)}
+                activeOpacity={0.7}
+              >
+                <Text
                   style={[
-                    styles.reasonItem,
-                    selectedType === type && styles.reasonItemActive,
+                    styles.reasonLabel,
+                    selectedType === type && styles.reasonLabelActive,
                   ]}
-                  onPress={() => setSelectedType(type as ReportType)}
-                  activeOpacity={0.7}
                 >
-                  <Text
-                    style={[
-                      styles.reasonLabel,
-                      selectedType === type && styles.reasonLabelActive,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                  {selectedType === type && (
-                    <Ionicons name="checkmark-circle" size={20} color="#34B27D" />
-                  )}
-                </TouchableOpacity>
-              ))}
+                  {label}
+                </Text>
+                {selectedType === type && (
+                  <Ionicons name="checkmark-circle" size={20} color="#34B27D" />
+                )}
+              </TouchableOpacity>
+            ))}
 
-              <View style={styles.descriptionContainer}>
-                <Text style={styles.descriptionTitle}>Thêm chi tiết (không bắt buộc)</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Hãy cho chúng tôi biết thêm..."
-                  placeholderTextColor="#999"
-                  multiline
-                  numberOfLines={4}
-                  value={description}
-                  onChangeText={setDescription}
-                  textAlignVertical="top"
-                />
-              </View>
-            </ScrollView>
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.descriptionTitle}>Thêm chi tiết (không bắt buộc)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Hãy cho chúng tôi biết thêm..."
+                placeholderTextColor="#999"
+                multiline
+                numberOfLines={4}
+                value={description}
+                onChangeText={setDescription}
+                textAlignVertical="top"
+              />
+            </View>
 
             <View style={styles.footer}>
               <TouchableOpacity
@@ -154,8 +154,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
-          </Pressable>
-        </KeyboardAvoidingView>
+          </KeyboardAwareScrollView>
+        </Pressable>
       </Pressable>
     </Modal>
   );

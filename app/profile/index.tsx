@@ -1,47 +1,44 @@
 import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
+import { ItineraryCard } from "@/components/group/ItineraryCard";
 import { ProfileSkeleton } from "@/components/profile/ProfileSkeleton";
 import { BottomNavigation } from "@/components/social/BottomNavigation";
+import { CommentModal } from "@/components/social/CommentModal";
+import { PostCard } from "@/components/social/PostCard";
+import { ReportModal } from "@/components/social/ReportModal";
+import { ShareModal } from "@/components/social/ShareModal";
 import { SocialHeader } from "@/components/social/SocialHeader";
-import { VietnamFlag } from "@/components/ui/VietnamFlag";
 import { useConversations } from "@/hooks/useConversations";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGuestMode } from "@/hooks/useGuestMode";
+import { useFavoriteItineraries } from "@/hooks/useItineraries";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { resolveUserAvatarUri } from "@/utils/userAvatar";
+import {
+  useBookmarkPost,
+  useCommentPost,
+  useLikePost,
+  useNativeShare,
+  usePosts,
+  useSavedPosts,
+  useSharePost
+} from "@/hooks/useSocial";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { updateUser } from "@/store/slices/authSlice";
-import { PostCard } from "@/components/social/PostCard";
-import { CommentModal } from "@/components/social/CommentModal";
-import { ShareModal } from "@/components/social/ShareModal";
-import { ReportModal } from "@/components/social/ReportModal";
 import { ContentType } from "@/types/report";
-import { 
-  useBookmarkPost, 
-  useLikePost, 
-  usePosts, 
-  useSavedPosts,
-  useCommentPost,
-  useSharePost,
-  useNativeShare
-} from "@/hooks/useSocial";
-import { useFavoriteItineraries } from "@/hooks/useItineraries";
-import { ItineraryCard } from "@/components/group/ItineraryCard";
+import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import {
+  ActivityIndicator,
   SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  ActivityIndicator,
-  Alert,
+  View
 } from "react-native";
-import { formatCurrencyVND } from "@/utils/format";
 
 type TabType = "posts" | "saved" | "favorites";
 
@@ -169,24 +166,28 @@ export default function ProfileScreen() {
 
   const displayedUserPosts = React.useMemo(() => {
     if (!user?.id) return [];
-    const myPosts = userPosts.filter(post => post.creator_id === user.id);
+    const myPosts = Array.isArray(userPosts) ? userPosts.filter(post => post.creator_id === user.id) : [];
     if (!searchText.trim()) return myPosts;
     const lower = searchText.toLowerCase();
-    return myPosts.filter(post => post.caption?.toLowerCase().includes(lower));
+    return myPosts.filter(post => post && post.caption?.toLowerCase().includes(lower));
   }, [userPosts, user?.id, searchText]);
 
   const displayedSavedPosts = React.useMemo(() => {
-    if (!searchText.trim()) return savedPosts;
+    const list = Array.isArray(savedPosts) ? savedPosts : [];
+    if (!searchText.trim()) return list;
     const lower = searchText.toLowerCase();
-    return savedPosts.filter(post => post.caption?.toLowerCase().includes(lower));
+    return list.filter(post => post && post.caption?.toLowerCase().includes(lower));
   }, [savedPosts, searchText]);
 
   const displayedFavoriteItineraries = React.useMemo(() => {
-    if (!searchText.trim()) return favoriteItineraries;
+    const list = Array.isArray(favoriteItineraries) ? favoriteItineraries : [];
+    if (!searchText.trim()) return list;
     const lower = searchText.toLowerCase();
-    return favoriteItineraries.filter(it => 
-      it.title?.toLowerCase().includes(lower)
-    );
+    return list.filter(it => {
+      if (!it) return false;
+      const matchText = (it?.name || "").toLowerCase();
+      return matchText.includes(lower);
+    });
   }, [favoriteItineraries, searchText]);
 
   const showSkeleton = isCheckingAuth || (isAuthenticated && !user && isCurrentUserLoading);

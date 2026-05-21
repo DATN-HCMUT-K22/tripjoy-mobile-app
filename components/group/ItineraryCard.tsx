@@ -4,6 +4,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Itinerary } from '@/types/group';
 import { StatusBadge } from '@/components/itinerary/StatusBadge';
+import { useItineraryTripItems, PLACEHOLDER_ITINERARY_IMAGE } from '@/hooks/useItineraries';
+import { LocationImage } from '@/components/location/LocationImage';
 
 interface ItineraryCardProps {
   itinerary: Itinerary;
@@ -15,7 +17,7 @@ interface ItineraryCardProps {
   onDelete?: () => void;
 }
 
-const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400';
+const PLACEHOLDER_IMAGE = PLACEHOLDER_ITINERARY_IMAGE;
 
 export const ItineraryCard: React.FC<ItineraryCardProps> = ({
   itinerary,
@@ -62,7 +64,45 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({
     onFavorite?.();
   };
 
-  const imageUri = itinerary.image || PLACEHOLDER_IMAGE;
+  const { data: items, isLoading: isItemsLoading } = useItineraryTripItems(itinerary.id);
+  const firstLocation = items?.[0]?.location;
+  const imageUri = itinerary.image || null;
+
+  const renderImage = () => {
+    // 1. If we have a specific itinerary image (not the placeholder), use it
+    if (imageUri && imageUri !== PLACEHOLDER_IMAGE && imageUri.trim() !== "") {
+      return (
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.image}
+          contentFit="cover"
+          transition={200}
+        />
+      );
+    }
+
+    // 2. If we have locations, use the first location's image
+    if (firstLocation) {
+      return (
+        <LocationImage
+          location={firstLocation}
+          style={styles.image}
+          containerStyle={styles.image}
+          placeholderIcon="map"
+        />
+      );
+    }
+
+    // 3. Fallback to placeholder (while loading or if no locations)
+    return (
+      <Image
+        source={{ uri: PLACEHOLDER_IMAGE }}
+        style={styles.image}
+        contentFit="cover"
+        transition={200}
+      />
+    );
+  };
 
   return (
     <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>
@@ -76,12 +116,7 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({
       >
         {/* Image with Status Badge */}
         <View style={styles.imageContainer}>
-          <Image
-            source={{ uri: imageUri }}
-            style={styles.image}
-            contentFit="cover"
-            transition={200}
-          />
+          {renderImage()}
 
           {/* Status Badge Overlay */}
           {showStatus && status && (
@@ -172,6 +207,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     position: 'relative',
+    backgroundColor: '#F3F4F6',
   },
   image: {
     width: '100%',

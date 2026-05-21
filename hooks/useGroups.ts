@@ -84,13 +84,15 @@ export function useCreateGroup(options?: { redirectToGroups?: boolean }) {
       // Cập nhật cache ngay lập tức để UI phản hồi nhanh
       queryClient.setQueryData(["groups"], (oldData: Group[] | undefined) => {
         if (Array.isArray(oldData)) {
+          const exists = oldData.some((g) => g.id === data.id);
+          if (exists) return oldData;
           return [data, ...oldData];
         }
         return [data];
       });
 
-      // Invalidate và refetch groups list
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      // Invalidate nhưng không refetch ngay lập tức (tránh replica lag / db write delay)
+      queryClient.invalidateQueries({ queryKey: ["groups"], refetchType: "none" });
 
       trackGroupCreated(data.id, { groupName: data.name });
 
@@ -125,8 +127,12 @@ export function useUpdateGroup(groupId: string | undefined) {
       if (groupId) {
         queryClient.invalidateQueries({ queryKey: ["group", groupId] });
       }
+      // Cập nhật cache của danh sách nhóm ngay lập tức
+      queryClient.setQueryData(["groups"], (oldData: Group[] | undefined) => {
+        return oldData?.map((g) => (g.id === data.id ? data : g));
+      });
       // Cập nhật danh sách nhóm để phản ánh tên/avatar mới
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"], refetchType: "none" });
       
       trackGroupInteraction("updated", groupId || "", { name: data.name });
       showSuccessToast("Cập nhật thông tin nhóm thành công!");
@@ -182,8 +188,8 @@ export function useLeaveGroup() {
         return old?.filter((g) => g.id !== groupId);
       });
 
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"], refetchType: "none" });
+      queryClient.invalidateQueries({ queryKey: ["conversations"], refetchType: "none" });
       
       trackGroupInteraction("left", groupId);
       showSuccessToast("Rời nhóm thành công!");
@@ -373,8 +379,8 @@ export function useLeaveGroupFromMembers(groupId: string | undefined) {
         queryClient.invalidateQueries({ queryKey: ["group-members", groupId] });
         queryClient.invalidateQueries({ queryKey: ["group", groupId] });
       }
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"], refetchType: "none" });
+      queryClient.invalidateQueries({ queryKey: ["conversations"], refetchType: "none" });
       
       if (groupId) trackGroupInteraction("left", groupId);
       showSuccessToast("Bạn đã rời nhóm");
@@ -407,8 +413,8 @@ export function useDeleteGroup() {
         return old?.filter((g) => g.id !== groupId);
       });
 
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"], refetchType: "none" });
+      queryClient.invalidateQueries({ queryKey: ["conversations"], refetchType: "none" });
       
       trackGroupInteraction("deleted", groupId);
       showSuccessToast("Đã giải tán nhóm thành công");

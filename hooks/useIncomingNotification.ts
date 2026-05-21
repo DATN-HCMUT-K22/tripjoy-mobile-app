@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { socketService, NotificationObject } from "@/services/socket/socketService";
 import { notificationService } from "@/services/notification.service";
 import { store } from "@/store";
+import { incrementUnreadCount } from "@/store/slices/notificationSlice";
 
 /**
  * Hook lắng nghe event `notification` từ BE (room user_{userId})
@@ -33,6 +34,10 @@ export function useIncomingNotification() {
           notification.data
         );
         console.log("[useIncomingNotification] ✅ Generic notification shown");
+
+        // Increment unread count in Redux
+        store.dispatch(incrementUnreadCount(1));
+        console.log("[useIncomingNotification] ➕ Unread count incremented in Redux");
       } catch (error) {
         console.log(
           "[useIncomingNotification] Failed to show generic notification:",

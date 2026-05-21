@@ -10,7 +10,8 @@ import { ImageBackground } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
 import { Controller } from "react-hook-form";
-import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Image, Platform, Text, TouchableOpacity, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 
 export default function LoginScreen() {
   console.log("=== LOGIN SCREEN RENDER ===");
@@ -102,151 +103,154 @@ export default function LoginScreen() {
             backgroundColor: "rgba(255, 235, 59, 0.15)",
           }}
         />
-        <ScrollView
+        <KeyboardAwareScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: 20,
             paddingVertical: 32,
           }}
           showsVerticalScrollIndicator={false}
+          enableOnAndroid={true}
+          extraScrollHeight={20}
         >
-          {/* Logo text */}
-          <View
-            style={{ alignItems: "center", marginTop: 12, marginBottom: 28 }}
-          >
-            <Image
-              source={require("@/assets/logo/white_white.png")}
-              style={{ width: 200, height: 200 }}
-              resizeMode="contain"
-            />
-
-            <Text
-              style={{
-                fontSize: 18,
-                color: "#ffffff",
-                textAlign: "center",
-                lineHeight: 22,
-              }}
+            {/* Logo text */}
+            <View
+              style={{ alignItems: "center", marginTop: 12, marginBottom: 28 }}
             >
-              Cùng nhau lên lịch,
-            </Text>
-            <Text
-              style={{
-                fontSize: 18,
-                color: "#ffffff",
-                textAlign: "center",
-                lineHeight: 22,
-              }}
-            >
-              cùng nhau khám phá
-            </Text>
-          </View>
+              <Image
+                source={require("@/assets/logo/white_white.png")}
+                style={{ width: 200, height: 200 }}
+                resizeMode="contain"
+              />
 
-          {/* Form */}
-          <View style={{ gap: 8 }}>
-            <Text
-              style={{
-                color: "#ffffff",
-                fontWeight: "700",
-                fontSize: 24,
-                textAlign: "center",
-              }}
-            >
-              Đăng nhập
-            </Text>
-
-            <Text style={{ color: "#ffffff", fontSize: 12 }}>Tài khoản</Text>
-            <Controller
-              control={control}
-              name="username"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <Input
-                  placeholder="Nhập tên tài khoản..."
-                  leftIcon="person-outline"
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  error={errors.username?.message}
-                />
-              )}
-            />
-
-            <Text style={{ color: "#ffffff", fontSize: 12 }}>Mật khẩu</Text>
-            <Controller
-              control={control}
-              name="password"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <Input
-                  placeholder="Nhập mật khẩu..."
-                  leftIcon="lock-closed-outline"
-                  rightIcon="eye-outline"
-                  secureTextEntry
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  error={errors.password?.message}
-                />
-              )}
-            />
-
-          </View>
-
-          {/* Buttons */}
-          <View style={{ marginTop: 20, gap: 16 }}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={handleSubmit(onSubmit)}
-              disabled={isSubmitting}
-              style={{
-                height: 50,
-                borderRadius: 12,
-                backgroundColor: isSubmitting ? "#9CA3AF" : "#2EC989",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
               <Text
-                style={{ color: "#ffffff", fontWeight: "700", fontSize: 16 }}
+                style={{
+                  fontSize: 18,
+                  color: "#ffffff",
+                  textAlign: "center",
+                  lineHeight: 22,
+                }}
               >
-                {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
+                Cùng nhau lên lịch,
               </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={handleGuestLogin}
-              style={{
-                height: 48,
-                borderRadius: 12,
-                backgroundColor: "#D1FAE5",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <Ionicons name="person-outline" size={18} color="#2EC989" />
               <Text
-                style={{ color: "#2EC989", fontWeight: "700", fontSize: 14 }}
+                style={{
+                  fontSize: 18,
+                  color: "#ffffff",
+                  textAlign: "center",
+                  lineHeight: 22,
+                }}
               >
-                Tiếp tục như khách
+                cùng nhau khám phá
               </Text>
-            </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={{ alignSelf: "center", marginTop: 4 }}
-              onPress={() => router.push("/signup")}
-            >
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>
-                Bạn chưa có tài khoản ?{" "}
-                <Text style={{ fontWeight: "700", color: "#ffffff" }}>
-                  Đăng ký
+            {/* Form */}
+            <View style={{ gap: 8 }}>
+              <Text
+                style={{
+                  color: "#ffffff",
+                  fontWeight: "700",
+                  fontSize: 24,
+                  textAlign: "center",
+                }}
+              >
+                Đăng nhập
+              </Text>
+
+              <Text style={{ color: "#ffffff", fontSize: 12 }}>Tài khoản</Text>
+              <Controller
+                control={control}
+                name="username"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    placeholder="Nhập tên tài khoản..."
+                    leftIcon="person-outline"
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    error={errors.username?.message}
+                  />
+                )}
+              />
+
+              <Text style={{ color: "#ffffff", fontSize: 12 }}>Mật khẩu</Text>
+              <Controller
+                control={control}
+                name="password"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    placeholder="Nhập mật khẩu..."
+                    leftIcon="lock-closed-outline"
+                    rightIcon="eye-outline"
+                    secureTextEntry
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    error={errors.password?.message}
+                  />
+                )}
+              />
+
+            </View>
+
+            {/* Buttons */}
+            <View style={{ marginTop: 20, gap: 16 }}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={handleSubmit(onSubmit)}
+                disabled={isSubmitting}
+                style={{
+                  height: 50,
+                  borderRadius: 12,
+                  backgroundColor: isSubmitting ? "#9CA3AF" : "#2EC989",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{ color: "#ffffff", fontWeight: "700", fontSize: 16 }}
+                >
+                  {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
                 </Text>
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={handleGuestLogin}
+                style={{
+                  height: 48,
+                  borderRadius: 12,
+                  backgroundColor: "#D1FAE5",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <Ionicons name="person-outline" size={18} color="#2EC989" />
+                <Text
+                  style={{ color: "#2EC989", fontWeight: "700", fontSize: 14 }}
+                >
+                  Tiếp tục như khách
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={{ alignSelf: "center", marginTop: 4 }}
+                onPress={() => router.push("/signup")}
+              >
+                <Text style={{ color: "#ffffff", fontSize: 12 }}>
+                  Bạn chưa có tài khoản ?{" "}
+                  <Text style={{ fontWeight: "700", color: "#ffffff" }}>
+                    Đăng ký
+                  </Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAwareScrollView>
       </ImageBackground>
     </View>
   );

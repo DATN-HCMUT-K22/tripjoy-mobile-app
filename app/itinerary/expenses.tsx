@@ -7,11 +7,11 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useExpenses, useAddExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/useExpenses";
@@ -284,11 +284,13 @@ export default function ExpensesScreen() {
             <View className="w-12" />
           </View>
           
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          <KeyboardAwareScrollView
             className="flex-1"
+            contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 }}
+            enableOnAndroid={true}
+            extraScrollHeight={20}
+            keyboardOpeningTime={0}
           >
-            <ScrollView className="px-5 pt-5 pb-10 flex-1">
               {/* Tên */}
               <View className="mb-5">
                 <Text className="text-sm font-semibold text-gray-700 mb-1.5">Tên khoản chi <Text className="text-red-500">*</Text></Text>
@@ -346,9 +348,7 @@ export default function ExpensesScreen() {
                   style={{ textAlignVertical: 'top' }}
                 />
               </View>
-            </ScrollView>
-
-            <View className="px-5 pb-8 pt-3 border-t border-gray-100">
+            <View style={{ paddingBottom: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
               <TouchableOpacity
                 onPress={handleSave}
                 disabled={addExpenseMut.isPending || updateExpenseMut.isPending}
@@ -363,7 +363,7 @@ export default function ExpensesScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
+          </KeyboardAwareScrollView>
         </View>
       </Modal>
       

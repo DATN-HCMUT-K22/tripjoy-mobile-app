@@ -9,6 +9,7 @@ import {
   UIManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Markdown from "react-native-markdown-display";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android") {
@@ -24,6 +25,57 @@ interface NotebookSectionProps {
   content: string;
   defaultExpanded?: boolean;
 }
+
+const markdownStyles = {
+  body: {
+    fontSize: 14,
+    color: "#374151",
+    lineHeight: 22,
+  },
+  heading1: {
+    fontSize: 18,
+    fontWeight: "700" as const,
+    color: "#111827",
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  heading2: {
+    fontSize: 16,
+    fontWeight: "700" as const,
+    color: "#111827",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  heading3: {
+    fontSize: 15,
+    fontWeight: "600" as const,
+    color: "#111827",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  strong: {
+    fontWeight: "700" as const,
+    color: "#111827",
+  },
+  bullet_list: {
+    marginVertical: 4,
+  },
+  list_item: {
+    fontSize: 14,
+    color: "#374151",
+    lineHeight: 22,
+    marginVertical: 2,
+  },
+  bullet_list_icon: {
+    color: "#10B981",
+    fontSize: 14,
+    marginRight: 6,
+  },
+  paragraph: {
+    marginTop: 0,
+    marginBottom: 8,
+  },
+};
 
 export function NotebookSection({
   title,
@@ -76,7 +128,7 @@ export function NotebookSection({
       {isExpanded && (
         <View style={styles.content}>
           {hasContent ? (
-            <Text style={styles.contentText}>{content}</Text>
+            <Markdown style={markdownStyles}>{content}</Markdown>
           ) : (
             <Text style={styles.emptyText}>Chưa có nội dung</Text>
           )}

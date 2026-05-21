@@ -174,6 +174,9 @@ export default function ChatScreen() {
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      if (conversationId) {
+        conversationService.markConversationRead(conversationId).catch(() => {});
+      }
     };
   }, [conversationId, resetUnread, dispatch]);
 
@@ -698,14 +701,11 @@ export default function ChatScreen() {
       );
     }
 
-    // Invalidate to force a fresh fetch from server
     queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
 
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.push("/messages");
-    }
+    // Luôn quay về danh sách tin nhắn
+    router.push("/messages");
   }, [conversationId, messages, queryClient, router]);
 
   // 🔥 Typing indicators

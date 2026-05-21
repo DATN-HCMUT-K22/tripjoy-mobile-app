@@ -9,7 +9,8 @@ import { ImageBackground } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
 import { Controller } from "react-hook-form";
-import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Image, Platform, Text, TouchableOpacity, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 
 export function SignupScreen() {
   const router = useRouter();
@@ -107,211 +108,214 @@ export function SignupScreen() {
             backgroundColor: "rgba(255, 235, 59, 0.15)",
           }}
         />
-        <ScrollView
+        <KeyboardAwareScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: 20,
             paddingVertical: 32,
           }}
           showsVerticalScrollIndicator={false}
+          enableOnAndroid={true}
+          extraScrollHeight={20}
         >
-          {/* Logo text */}
-          <View
-            style={{ alignItems: "center", marginTop: 12, marginBottom: 20 }}
-          >
-            <Image
-              source={require("@/assets/logo/white_white.png")}
-              style={{ width: 200, height: 200 }}
-              resizeMode="contain"
-            />
-
-            <Text
-              style={{
-                fontSize: 18,
-                color: "#ffffff",
-                textAlign: "center",
-                lineHeight: 22,
-              }}
+            {/* Logo text */}
+            <View
+              style={{ alignItems: "center", marginTop: 12, marginBottom: 20 }}
             >
-              Hộ Chiếu Của Bạn Đang Chờ
-            </Text>
-            <Text
-              style={{
-                fontSize: 18,
-                color: "#ffffff",
-                textAlign: "center",
-                lineHeight: 22,
-              }}
-            >
-              Những Chuyến Phiêu Lưu
-            </Text>
-          </View>
+              <Image
+                source={require("@/assets/logo/white_white.png")}
+                style={{ width: 200, height: 200 }}
+                resizeMode="contain"
+              />
 
-          {/* Form */}
-          <View style={{ gap: 8 }}>
-            <Text
-              style={{
-                color: "#ffffff",
-                fontWeight: "700",
-                fontSize: 24,
-                textAlign: "center",
-              }}
-            >
-              Đăng ký
-            </Text>
-
-            <View>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>
-                Tài khoản <Text style={{ color: "#EF4444" }}>*</Text>
-              </Text>
-              <View style={{ marginTop: 6 }}>
-                <Controller
-                  control={control}
-                  name="username"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <Input
-                      placeholder="Nhập tên tài khoản..."
-                      leftIcon="person-outline"
-                      value={value}
-                      onChangeText={onChange}
-                      onBlur={onBlur}
-                      error={errors.username?.message}
-                    />
-                  )}
-                />
-              </View>
-            </View>
-
-            <View>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>
-                Mật khẩu <Text style={{ color: "#EF4444" }}>*</Text>
-              </Text>
-              <View style={{ marginTop: 6 }}>
-                <Controller
-                  control={control}
-                  name="password"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <Input
-                      placeholder="Nhập mật khẩu..."
-                      leftIcon="lock-closed-outline"
-                      rightIcon="eye-outline"
-                      secureTextEntry
-                      value={value}
-                      onChangeText={onChange}
-                      onBlur={onBlur}
-                      error={errors.password?.message}
-                    />
-                  )}
-                />
-              </View>
-            </View>
-
-            <View>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>
-                Xác nhận mật khẩu <Text style={{ color: "#EF4444" }}>*</Text>
-              </Text>
-              <View style={{ marginTop: 6 }}>
-                <Controller
-                  control={control}
-                  name="confirmPassword"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <Input
-                      placeholder="Nhập lại mật khẩu..."
-                      leftIcon="lock-closed-outline"
-                      rightIcon="eye-outline"
-                      secureTextEntry
-                      value={value}
-                      onChangeText={onChange}
-                      onBlur={onBlur}
-                      error={errors.confirmPassword?.message}
-                    />
-                  )}
-                />
-              </View>
-            </View>
-
-            <View>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>
-                Họ và tên <Text style={{ color: "#EF4444" }}>*</Text>
-              </Text>
-              <View style={{ marginTop: 6 }}>
-                <Controller
-                  control={control}
-                  name="fullName"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <Input
-                      placeholder="Nhập họ và tên..."
-                      leftIcon="person-outline"
-                      value={value}
-                      onChangeText={onChange}
-                      onBlur={onBlur}
-                      error={errors.fullName?.message}
-                    />
-                  )}
-                />
-              </View>
-            </View>
-
-            <View>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>
-                Email <Text style={{ color: "#EF4444" }}>*</Text>
-              </Text>
-              <View style={{ marginTop: 6 }}>
-                <Controller
-                  control={control}
-                  name="email"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <Input
-                      placeholder="Nhập email..."
-                      leftIcon="mail-outline"
-                      value={value}
-                      onChangeText={onChange}
-                      onBlur={onBlur}
-                      error={errors.email?.message}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  )}
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Buttons */}
-          <View style={{ marginTop: 16, gap: 12 }}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={handleSubmit(onSubmit)}
-              disabled={isSubmitting}
-              style={{
-                height: 50,
-                borderRadius: 12,
-                backgroundColor: isSubmitting ? "#9CA3AF" : "#2EC989",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
               <Text
-                style={{ color: "#ffffff", fontWeight: "700", fontSize: 16 }}
+                style={{
+                  fontSize: 18,
+                  color: "#ffffff",
+                  textAlign: "center",
+                  lineHeight: 22,
+                }}
               >
-                {isSubmitting ? "Đang đăng ký..." : "Đăng ký"}
+                Hộ Chiếu Của Bạn Đang Chờ
               </Text>
-            </TouchableOpacity>
+              <Text
+                style={{
+                  fontSize: 18,
+                  color: "#ffffff",
+                  textAlign: "center",
+                  lineHeight: 22,
+                }}
+              >
+                Những Chuyến Phiêu Lưu
+              </Text>
+            </View>
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={{ alignSelf: "center", marginTop: 4 }}
-              onPress={() => router.push("/login")}
-            >
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>
-                Bạn đã có tài khoản ?{" "}
-                <Text style={{ fontWeight: "700", color: "#ffffff" }}>
-                  Đăng nhập
-                </Text>
+            {/* Form */}
+            <View style={{ gap: 8 }}>
+              <Text
+                style={{
+                  color: "#ffffff",
+                  fontWeight: "700",
+                  fontSize: 24,
+                  textAlign: "center",
+                }}
+              >
+                Đăng ký
               </Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+
+              <View>
+                <Text style={{ color: "#ffffff", fontSize: 12 }}>
+                  Tài khoản <Text style={{ color: "#EF4444" }}>*</Text>
+                </Text>
+                <View style={{ marginTop: 6 }}>
+                  <Controller
+                    control={control}
+                    name="username"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <Input
+                        placeholder="Nhập tên tài khoản..."
+                        leftIcon="person-outline"
+                        value={value}
+                        onChangeText={onChange}
+                        onBlur={onBlur}
+                        error={errors.username?.message}
+                      />
+                    )}
+                  />
+                </View>
+              </View>
+
+              <View>
+                <Text style={{ color: "#ffffff", fontSize: 12 }}>
+                  Mật khẩu <Text style={{ color: "#EF4444" }}>*</Text>
+                </Text>
+                <View style={{ marginTop: 6 }}>
+                  <Controller
+                    control={control}
+                    name="password"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <Input
+                        placeholder="Nhập mật khẩu..."
+                        leftIcon="lock-closed-outline"
+                        rightIcon="eye-outline"
+                        secureTextEntry
+                        value={value}
+                        onChangeText={onChange}
+                        onBlur={onBlur}
+                        error={errors.password?.message}
+                      />
+                    )}
+                  />
+                </View>
+              </View>
+
+              <View>
+                <Text style={{ color: "#ffffff", fontSize: 12 }}>
+                  Xác nhận mật khẩu <Text style={{ color: "#EF4444" }}>*</Text>
+                </Text>
+                <View style={{ marginTop: 6 }}>
+                  <Controller
+                    control={control}
+                    name="confirmPassword"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <Input
+                        placeholder="Nhập lại mật khẩu..."
+                        leftIcon="lock-closed-outline"
+                        rightIcon="eye-outline"
+                        secureTextEntry
+                        value={value}
+                        onChangeText={onChange}
+                        onBlur={onBlur}
+                        error={errors.confirmPassword?.message}
+                      />
+                    )}
+                  />
+                </View>
+              </View>
+
+              <View>
+                <Text style={{ color: "#ffffff", fontSize: 12 }}>
+                  Họ và tên <Text style={{ color: "#EF4444" }}>*</Text>
+                </Text>
+                <View style={{ marginTop: 6 }}>
+                  <Controller
+                    control={control}
+                    name="fullName"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <Input
+                        placeholder="Nhập họ và tên..."
+                        leftIcon="person-outline"
+                        value={value}
+                        onChangeText={onChange}
+                        onBlur={onBlur}
+                        error={errors.fullName?.message}
+                      />
+                    )}
+                  />
+                </View>
+              </View>
+
+              <View>
+                <Text style={{ color: "#ffffff", fontSize: 12 }}>
+                  Email <Text style={{ color: "#EF4444" }}>*</Text>
+                </Text>
+                <View style={{ marginTop: 6 }}>
+                  <Controller
+                    control={control}
+                    name="email"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <Input
+                        placeholder="Nhập email..."
+                        leftIcon="mail-outline"
+                        value={value}
+                        onChangeText={onChange}
+                        onBlur={onBlur}
+                        error={errors.email?.message}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                    )}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Buttons */}
+            <View style={{ marginTop: 16, gap: 12 }}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={handleSubmit(onSubmit)}
+                disabled={isSubmitting}
+                style={{
+                  height: 50,
+                  borderRadius: 12,
+                  backgroundColor: isSubmitting ? "#9CA3AF" : "#2EC989",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{ color: "#ffffff", fontWeight: "700", fontSize: 16 }}
+                >
+                  {isSubmitting ? "Đang đăng ký..." : "Đăng ký"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={{ alignSelf: "center", marginTop: 4 }}
+                onPress={() => router.push("/login")}
+              >
+                <Text style={{ color: "#ffffff", fontSize: 12 }}>
+                  Bạn đã có tài khoản ?{" "}
+                  <Text style={{ fontWeight: "700", color: "#ffffff" }}>
+                    Đăng nhập
+                  </Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAwareScrollView>
       </ImageBackground>
     </View>
   );

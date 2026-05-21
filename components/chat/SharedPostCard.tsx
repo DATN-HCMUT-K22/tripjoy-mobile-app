@@ -9,6 +9,7 @@ import {
   useColorScheme,
 } from "react-native";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
+import { PLACEHOLDER_ITINERARY_IMAGE } from "@/hooks/useItineraries";
 
 /**
  * Shared post object structure from backend
@@ -17,9 +18,13 @@ interface SharedPost {
   id: string;
   content?: string;
   content_snippet?: string;
+  contentSnippet?: string;
   media_urls?: string[];
+  mediaUrls?: string[];
   thumbnail_url?: string;
+  thumbnailUrl?: string;
   location_name?: string;
+  locationName?: string;
   hashtags?: string[];
   author?: {
     id: string;
@@ -69,10 +74,10 @@ export const SharedPostCard: React.FC<SharedPostCardProps> = React.memo(
     const linkColor = "#34B27D";
 
     // Normalize data from multiple possible backend formats
-    const author = post?.author || post?.created_by_user;
-    const thumbnailUri = post?.thumbnail_url || (post?.media_urls && post.media_urls[0]);
-    const locationName = post?.location_name || "Địa điểm khám phá";
-    const contentSnippet = post?.content_snippet || post?.content || "";
+    const author = post?.author || post?.created_by_user || (post as any)?.createdByUser;
+    const thumbnailUri = post?.thumbnail_url || post?.thumbnailUrl || (post as any)?.thumbnail || (post?.media_urls && post.media_urls[0]) || (post?.mediaUrls && post.mediaUrls[0]) || PLACEHOLDER_ITINERARY_IMAGE;
+    const locationName = post?.location_name || post?.locationName || "Địa điểm khám phá";
+    const contentSnippet = post?.content_snippet || post?.contentSnippet || post?.content || "";
     const hashtags = post?.hashtags || [];
 
     return (
@@ -86,19 +91,13 @@ export const SharedPostCard: React.FC<SharedPostCardProps> = React.memo(
       >
         {/* 1. Large Top Image */}
         <View style={styles.imageContainer}>
-          {thumbnailUri && !thumbnailError ? (
-            <Image
-              source={{ uri: thumbnailUri }}
-              style={styles.image}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              onError={() => setThumbnailError(true)}
-            />
-          ) : (
-            <View style={[styles.image, styles.imageFallback]}>
-              <Ionicons name="image-outline" size={48} color="#9CA3AF" />
-            </View>
-          )}
+          <Image
+            source={{ uri: thumbnailError ? PLACEHOLDER_ITINERARY_IMAGE : thumbnailUri }}
+            style={styles.image}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            onError={() => setThumbnailError(true)}
+          />
         </View>
 
         {/* 2. Content Area */}
@@ -154,6 +153,7 @@ const CARD_WIDTH = 260;
 const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
+    maxWidth: "100%",
     borderRadius: 16,
     borderWidth: 1,
     overflow: "hidden",
@@ -169,6 +169,9 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 140,
     backgroundColor: "#F3F4F6",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: "hidden",
   },
   image: {
     width: "100%",

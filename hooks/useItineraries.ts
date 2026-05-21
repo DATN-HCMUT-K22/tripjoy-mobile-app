@@ -17,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 export const PLACEHOLDER_ITINERARY_IMAGE =
-  "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400";
+  "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=800";
 
 export type GroupItineraryTab = "ongoing" | "completed" | "draft";
 
@@ -328,7 +328,11 @@ export function useItineraryTripItems(
   });
 }
 
-export function useGroupItinerariesByTab(groupId: string | undefined) {
+export function useGroupItinerariesByTab(
+  groupId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  const isEnabled = options?.enabled ?? true;
   return useQuery({
     queryKey: ["itineraries", "group", groupId],
     queryFn: async (): Promise<GroupItinerariesByTab> => {
@@ -393,7 +397,7 @@ export function useGroupItinerariesByTab(groupId: string | undefined) {
         totalCount: rows.length,
       };
     },
-    enabled: !!groupId,
+    enabled: !!groupId && isEnabled,
     staleTime: 60 * 1000,
   });
 }

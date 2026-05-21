@@ -403,38 +403,39 @@ export const PostCard = React.memo<PostCardProps>(
           )}
 
           {/* Engagement metrics */}
-          <View className="flex-row items-center gap-8">
-            <View className="flex-row items-center gap-1.5">
-              <TouchableOpacity onPress={handleLike} activeOpacity={0.7}>
-                <Ionicons
-                  name={isLiked ? "heart" : "heart-outline"}
-                  size={22}
-                  color={isLiked ? "#ef4444" : "#666"}
-                />
-              </TouchableOpacity>
+          <View className="flex-row items-center justify-between">
+            <TouchableOpacity onPress={handleLike} activeOpacity={0.7} className="flex-row items-center gap-1.5">
+              <Ionicons
+                name={isLiked ? "heart" : "heart-outline"}
+                size={22}
+                color={isLiked ? "#ef4444" : "#666"}
+              />
               <Text className="text-sm text-gray-600 font-medium">
                 {formatNumber(post.likes)}
               </Text>
-            </View>
+            </TouchableOpacity>
 
-            <View className="flex-row items-center gap-1.5">
-              <TouchableOpacity
-                onPress={() => onComment?.(post.id)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="chatbubble-outline" size={20} color="#666" />
-              </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => onComment?.(post.id)}
+              activeOpacity={0.7}
+              className="flex-row items-center gap-1.5"
+            >
+              <Ionicons name="chatbubble-outline" size={20} color="#666" />
               <Text className="text-sm text-gray-600">
                 {formatNumber(post.comments)} bình luận
               </Text>
-            </View>
+            </TouchableOpacity>
 
-            <View className="flex-row items-center gap-1.5">
+            <TouchableOpacity
+              onPress={() => onShare?.(post.id)}
+              activeOpacity={0.7}
+              className="flex-row items-center gap-1.5"
+            >
               <Ionicons name="share-outline" size={20} color="#666" />
               <Text className="text-sm text-gray-600">
                 {formatNumber(post.shares)} lượt chia sẻ
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 

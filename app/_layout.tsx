@@ -29,6 +29,7 @@ import { useAppSelector } from "@/store/hooks";
 import { setCredentials } from "@/store/slices/authSlice";
 import { storage } from "@/utils/storage";
 import { socketService } from "@/services/socket/socketService";
+import { appStateManager } from "@/utils/appStateManager";
 import { Ionicons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LogBox, Platform, Text, View, StyleSheet } from "react-native";
@@ -84,6 +85,16 @@ function SocketInitializer() {
       socketService.connect().catch((err: any) => {
         console.error("[SocketInitializer] ❌ Socket connection failed:", err);
       });
+
+      // Lắng nghe trạng thái App để reconnect khi quay lại (foreground)
+      const unsubscribe = appStateManager.subscribe((nextState) => {
+        if (nextState === "active" && isAuthenticated && userId) {
+          console.log("[SocketInitializer] 📱 App active, ensuring socket is connected...");
+          socketService.connect().catch(() => {});
+        }
+      });
+
+      return () => unsubscribe();
     } else if (socketService.isConnected()) {
       socketService.disconnect();
     }

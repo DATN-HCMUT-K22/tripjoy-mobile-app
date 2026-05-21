@@ -189,9 +189,6 @@ export function useNotifications(options?: { enabled?: boolean }) {
     if (!enabled) return;
     // Load lần đầu khi dùng hook
     void refresh();
-    return () => {
-      dispatch(resetNotificationState());
-    };
   }, [dispatch, enabled, refresh]);
 
   return {
