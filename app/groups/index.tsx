@@ -231,7 +231,6 @@ export default function GroupsScreen() {
     if (!selectedGroup || !currentUser) return [];
 
     const isPinned = checkIsPinned(selectedGroup.id);
-    const userRole = getCurrentUserRole(selectedGroup, currentUser.id);
     const isLeader = isGroupLeader(selectedGroup, currentUser.id);
 
     const actions: GroupAction[] = [
@@ -243,27 +242,20 @@ export default function GroupsScreen() {
           setShowContextMenu(false);
         },
       },
-      {
+    ];
+
+    if (!isLeader) {
+      actions.push({
         icon: "exit",
         label: "Rời nhóm",
         onPress: () => {
           setShowContextMenu(false);
-          const hasOtherMembers = (selectedGroup.members?.length ?? 0) > 1;
-          
-          if (isLeader && hasOtherMembers) {
-            showErrorToast(
-              "Không thể rời nhóm ngay",
-              "Bạn đang là Trưởng nhóm. Hãy chuyển quyền trưởng nhóm cho thành viên khác trước khi rời nhóm."
-            );
-            return;
-          }
-          
           setLeaveGroupId(selectedGroup.id);
           setShowLeaveConfirm(true);
         },
         danger: true,
-      },
-    ];
+      });
+    }
 
     return actions;
   }, [selectedGroup, currentUser, checkIsPinned, togglePin]);
@@ -297,6 +289,7 @@ export default function GroupsScreen() {
     ({ item: group }: { item: Group }) => {
       const conversation = groupConversations.find((c) => c.group_id === group.id) ?? null;
       const CardComponent = viewMode === "card" ? GroupCard : GroupListItem;
+      const isLeader = currentUser ? isGroupLeader(group, currentUser.id) : false;
 
       return (
         <SwipeableGroupCard
@@ -304,6 +297,7 @@ export default function GroupsScreen() {
           conversation={conversation}
           onSwipeAction={(action) => handleSwipeAction(action, group)}
           isPinned={checkIsPinned(group.id)}
+          isLeader={isLeader}
         >
           <TouchableOpacity
             activeOpacity={1}
@@ -315,7 +309,7 @@ export default function GroupsScreen() {
         </SwipeableGroupCard>
       );
     },
-    [viewMode, groupConversations, handleSwipeAction, checkIsPinned, handleLongPress]
+    [viewMode, groupConversations, handleSwipeAction, checkIsPinned, handleLongPress, currentUser]
   );
 
   return (

@@ -297,7 +297,11 @@ export async function getPlaceDetails(placeId: string): Promise<{
     });
 
     if (!res.ok) {
-      console.warn(`[GOOGLE PLACES NEW] Details Fetch Failed: HTTP ${res.status}`);
+      if (res.status === 404) {
+        console.log(`[GOOGLE PLACES NEW] Details Fetch HTTP 404: Place ID ${placeId} is obsolete or invalid.`);
+      } else {
+        console.warn(`[GOOGLE PLACES NEW] Details Fetch Failed: HTTP ${res.status}`);
+      }
       return null;
     }
 

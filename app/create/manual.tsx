@@ -27,6 +27,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useGenerateItinerary } from "@/hooks/useItineraries";
+import { tripSetupToAiGenerateRequest } from "@/utils/aiItineraryGenerate";
 import {
   ActivityIndicator,
   Linking,
@@ -302,6 +304,37 @@ function ItineraryItemCard({
   );
 }
 
+function SafeImage({
+  source,
+  fallbackSource,
+  style,
+  contentFit,
+  ...props
+}: {
+  source: any;
+  fallbackSource: any;
+  style: any;
+  contentFit: any;
+  [key: string]: any;
+}) {
+  const [error, setError] = useState(false);
+
+  const sourceKey = typeof source === "object" && source !== null ? source.uri : String(source);
+  useEffect(() => {
+    setError(false);
+  }, [sourceKey]);
+
+  return (
+    <Image
+      source={error ? fallbackSource : source}
+      style={style}
+      contentFit={error ? "cover" : contentFit}
+      onError={() => setError(true)}
+      {...props}
+    />
+  );
+}
+
 export default function ManualItineraryScreen() {
   const router = useRouter();
   const { exitToHome } = useCreateTripExitToHome();
@@ -353,6 +386,84 @@ export default function ManualItineraryScreen() {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
 
   const selectedDay = days[selectedDayIndex];
+
+  const generateAiMutation = useGenerateItinerary();
+
+  const handleAiGenerate = async () => {
+    const dest =
+      (typeof tripData.destinationLocation?.name === "string" ? tripData.destinationLocation.name.trim() : "") ||
+      (typeof tripData.location?.name === "string" ? tripData.location.name.trim() : "");
+    if (!dest) {
+      showErrorToast(
+        "Chưa chọn điểm đến",
+        "Hãy chọn điểm đến trước khi dùng lịch AI."
+      );
+      return;
+    }
+    if (!tripData.startDate || !tripData.endDate) {
+      showErrorToast(
+        "Chưa chọn thời gian",
+        "Bạn cần chọn ngày bắt đầu và kết thúc chuyến đi."
+      );
+      return;
+    }
+
+    try {
+      // Thu thập các địa điểm đã chọn từ tất cả các ngày dựa trên itineraryItemsByDay để lấy providerId (Google Place ID)
+      const suggestLocationsSet = new Set<string>();
+      Object.values(itineraryItemsByDay).forEach((items) => {
+        if (!items) return;
+        items.forEach((item) => {
+          // 1. Lấy trực tiếp providerId (ChIJ...) từ ItineraryItem nếu có
+          if (item.providerId) {
+            suggestLocationsSet.add(item.providerId);
+            return;
+          }
+
+          // 2. Nếu không có providerId, kiểm tra trong externalPlacesById
+          const ext = externalPlacesById[item.locationId];
+          if (ext?.providerId) {
+            suggestLocationsSet.add(ext.providerId);
+            return;
+          }
+
+          // 3. Loại bỏ tiền tố "gmap:" nếu có
+          if (item.locationId && item.locationId.startsWith("gmap:")) {
+            suggestLocationsSet.add(item.locationId.substring(5));
+            return;
+          }
+
+          // 4. Nếu là dạng ChIJ... thì thêm trực tiếp
+          if (item.locationId && item.locationId.startsWith("ChIJ")) {
+            suggestLocationsSet.add(item.locationId);
+            return;
+          }
+        });
+      });
+      const suggestLocations = Array.from(suggestLocationsSet);
+
+      const body = {
+        ...tripSetupToAiGenerateRequest(tripData),
+        suggestLocations,
+      };
+
+      const res = await generateAiMutation.mutateAsync(body);
+      const id = res?.id;
+      if (!id) {
+        showErrorToast(
+          "Không nhận được lịch trình",
+          "Phản hồi từ máy chủ thiếu mã lịch. Thử lại sau."
+        );
+        return;
+      }
+      router.push({
+        pathname: "/create/ai-wait",
+        params: { itineraryId: id },
+      } as any);
+    } catch (e) {
+      showErrorToast("Không khởi tạo được lịch AI", e);
+    }
+  };
 
   // Lấy địa điểm đã chọn cho ngày hiện tại từ context
   const selectedLocationIdsForDay = useMemo(() => {
@@ -640,18 +751,20 @@ export default function ManualItineraryScreen() {
           <View className="px-4 pt-2 pb-4">
             <View className="rounded-2xl overflow-hidden bg-white border border-gray-200">
               {destinationImageUri ? (
-                <Image
+                <SafeImage
                   source={expoImageSourceForGoogleRaster(destinationImageUri)}
-                  style={{ width: "100%", height: 200 }}
+                  fallbackSource={require("@/assets/images/default_logo.jpg")}
+                  placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+                  placeholderContentFit="cover"
+                  style={{ width: "100%", height: 200, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
                   contentFit="cover"
                 />
               ) : (
-                <View
-                  className="w-full bg-gray-100 items-center justify-center"
-                  style={{ height: 200 }}
-                >
-                  <Ionicons name="image-outline" size={48} color="#ccc" />
-                </View>
+                <Image
+                  source={require("@/assets/images/default_logo.jpg")}
+                  style={{ width: "100%", height: 200, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
+                  contentFit="cover"
+                />
               )}
               <View className="px-4 py-3 border-t border-gray-100">
                 <View className="flex-row items-center justify-between mb-2">
@@ -768,30 +881,40 @@ export default function ManualItineraryScreen() {
           <View className="items-end mb-6 px-1">
             <TouchableOpacity
               activeOpacity={0.9}
+              disabled={generateAiMutation.isPending}
               className="px-7 py-3 rounded-full border flex-row items-center justify-center self-end"
               style={{
                 borderColor: "#35E4C1",
+                opacity: generateAiMutation.isPending ? 0.6 : 1,
               }}
-              onPress={() => {
-                // Sau này sẽ chuyển sang flow AI
-                console.log(
-                  "Tạo lịch trình bằng AI cho ngày",
-                  selectedDay?.key
-                );
-              }}
+              onPress={handleAiGenerate}
             >
-              {/* Icon AI riêng */}
-              <Image
-                source={require("../../assets/images/ai-logo.jpg")}
-                style={{ width: 26, height: 26, marginRight: 8 }}
-                contentFit="contain"
-              />
-              <Text
-                className="text-sm font-semibold"
-                style={{ color: "#35E4C1" }}
-              >
-                Tạo lịch trình bằng AI
-              </Text>
+              {generateAiMutation.isPending ? (
+                <View className="flex-row items-center justify-center gap-2">
+                  <ActivityIndicator size="small" color="#35E4C1" />
+                  <Text
+                    className="text-sm font-semibold"
+                    style={{ color: "#35E4C1" }}
+                  >
+                    Đang gửi yêu cầu…
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {/* Icon AI riêng */}
+                  <Image
+                    source={require("../../assets/images/ai-logo.jpg")}
+                    style={{ width: 26, height: 26, marginRight: 8 }}
+                    contentFit="contain"
+                  />
+                  <Text
+                    className="text-sm font-semibold"
+                    style={{ color: "#35E4C1" }}
+                  >
+                    Tạo lịch trình bằng AI
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 

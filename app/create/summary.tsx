@@ -24,6 +24,37 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+function SafeImage({
+  source,
+  fallbackSource,
+  style,
+  contentFit,
+  ...props
+}: {
+  source: any;
+  fallbackSource: any;
+  style: any;
+  contentFit: any;
+  [key: string]: any;
+}) {
+  const [error, setError] = useState(false);
+
+  const sourceKey = typeof source === "object" && source !== null ? source.uri : String(source);
+  useEffect(() => {
+    setError(false);
+  }, [sourceKey]);
+
+  return (
+    <Image
+      source={error ? fallbackSource : source}
+      style={style}
+      contentFit={error ? "cover" : contentFit}
+      onError={() => setError(true)}
+      {...props}
+    />
+  );
+}
+
 export default function TripSummaryScreen() {
   const router = useRouter();
   const { exitToHome } = useCreateTripExitToHome();
@@ -31,7 +62,7 @@ export default function TripSummaryScreen() {
   const { resetItinerary } = useItinerary();
   const generateAiMutation = useGenerateItinerary();
   const { width: windowWidth } = useWindowDimensions();
-  const carouselWidth = windowWidth - 64; // (padding-x 4 = 16px) * 2 for ScrollView + (padding-x 4 = 16px) * 2 for Card
+  const carouselWidth = windowWidth - 32; // (padding-x 4 = 16px) * 2 for ScrollView (no padding for Card image)
 
   const handleAiGenerate = async () => {
     const dest =
@@ -221,10 +252,10 @@ export default function TripSummaryScreen() {
           {/* Main Card */}
           <View className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
             {/* Ảnh điểm đến: Carousel ảnh Places API → DTO image → Static Maps → placeholder */}
-            <View className="px-4 pt-4 relative">
+            <View className="relative">
               {imageLoading ? (
                 // Skeleton / loading placeholder
-                <View className="w-full h-64 bg-gray-100 items-center justify-center rounded-lg">
+                <View className="w-full h-[280px] bg-gray-100 items-center justify-center">
                   <ActivityIndicator color="#2BB673" />
                   <Text className="mt-2 text-xs text-gray-400">Đang tải ảnh điểm đến…</Text>
                 </View>
@@ -241,13 +272,16 @@ export default function TripSummaryScreen() {
                       setActiveImageIndex(index);
                     }}
                     scrollEventThrottle={16}
-                    style={{ borderRadius: 8 }}
+                    style={{ width: carouselWidth }}
                   >
                     {destinationImageUris.map((uri, idx) => (
-                      <View key={idx} style={{ width: carouselWidth, height: 256 }}>
-                        <Image
+                      <View key={idx} style={{ width: carouselWidth, height: 280 }}>
+                        <SafeImage
                           source={expoImageSourceForGoogleRaster(uri)}
-                          style={{ width: "100%", height: 256, borderRadius: 8 }}
+                          fallbackSource={require("@/assets/images/default_logo.jpg")}
+                          placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+                          placeholderContentFit="cover"
+                          style={{ width: "100%", height: 280, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
                           contentFit="cover"
                         />
                       </View>
@@ -269,9 +303,11 @@ export default function TripSummaryScreen() {
                   )}
                 </View>
               ) : (
-                <View className="w-full h-64 bg-gray-200 items-center justify-center rounded-lg">
-                  <Ionicons name="image-outline" size={48} color="#ccc" />
-                </View>
+                <Image
+                  source={require("@/assets/images/default_logo.jpg")}
+                  style={{ width: "100%", height: 280, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
+                  contentFit="cover"
+                />
               )}
             </View>
 

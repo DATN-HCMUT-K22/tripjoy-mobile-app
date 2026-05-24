@@ -38,6 +38,8 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -993,213 +995,219 @@ export default function GroupChatScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Messages: FlashList + PinnedMessageBar (absolute, không chiếm flow) */}
-      <View style={styles.messagesWrapper}>
-        <FlashList
-          ref={flashListRef}
-          data={listData}
-          keyExtractor={(i) => i.key}
-          renderItem={renderListItem}
-          estimatedItemSize={120}
-          contentContainerStyle={[
-            styles.messagesContent,
-            pinnedMessages.length > 0 && { paddingTop: PINNED_BAR_HEIGHT },
-          ]}
-        showsVerticalScrollIndicator={false}
-        onScroll={(e) => {
-          const { contentOffset } = e.nativeEvent;
-          if (contentOffset.y <= 100 && hasMore && !loading) loadMore();
-        }}
-        scrollEventThrottle={400}
-        onScrollToIndexFailed={onScrollToIndexFailed}
-        ListEmptyComponent={
-          (loading || isResolving) && messages.length === 0 ? (
-            <View className="py-8 items-center">
-              <ActivityIndicator size="large" color="#34B27D" />
-              <Text className="text-gray-500 mt-2">Đang tải tin nhắn...</Text>
-            </View>
-          ) : !loading && !error && messages.length === 0 ? (
-            <View className="py-8 items-center">
-              <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
-              <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
-              <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
-            </View>
-          ) : (error || hasConversationIdError) && messages.length === 0 ? (
-            <View className="py-8 items-center">
-              <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
-              <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
-              <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
-            </View>
-          ) : null
-        }
-        ListFooterComponent={
-          <>
-            {(typingUsers.length > 0 || typingUsersRedux.length > 0) && (
-              <TypingIndicatorBubble
-                usernames={
-                  typingUsersRedux.length > 0
-                    ? typingUsersRedux.map(u => u.username)
-                    : typingUsers.map(u => u.username || u)
-                }
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
+        {/* Messages: FlashList + PinnedMessageBar (absolute, không chiếm flow) */}
+        <View style={styles.messagesWrapper}>
+          <FlashList
+            ref={flashListRef}
+            data={listData}
+            keyExtractor={(i) => i.key}
+            renderItem={renderListItem}
+            estimatedItemSize={120}
+            contentContainerStyle={[
+              styles.messagesContent,
+              pinnedMessages.length > 0 && { paddingTop: PINNED_BAR_HEIGHT },
+            ]}
+          showsVerticalScrollIndicator={false}
+          onScroll={(e) => {
+            const { contentOffset } = e.nativeEvent;
+            if (contentOffset.y <= 100 && hasMore && !loading) loadMore();
+          }}
+          scrollEventThrottle={400}
+          onScrollToIndexFailed={onScrollToIndexFailed}
+          ListEmptyComponent={
+            (loading || isResolving) && messages.length === 0 ? (
+              <View className="py-8 items-center">
+                <ActivityIndicator size="large" color="#34B27D" />
+                <Text className="text-gray-500 mt-2">Đang tải tin nhắn...</Text>
+              </View>
+            ) : !loading && !error && messages.length === 0 ? (
+              <View className="py-8 items-center">
+                <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+                <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
+                <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
+              </View>
+            ) : (error || hasConversationIdError) && messages.length === 0 ? (
+              <View className="py-8 items-center">
+                <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+                <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
+                <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
+              </View>
+            ) : null
+          }
+          ListFooterComponent={
+            <>
+              {(typingUsers.length > 0 || typingUsersRedux.length > 0) && (
+                <TypingIndicatorBubble
+                  usernames={
+                    typingUsersRedux.length > 0
+                      ? typingUsersRedux.map(u => u.username)
+                      : typingUsers.map(u => u.username || u)
+                  }
+                />
+              )}
+              {loading && messages.length > 0 && (
+                <View className="py-4 items-center">
+                  <ActivityIndicator size="small" color="#34B27D" />
+                </View>
+              )}
+            </>
+          }
+          initialNumToRender={20}
+          maxToRenderPerBatch={15}
+          windowSize={10}
+          />
+          <PinnedMessageBar
+            pinnedMessages={pinnedMessages}
+            currentIndex={currentPinnedIndex}
+            onTap={handlePinnedBarTap}
+            isDark={isDark}
+          />
+        </View>
+  
+        {/* Preview ảnh / video trước khi gửi */}
+        {selectedMedia && (
+          <View style={styles.imagePreviewContainer}>
+            {selectedMedia.kind === "video" ? (
+              <Video
+                source={{ uri: selectedMedia.uri }}
+                style={styles.imagePreview}
+                useNativeControls
+                resizeMode={ResizeMode.CONTAIN}
+              />
+            ) : (
+              <Image
+                source={{ uri: selectedMedia.uri }}
+                style={styles.imagePreview}
+                contentFit="cover"
               />
             )}
-            {loading && messages.length > 0 && (
-              <View className="py-4 items-center">
-                <ActivityIndicator size="small" color="#34B27D" />
+            <TouchableOpacity
+              style={styles.removeImageButton}
+              onPress={() => setSelectedMedia(null)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close-circle" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
+  
+        {/* Reply Preview */}
+        {replyingToMessage && (
+          <View style={[styles.replyContainer, { backgroundColor: isDark ? "#1A1A1A" : "#F3F4F6", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
+            <View style={styles.replyBar} />
+            <View style={styles.replyContent}>
+              <Text style={[styles.replyUser, { color: "#34B27D" }]}>
+                Đang phản hồi {replyingToMessage.sender?.fullName || replyingToMessage.sender?.username || "Thành viên"}
+              </Text>
+              <Text style={[styles.replyText, { color: isDark ? "#9CA3AF" : "#6B7280" }]} numberOfLines={1}>
+                {replyingToMessage.message_content || (replyingToMessage.message_type === "IMAGE" ? "Hình ảnh" : replyingToMessage.message_type === "VIDEO" ? "Video" : "Tin nhắn")}
+              </Text>
+            </View>
+            <TouchableOpacity 
+              onPress={() => setReplyingToMessage(null)}
+              style={styles.closeReplyButton}
+            >
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+        )}
+  
+        {/* Input */}
+        <SafeAreaView 
+          edges={["bottom"]} 
+          style={[styles.inputContainer, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}
+        >
+          <View style={styles.inputWrapper}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={{ marginRight: 12 }}
+            onPress={handlePickMedia}
+            disabled={uploadingMedia || !conversationId}
+          >
+            <Ionicons
+              name="images-outline"
+              size={26}
+              color={uploadingMedia || !conversationId ? "#9CA3AF" : (isDark ? "#9CA3AF" : "#6B7280")}
+            />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            {showMentionSuggestions && (
+              <View style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 100 }}>
+                <MentionSuggestions
+                  suggestions={mentionSuggestions}
+                  onSelect={handleSelectMention}
+                  isDark={isDark}
+                />
               </View>
             )}
-          </>
-        }
-        initialNumToRender={20}
-        maxToRenderPerBatch={15}
-        windowSize={10}
-        />
-        <PinnedMessageBar
-          pinnedMessages={pinnedMessages}
-          currentIndex={currentPinnedIndex}
-          onTap={handlePinnedBarTap}
-          isDark={isDark}
-        />
-      </View>
-
-      {/* Preview ảnh / video trước khi gửi */}
-      {selectedMedia && (
-        <View style={styles.imagePreviewContainer}>
-          {selectedMedia.kind === "video" ? (
-            <Video
-              source={{ uri: selectedMedia.uri }}
-              style={styles.imagePreview}
-              useNativeControls
-              resizeMode={ResizeMode.CONTAIN}
-            />
-          ) : (
-            <Image
-              source={{ uri: selectedMedia.uri }}
-              style={styles.imagePreview}
-              contentFit="cover"
-            />
-          )}
-          <TouchableOpacity
-            style={styles.removeImageButton}
-            onPress={() => setSelectedMedia(null)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="close-circle" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Reply Preview */}
-      {replyingToMessage && (
-        <View style={[styles.replyContainer, { backgroundColor: isDark ? "#1A1A1A" : "#F3F4F6", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
-          <View style={styles.replyBar} />
-          <View style={styles.replyContent}>
-            <Text style={[styles.replyUser, { color: "#34B27D" }]}>
-              Đang phản hồi {replyingToMessage.sender?.fullName || replyingToMessage.sender?.username || "Thành viên"}
-            </Text>
-            <Text style={[styles.replyText, { color: isDark ? "#9CA3AF" : "#6B7280" }]} numberOfLines={1}>
-              {replyingToMessage.message_content || (replyingToMessage.message_type === "IMAGE" ? "Hình ảnh" : replyingToMessage.message_type === "VIDEO" ? "Video" : "Tin nhắn")}
-            </Text>
-          </View>
-          <TouchableOpacity 
-            onPress={() => setReplyingToMessage(null)}
-            style={styles.closeReplyButton}
-          >
-            <Ionicons name="close-circle" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Input */}
-      <SafeAreaView 
-        edges={["bottom"]} 
-        style={[styles.inputContainer, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}
-      >
-        <View style={styles.inputWrapper}>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={{ marginRight: 12 }}
-          onPress={handlePickMedia}
-          disabled={uploadingMedia || !conversationId}
-        >
-          <Ionicons
-            name="images-outline"
-            size={26}
-            color={uploadingMedia || !conversationId ? "#9CA3AF" : (isDark ? "#9CA3AF" : "#6B7280")}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          {showMentionSuggestions && (
-            <View style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 100 }}>
-              <MentionSuggestions
-                suggestions={mentionSuggestions}
-                onSelect={handleSelectMention}
-                isDark={isDark}
-              />
-            </View>
-          )}
-          <TextInput
-            value={input}
-            onChangeText={(text) => {
-              setInput(text);
-              if (text.length > 0) {
-                emitTyping();
-              } else {
-                emitStopTyping();
-              }
-
-              // Detect @ for mentions
-              const lastAtPos = text.lastIndexOf("@", cursorPosition);
-              if (lastAtPos !== -1) {
-                const query = text.substring(lastAtPos + 1, cursorPosition + 1);
-                if (!query.includes(" ")) {
-                  setMentionSearchQuery(query);
-                  setShowMentionSuggestions(true);
-                  return;
+            <TextInput
+              value={input}
+              onChangeText={(text) => {
+                setInput(text);
+                if (text.length > 0) {
+                  emitTyping();
+                } else {
+                  emitStopTyping();
                 }
-              }
-              setShowMentionSuggestions(false);
-            }}
-            onSelectionChange={(event) => {
-              setCursorPosition(event.nativeEvent.selection.start);
-            }}
-            placeholder="Nhắn tin..."
-            style={{
-              backgroundColor: isDark ? "#2A2A2A" : "#F3F4F6",
-              borderRadius: 24,
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              fontSize: 15,
-              color: isDark ? "#FFFFFF" : "#000000",
-              maxHeight: 120,
-            }}
-            placeholderTextColor="#9CA3AF"
-            multiline
-            onSubmitEditing={handleSend}
-            returnKeyType="send"
-            editable={!loading && !uploadingMedia}
-          />
-        </View>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          className="ml-3"
-          onPress={handleSend}
-          disabled={(!input.trim() && !selectedMedia) || loading || uploadingMedia}
-        >
-          {uploadingMedia ? (
-            <ActivityIndicator size="small" color="#34B27D" />
-          ) : (
-            <Ionicons
-              name="send"
-              size={24}
-              color={
-                (input.trim() || selectedMedia) && !loading ? "#34B27D" : "#9CA3AF"
-              }
+  
+                // Detect @ for mentions
+                const lastAtPos = text.lastIndexOf("@", cursorPosition);
+                if (lastAtPos !== -1) {
+                  const query = text.substring(lastAtPos + 1, cursorPosition + 1);
+                  if (!query.includes(" ")) {
+                    setMentionSearchQuery(query);
+                    setShowMentionSuggestions(true);
+                    return;
+                  }
+                }
+                setShowMentionSuggestions(false);
+              }}
+              onSelectionChange={(event) => {
+                setCursorPosition(event.nativeEvent.selection.start);
+              }}
+              placeholder="Nhắn tin..."
+              style={{
+                backgroundColor: isDark ? "#2A2A2A" : "#F3F4F6",
+                borderRadius: 24,
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                fontSize: 15,
+                color: isDark ? "#FFFFFF" : "#000000",
+                maxHeight: 120,
+              }}
+              placeholderTextColor="#9CA3AF"
+              multiline
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+              editable={!loading && !uploadingMedia}
             />
-          )}
-        </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+          </View>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            className="ml-3"
+            onPress={handleSend}
+            disabled={(!input.trim() && !selectedMedia) || loading || uploadingMedia}
+          >
+            {uploadingMedia ? (
+              <ActivityIndicator size="small" color="#34B27D" />
+            ) : (
+              <Ionicons
+                name="send"
+                size={24}
+                color={
+                  (input.trim() || selectedMedia) && !loading ? "#34B27D" : "#9CA3AF"
+                }
+              />
+            )}
+          </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
 
       <MessageActionSheet
         visible={actionSheetVisible}

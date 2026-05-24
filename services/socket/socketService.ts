@@ -209,15 +209,28 @@ class SocketService {
 
   private checkIsAuthError(error: any): boolean {
     const msg = error.message?.toLowerCase() || "";
-    return (
+    
+    // 1. Direct auth error messages from server middleware
+    if (
       msg.includes("unauthorized") || 
       msg.includes("login") || 
       msg.includes("auth") ||
       msg.includes("token") ||
-      msg.includes("need to login") ||
-      msg.includes("xhr poll error") || 
-      msg.includes("websocket error")
-    );
+      msg.includes("need to login")
+    ) {
+      return true;
+    }
+
+    // 2. Transport connection errors (xhr poll error / websocket error)
+    // Only classify as auth error if the server returned a 401 or 403 status code
+    if (msg.includes("xhr poll error") || msg.includes("websocket error")) {
+      const status = error.description;
+      if (status === 401 || status === 403 || status === "401" || status === "403") {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   joinRoom(room: string): void {

@@ -30,7 +30,7 @@ export type MessageType = "TEXT" | "IMAGE" | "VIDEO" | "SHARE_POST";
 /**
  * Message status
  */
-export type MessageStatus = "SENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
+export type MessageStatus = "SENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "UNSENT";
 
 /**
  * Sender information trong message (hỗ trợ cả snake_case và camelCase từ API)

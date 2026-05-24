@@ -478,10 +478,14 @@ export default function ItineraryDetailScreen() {
   if (endDate && !isNaN(endDate.getTime())) endDate.setHours(0, 0, 0, 0);
   
   const isWithinTripRange = !!(startDate && endDate && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && now >= startDate && now <= endDate);
-  const isPastTripEnd = !!(endDate && !isNaN(endDate.getTime()) && now > endDate);
+  const isPastTripEnd = !!(endDate && !isNaN(endDate.getTime()) && now >= endDate);
+  const isStrictlyPastTripEnd = !!(endDate && !isNaN(endDate.getTime()) && now > endDate);
   
   const showStartTrip = status === ITINERARY_STATUS.CONFIRMED && isWithinTripRange;
-  const showCompleteTrip = (status === ITINERARY_STATUS.CONFIRMED || status === ITINERARY_STATUS.IN_PROGRESS) && isPastTripEnd;
+  const showCompleteTrip = 
+    status === ITINERARY_STATUS.IN_PROGRESS 
+      ? isPastTripEnd 
+      : (status === ITINERARY_STATUS.CONFIRMED && isStrictlyPastTripEnd);
   
   const placesForAiModify = useMemo(() => {
     const map = new Map<string, any>();
@@ -628,63 +632,71 @@ export default function ItineraryDetailScreen() {
             </View>
           </View>
 
-          <View style={styles.actionsRow}>
-            {(isOwner || status === ITINERARY_STATUS.DRAFT) && (
-              <TouchableOpacity
-                onPress={() => setShowExpenses(true)}
-                style={[styles.actionButton, styles.expenseButton]}
-              >
-                <Ionicons name="wallet-outline" size={20} color="#047857" />
-                <Text style={styles.expenseText}>Chi phí</Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              onPress={() => router.push(`/itinerary/notebook?id=${itineraryId}`)}
-              style={[styles.actionButton, styles.notebookButton]}
-            >
-              <Ionicons name="book-outline" size={20} color="#7C3AED" />
-              <Text style={styles.notebookText}>Hướng dẫn</Text>
-            </TouchableOpacity>
-            
-            {(isOwner || status === ITINERARY_STATUS.DRAFT) && canUseAi && (
-              !isSetupMode ? (
+          <View style={styles.actionsContainer}>
+            {/* Hàng 1: Các nút công cụ phụ trợ */}
+            <View style={styles.toolsRow}>
+              {(isOwner || status === ITINERARY_STATUS.DRAFT) && (
                 <TouchableOpacity
-                  onPress={() => setIsSetupMode(true)}
-                  style={[styles.actionButton, styles.setupButton]}
+                  onPress={() => setShowExpenses(true)}
+                  style={[styles.actionButton, styles.expenseButton]}
                 >
-                  <Ionicons name="settings-outline" size={20} color="#2563EB" />
-                  <Text style={styles.setupText}>Thiết lập</Text>
+                  <Ionicons name="wallet-outline" size={20} color="#047857" />
+                  <Text style={styles.expenseText} numberOfLines={1}>Chi phí</Text>
                 </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => handleSaveSetup()}
-                  style={[styles.actionButton, styles.saveButton]}
-                >
-                  <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
-                  <Text style={styles.saveText}>Xong</Text>
-                </TouchableOpacity>
-              )
-            )}
+              )}
 
-            {isOwner && showStartTrip && (
               <TouchableOpacity
-                onPress={() => handleUpdateStatus(ITINERARY_STATUS.IN_PROGRESS)}
-                style={[styles.actionButton, styles.startButton]}
+                onPress={() => router.push(`/itinerary/notebook?id=${itineraryId}`)}
+                style={[styles.actionButton, styles.notebookButton]}
               >
-                <Ionicons name="play-outline" size={20} color="#fff" />
-                <Text style={styles.startText}>Bắt đầu</Text>
+                <Ionicons name="book-outline" size={20} color="#7C3AED" />
+                <Text style={styles.notebookText} numberOfLines={1}>Hướng dẫn</Text>
               </TouchableOpacity>
-            )}
+              
+              {(isOwner || status === ITINERARY_STATUS.DRAFT) && canUseAi && (
+                !isSetupMode ? (
+                  <TouchableOpacity
+                    onPress={() => setIsSetupMode(true)}
+                    style={[styles.actionButton, styles.setupButton]}
+                  >
+                    <Ionicons name="settings-outline" size={20} color="#2563EB" />
+                    <Text style={styles.setupText} numberOfLines={1}>Thiết lập</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => handleSaveSetup()}
+                    style={[styles.actionButton, styles.saveButton]}
+                  >
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                    <Text style={styles.saveText} numberOfLines={1}>Xong</Text>
+                  </TouchableOpacity>
+                )
+              )}
+            </View>
 
-            {isOwner && showCompleteTrip && (
-              <TouchableOpacity
-                onPress={() => handleUpdateStatus(ITINERARY_STATUS.COMPLETED)}
-                style={[styles.actionButton, styles.completeButton]}
-              >
-                <Ionicons name="flag-outline" size={20} color="#fff" />
-                <Text style={styles.completeText}>Kết thúc</Text>
-              </TouchableOpacity>
+            {/* Hàng 2: Nút hành động chính (Bắt đầu / Kết thúc) */}
+            {isOwner && (showStartTrip || showCompleteTrip) && (
+              <View style={styles.primaryRow}>
+                {showStartTrip && (
+                  <TouchableOpacity
+                    onPress={() => handleUpdateStatus(ITINERARY_STATUS.IN_PROGRESS)}
+                    style={[styles.primaryButton, styles.startButton]}
+                  >
+                    <Ionicons name="play-outline" size={20} color="#fff" />
+                    <Text style={styles.primaryButtonText}>Bắt đầu chuyến đi</Text>
+                  </TouchableOpacity>
+                )}
+
+                {showCompleteTrip && (
+                  <TouchableOpacity
+                    onPress={() => handleUpdateStatus(ITINERARY_STATUS.COMPLETED)}
+                    style={[styles.primaryButton, styles.completeButton]}
+                  >
+                    <Ionicons name="flag-outline" size={20} color="#fff" />
+                    <Text style={styles.primaryButtonText}>Kết thúc chuyến đi</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
           </View>
 
@@ -1035,20 +1047,45 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280",
   },
-  actionsRow: {
-    flexDirection: "row",
+  actionsContainer: {
     paddingHorizontal: 16,
     gap: 12,
+  },
+  toolsRow: {
+    flexDirection: "row",
+    gap: 10,
   },
   actionButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
+    gap: 6,
+  },
+  primaryRow: {
+    marginTop: 4,
+  },
+  primaryButton: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 12,
     gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  primaryButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   expenseButton: {
     backgroundColor: "#ECFDF5",
@@ -1136,21 +1173,9 @@ const styles = StyleSheet.create({
   startButton: {
     backgroundColor: "#2BB673",
     borderColor: "#059669",
-    paddingHorizontal: 16,
-  },
-  startText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#FFFFFF",
   },
   completeButton: {
     backgroundColor: "#6366F1",
     borderColor: "#4F46E5",
-    paddingHorizontal: 16,
-  },
-  completeText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#FFFFFF",
   },
 });

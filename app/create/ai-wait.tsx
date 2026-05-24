@@ -114,6 +114,37 @@ function PlaceItemSkeleton() {
   );
 }
 
+function SafeImage({
+  source,
+  fallbackSource,
+  style,
+  contentFit,
+  ...props
+}: {
+  source: any;
+  fallbackSource: any;
+  style: any;
+  contentFit: any;
+  [key: string]: any;
+}) {
+  const [error, setError] = useState(false);
+
+  const sourceKey = typeof source === "object" && source !== null ? source.uri : String(source);
+  useEffect(() => {
+    setError(false);
+  }, [sourceKey]);
+
+  return (
+    <Image
+      source={error ? fallbackSource : source}
+      style={style}
+      contentFit={error ? "cover" : contentFit}
+      onError={() => setError(true)}
+      {...props}
+    />
+  );
+}
+
 export default function AiItineraryWaitScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -132,7 +163,7 @@ export default function AiItineraryWaitScreen() {
   const [elapsedSec, setElapsedSec] = useState(0);
 
   const { width: windowWidth } = useWindowDimensions();
-  const carouselWidth = windowWidth - 64; // (padding-x 4 = 16px) * 2 for ScrollView + (padding-x 4 = 16px) * 2 for Card
+  const carouselWidth = windowWidth - 32; // (padding-x 4 = 16px) * 2 for screen padding
 
   const destinationLocation = tripData.destinationLocation ?? tripData.location;
   const [destinationImageUris, setDestinationImageUris] = useState<string[]>([]);
@@ -678,12 +709,16 @@ export default function AiItineraryWaitScreen() {
                           setActiveImageIndex(index);
                         }}
                         scrollEventThrottle={16}
+                        style={{ width: carouselWidth }}
                       >
                         {destinationImageUris.map((uri, idx) => (
                           <View key={idx} style={{ width: carouselWidth, height: 210 }}>
-                            <Image
+                            <SafeImage
                               source={expoImageSourceForGoogleRaster(uri)}
-                              style={{ width: "100%", height: 210 }}
+                              fallbackSource={require("@/assets/images/default_logo.jpg")}
+                              placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+                              placeholderContentFit="cover"
+                              style={{ width: "100%", height: 210, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
                               contentFit="cover"
                             />
                           </View>
@@ -704,12 +739,11 @@ export default function AiItineraryWaitScreen() {
                       )}
                     </View>
                   ) : (
-                    <View
-                      className="w-full items-center justify-center bg-gray-100"
-                      style={{ height: 210 }}
-                    >
-                      <Ionicons name="image-outline" size={48} color="#D1D5DB" />
-                    </View>
+                    <Image
+                      source={require("@/assets/images/default_logo.jpg")}
+                      style={{ width: "100%", height: 210, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
+                      contentFit="cover"
+                    />
                   )}
                 </View>
 
@@ -964,7 +998,10 @@ export default function AiItineraryWaitScreen() {
                 activeOpacity={0.8}
                 className="items-center justify-center rounded-full bg-primary py-4 shadow-sm"
                 onPress={() => {
-                  router.push("/create/select-group" as any);
+                  router.push({
+                    pathname: "/create/select-group" as any,
+                    params: { itineraryId: String(itineraryId) },
+                  });
                 }}
               >
                 <Text className="text-base font-semibold text-white">Tiếp tục chọn nhóm du lịch</Text>

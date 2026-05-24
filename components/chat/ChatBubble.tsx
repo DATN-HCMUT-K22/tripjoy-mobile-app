@@ -131,18 +131,26 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 senderName.includes("tripjoy admin") ||
                 senderName.includes("assistant");
   
+  const isUnsent = message.status === "UNSENT";
+
   // Color scheme - supports dark mode
-  const bubbleColor = isBot 
+  const bubbleColor = isUnsent
+    ? "transparent"
+    : isBot 
     ? (isDark ? "#4A148C" : "#F0E6F7") 
     : isMe 
     ? (isDark ? "#0D7377" : "#34B27D") 
     : (isDark ? "#2A2A2A" : "#F5F5F5");
     
-  const textColor = isMe || isBot 
+  const textColor = isUnsent
+    ? (isDark ? "#9CA3AF" : "#6B7280")
+    : isMe || isBot 
     ? (isDark ? "#FFFFFF" : "#FFFFFF") 
     : (isDark ? "#E5E5E5" : "#111827");
     
-  const borderColor = isBot || !isMe 
+  const borderColor = isUnsent
+    ? (isDark ? "#4B5563" : "#D1D5DB")
+    : isBot || !isMe 
     ? (isDark ? "#404040" : "#E5E7EB") 
     : "transparent";
     
@@ -308,7 +316,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   // Reply preview (bar bên trong bubble)
   const replyPreview =
-    message.parent_message && (
+    !isUnsent && message.parent_message && (
       <TouchableOpacity
         onPress={() => {
           if (onReplyPress && message.parent_message_id) {
@@ -348,7 +356,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   // Nội dung bubble (text, ảnh hoặc video)
   const bubbleContent =
-    message.message_type === "IMAGE" && message.media_url ? (
+    !isUnsent && message.message_type === "IMAGE" && message.media_url ? (
       <View style={styles.imageBubbleWrapper}>
         <View
           style={[
@@ -401,7 +409,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           ) : null}
         </View>
       </View>
-    ) : message.message_type === "VIDEO" && message.media_url ? (
+    ) : !isUnsent && message.message_type === "VIDEO" && message.media_url ? (
       <View style={styles.imageBubbleWrapper}>
         <View
           style={[
@@ -430,7 +438,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           ) : null}
         </View>
       </View>
-    ) : message.message_type === "SHARE_POST" ? (
+    ) : !isUnsent && message.message_type === "SHARE_POST" ? (
       <View style={styles.bubbleWrapper}>
         <View
           style={[
@@ -489,7 +497,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             styles.bubble,
             {
               backgroundColor: isBot ? BOT_BG : bubbleColor,
-              borderWidth: isBot || !isMe ? 1 : 0,
+              borderWidth: isUnsent ? 1 : (isBot || !isMe ? 1 : 0),
               borderColor: isBot ? BOT_BORDER : borderColor,
               paddingTop: isBot ? 0 : 10,
               paddingHorizontal: isBot ? 0 : 12,
@@ -509,7 +517,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           {replyPreview}
 
           {/* Pinned indicator */}
-          {message.is_pinned && (
+          {!isUnsent && message.is_pinned && (
             <View style={[styles.pinIndicator, { backgroundColor: isMe ? "rgba(255,255,255,0.2)" : (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)") }]}>
               <Ionicons name="pin" size={12} color={isMe ? "#FFFFFF" : (isDark ? "#9CA3AF" : "#6B7280")} />
               <Text style={[styles.pinIndicatorText, { color: isMe ? "#FFFFFF" : (isDark ? "#9CA3AF" : "#6B7280") }]}>
@@ -524,6 +532,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               paddingHorizontal: isBot ? 12 : 0,
               paddingBottom: isBot ? 10 : 0,
               paddingTop: isBot ? 8 : 0,
+              fontStyle: isUnsent ? "italic" : "normal",
             }]}
             selectable
           >
@@ -531,25 +540,27 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           </Text>
 
           {/* Like: like_count > 0 thì hiện số + icon heart màu đỏ */}
-          <View style={[styles.likeContainer, { paddingHorizontal: isBot ? 12 : 0, paddingBottom: isBot ? 8 : 0 }]}>
-            <TouchableOpacity
-              onPress={() => onLike && onLike(message.id)}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name={heartName} size={16} color={heartColor} />
-            </TouchableOpacity>
-            {hasLikes ? (
-              <Pressable
-                onPress={() => onShowLikes && onShowLikes(message.id)}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          {!isUnsent && (
+            <View style={[styles.likeContainer, { paddingHorizontal: isBot ? 12 : 0, paddingBottom: isBot ? 8 : 0 }]}>
+              <TouchableOpacity
+                onPress={() => onLike && onLike(message.id)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text style={[styles.likeCount, { color: heartColor }]}>
-                  {likeCount}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
+                <Ionicons name={heartName} size={16} color={heartColor} />
+              </TouchableOpacity>
+              {hasLikes ? (
+                <Pressable
+                  onPress={() => onShowLikes && onShowLikes(message.id)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={[styles.likeCount, { color: heartColor }]}>
+                    {likeCount}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
         </View>
       </View>
     );
@@ -590,11 +601,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     </>
   );
 
-  if (onLongPress) {
+  const handleLongPress = isUnsent ? undefined : onLongPress;
+
+  if (handleLongPress) {
     return (
       <Animated.View style={[{ backgroundColor: highlightColor }]}>
         <Pressable
-          onLongPress={onLongPress}
+          onLongPress={handleLongPress}
           delayLongPress={400}
           style={[containerStyle, { flex: 1 }]}
         >

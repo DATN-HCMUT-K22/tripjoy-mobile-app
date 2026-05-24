@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LocationImage } from "@/components/location/LocationImage";
 import { useIsDark } from "@/hooks/useTheme";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 
 type TabType = "ongoing" | "completed" | "draft";
 
@@ -53,6 +54,8 @@ export default function GroupItinerariesScreen() {
   const isDark = colorScheme === "dark";
 
   const [activeTab, setActiveTab] = useState<TabType>("ongoing");
+  const [applyConfirmVisible, setApplyConfirmVisible] = useState(false);
+  const [itemToApply, setItemToApply] = useState<GroupInfoItineraryListItem | null>(null);
 
   const { data: group, isLoading: isGroupLoading } = useGroup(id);
   const { data: itinerariesByTab, isLoading: isItinerariesLoading } = useGroupItinerariesByTab(id);
@@ -66,13 +69,21 @@ export default function GroupItinerariesScreen() {
   }, [group, currentUser]);
   const { mutateAsync: confirmItinerary, isPending: isConfirming } = useConfirmItinerary();
 
-  const handleApply = async (itinerary: GroupInfoItineraryListItem) => {
-    if (!itinerary.raw) return;
+  const handleApply = (itinerary: GroupInfoItineraryListItem) => {
+    setItemToApply(itinerary);
+    setApplyConfirmVisible(true);
+  };
+
+  const confirmApplyItinerary = async () => {
+    if (!itemToApply || !itemToApply.raw) return;
     try {
-      await confirmItinerary(itinerary.raw);
-      // useGroupItinerariesByTab should automatically refresh if invalidated by mutation
+      await confirmItinerary(itemToApply.raw);
+      setApplyConfirmVisible(false);
+      setItemToApply(null);
     } catch (error) {
       console.error("Failed to apply itinerary:", error);
+      setApplyConfirmVisible(false);
+      setItemToApply(null);
     }
   };
 
@@ -190,7 +201,6 @@ export default function GroupItinerariesScreen() {
             })()}
 
             {isManager && 
-             (item.raw?.status || "").toUpperCase() !== ITINERARY_STATUS.CONFIRMED && 
              (item.raw?.status || "").toUpperCase() !== ITINERARY_STATUS.IN_PROGRESS && (
               <TouchableOpacity
                 style={styles.deleteBtn}
@@ -316,6 +326,25 @@ export default function GroupItinerariesScreen() {
         }
         ListEmptyComponent={renderEmpty}
         showsVerticalScrollIndicator={false}
+      />
+
+      <AppDialogModal
+        visible={applyConfirmVisible}
+        variant="warning"
+        title="Xác nhận áp dụng"
+        message="Hành động này không thể thu hồi. Một nhóm chỉ được phép có duy nhất một lịch trình được xác nhận (Confirmed) diễn ra cho đến khi lịch trình đó hoàn thành/kết thúc."
+        primaryLabel="Áp dụng"
+        primaryDestructive={false}
+        onPrimaryPress={confirmApplyItinerary}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => {
+          setApplyConfirmVisible(false);
+          setItemToApply(null);
+        }}
+        onRequestClose={() => {
+          setApplyConfirmVisible(false);
+          setItemToApply(null);
+        }}
       />
     </SafeAreaView>
   );

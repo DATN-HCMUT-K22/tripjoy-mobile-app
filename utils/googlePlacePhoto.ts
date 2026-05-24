@@ -17,6 +17,7 @@
 
 import { getGoogleMapsApiKey } from "@/config/env";
 import { getCachedLocationImage, setCachedLocationImage } from "./locationImageCache";
+import { getPlaceDetails, buildPlacePhotoUrl } from "@/services/googlePlaces";
 
 const PLACES_BASE = "https://places.googleapis.com/v1";
 const FIELD_MASK = "places.name,places.displayName,places.photos,places.types";
@@ -151,51 +152,6 @@ async function nearbySearch(
   }
 }
 
-// ---------------------------------------------------------------------------
-// 2.5. Get Place by ID — dùng khi đã có placeId (chính xác nhất)
-// ---------------------------------------------------------------------------
-
-/**
- * GET /places/{placeId}
- */
-async function getPlaceById(placeId: string): Promise<NearbyPlaceResult | null> {
-  const apiKey = getGoogleMapsApiKey();
-  if (!apiKey || !placeId) return null;
-
-  try {
-    const res = await fetch(`${PLACES_BASE}/places/${placeId}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "name,displayName,photos,types",
-      },
-    });
-
-    if (!res.ok) {
-      console.warn(
-        `[googlePlacePhoto] getPlaceById HTTP ${res.status}:`,
-        await res.text()
-      );
-      return null;
-    }
-
-    return (await res.json()) as NearbyPlaceResult;
-  } catch (err) {
-    console.warn("[googlePlacePhoto] getPlaceById error:", err);
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 3. Build photo URL
-// ---------------------------------------------------------------------------
-
-function buildPlacePhotoUrl(photoName: string, maxWidthPx: number): string {
-  const apiKey = getGoogleMapsApiKey();
-  if (!apiKey) return "";
-  return `${PLACES_BASE}/${photoName}/media?maxWidthPx=${maxWidthPx}&key=${encodeURIComponent(apiKey)}`;
-}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -231,11 +187,11 @@ export async function fetchPlacePhotoUrls(
   try {
     // 2. Nếu có placeId, lấy trực tiếp (ưu tiên cao nhất)
     if (placeId) {
-      const place = await getPlaceById(placeId);
+      const place = await getPlaceDetails(placeId);
       if (place?.photos?.length) {
         const urls = place.photos
           .slice(0, maxPhotos)
-          .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
+          .map((p) => buildPlacePhotoUrl(p.name));
         
         if (urls.length > 0) {
           setCachedLocationImage(cacheKey, urls[0]);
@@ -303,14 +259,14 @@ export async function fetchPlacePhotoUrls(
         if (sortedPlaces[i].photos?.length) {
           resultUrls = sortedPlaces[i].photos!
             .slice(0, maxPhotos)
-            .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
+            .map((p) => buildPlacePhotoUrl(p.name));
           break;
         }
       }
     } else {
       resultUrls = photos
         .slice(0, maxPhotos)
-        .map((p) => buildPlacePhotoUrl(p.name, maxWidthPx));
+        .map((p) => buildPlacePhotoUrl(p.name));
     }
 
     if (resultUrls.length > 0) {

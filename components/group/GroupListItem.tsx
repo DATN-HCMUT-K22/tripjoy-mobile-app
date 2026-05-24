@@ -4,7 +4,7 @@ import { normalizeAvatarUri } from "@/utils/image";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
-import React, { useEffect } from "react";
+import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
 interface GroupListItemProps {
@@ -23,11 +23,7 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
   const hasData = itineraryCount > 0 || memberCount > 0;
   const avatarUri = normalizeAvatarUri(group.avatar);
   const isFileUri = !!avatarUri?.startsWith("file://");
-  const [imageError, setImageError] = React.useState(false);
   const themeColor = group.theme_color || "#34B27D";
-  useEffect(() => {
-    setImageError(false);
-  }, [avatarUri]);
   // Điều hướng sang trang chi tiết nhóm `/groups/{groupId}`
   const goToInfo = () => router.push(`/groups/${group.id}` as any);
   // Mở màn tin nhắn nhóm, truyền conversationId để màn chat gọi GET /conversations/{id} như danh sách conversation
@@ -80,25 +76,39 @@ export const GroupListItem: React.FC<GroupListItemProps> = ({
     >
       {/* Image Thumbnail */}
       <TouchableOpacity activeOpacity={0.9} onPress={goToInfo}>
-        {avatarUri && !imageError ? (
-          isFileUri ? (
-            <Image
-              source={{ uri: avatarUri }}
-              style={{ width: 80, height: 80, borderRadius: 8 }}
-              resizeMode="cover"
-              onError={() => setImageError(true)}
-            />
-          ) : (
-            <ExpoImage
-              source={{ uri: avatarUri }}
-              style={{ width: 80, height: 80, borderRadius: 8 }}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
-              transition={200}
-              onError={() => setImageError(true)}
-            />
-          )
+        {avatarUri ? (
+          <View style={{ width: 80, height: 80, borderRadius: 8, overflow: "hidden", position: "relative", backgroundColor: "#E5E7EB" }}>
+            {/* Fallback View behind the image */}
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="people-outline" size={32} color="#9CA3AF" />
+            </View>
+            {isFileUri ? (
+              <Image
+                source={{ uri: avatarUri }}
+                style={{ width: 80, height: 80, borderRadius: 8, position: "absolute", top: 0, left: 0 }}
+                resizeMode="cover"
+              />
+            ) : (
+              <ExpoImage
+                source={{ uri: avatarUri }}
+                style={{ width: 80, height: 80, borderRadius: 8, position: "absolute", top: 0, left: 0 }}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                placeholder={{ blurhash: "LKO2?U%2Tw=w]~RBVZRi};RPxuwH" }}
+                transition={200}
+              />
+            )}
+          </View>
         ) : (
           <View
             style={{

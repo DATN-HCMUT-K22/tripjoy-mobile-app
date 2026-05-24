@@ -3,7 +3,7 @@ import { useItinerary } from "@/contexts/ItineraryContext";
 import { useTripSetup } from "@/contexts/TripSetupContext";
 import { BUDGET_CUSTOM_ID } from "@/data/budgetOptions";
 import { useGroups } from "@/hooks/useGroups";
-import { useCreateItinerary } from "@/hooks/useItineraries";
+import { useCreateItinerary, useUpdateItinerary } from "@/hooks/useItineraries";
 import { useCreateTripExitToHome } from "@/hooks/useCreateTripExitToHome";
 import { itineraryService, ItineraryRequest } from "@/services/itineraries";
 import { conversationService } from "@/services/conversations";
@@ -67,13 +67,16 @@ export default function SelectGroupScreen() {
   const params = useLocalSearchParams<{
     createdGroupId?: string;
     autoSelect?: string;
+    itineraryId?: string;
   }>();
+  const itineraryId = params.itineraryId;
   const { exitToHome } = useCreateTripExitToHome();
   const insets = useSafeAreaInsets();
   const { tripData, resetTripData } = useTripSetup();
   const { itineraryItemsByDay, resetItinerary } = useItinerary();
   const { data: groups = [], isLoading } = useGroups();
   const createItineraryMutation = useCreateItinerary();
+  const updateItineraryMutation = useUpdateItinerary();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
 
@@ -193,12 +196,23 @@ export default function SelectGroupScreen() {
       try {
         const payload = buildItineraryPayload(selectedGroupId);
         console.log("[CreateItinerary][MappedPayload]", JSON.stringify(payload, null, 2));
-        const created = await createItineraryMutation.mutateAsync(payload);
-        console.log("[CreateItinerary][Response]", JSON.stringify(created, null, 2));
 
-        const itineraryId = (created as any)?.id;
-        if (!itineraryId) {
-          console.warn("[CreateItinerary] ⚠️ No itinerary id returned");
+        let targetItineraryId = itineraryId;
+        if (targetItineraryId) {
+          console.log("[CreateItinerary] Updating existing itinerary:", targetItineraryId);
+          await updateItineraryMutation.mutateAsync({
+            itineraryId: targetItineraryId,
+            payload,
+          });
+        } else {
+          console.log("[CreateItinerary] Creating new itinerary");
+          const created = await createItineraryMutation.mutateAsync(payload);
+          console.log("[CreateItinerary][Response]", JSON.stringify(created, null, 2));
+          targetItineraryId = (created as any)?.id;
+        }
+
+        if (!targetItineraryId) {
+          console.warn("[CreateItinerary] ⚠️ No itinerary id returned or updated");
         }
 
         resetItinerary();

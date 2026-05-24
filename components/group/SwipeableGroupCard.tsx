@@ -17,6 +17,7 @@ interface SwipeableGroupCardProps {
   conversation?: ConversationResponse | null;
   onSwipeAction: (action: SwipeAction, group: Group) => void;
   isPinned?: boolean;
+  isLeader?: boolean;
   children: React.ReactNode; // The actual card component (GroupCard or GroupListItem)
 }
 
@@ -25,6 +26,7 @@ export function SwipeableGroupCard({
   conversation,
   onSwipeAction,
   isPinned,
+  isLeader,
   children,
 }: SwipeableGroupCardProps) {
   const renderLeftActions = () => {
@@ -57,17 +59,19 @@ export function SwipeableGroupCard({
         </TouchableOpacity>
 
         {/* Leave Action */}
-        <TouchableOpacity
-          className="bg-red-500 justify-center items-center px-4"
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            onSwipeAction('leave', group);
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="exit" size={24} color="#fff" />
-          <Text className="text-white text-xs mt-1 font-medium">Leave</Text>
-        </TouchableOpacity>
+        {!isLeader && (
+          <TouchableOpacity
+            className="bg-red-500 justify-center items-center px-4"
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              onSwipeAction('leave', group);
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="exit" size={24} color="#fff" />
+            <Text className="text-white text-xs mt-1 font-medium">Leave</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };

@@ -63,25 +63,17 @@ export function GroupHeader({ group, currentUserId }: GroupHeaderProps) {
       });
     }
 
-    actions.push({
-      icon: 'exit-outline',
-      label: 'Rời nhóm',
-      onPress: () => {
-        setShowActionSheet(false);
-        
-        const hasOtherMembers = (group.members?.length ?? 0) > 1;
-        if (isLeader && hasOtherMembers) {
-          showErrorToast(
-            "Không thể rời nhóm ngay",
-            "Bạn đang là Trưởng nhóm. Hãy chuyển quyền trưởng nhóm cho thành viên khác trước khi rời nhóm."
-          );
-          return;
-        }
-        
-        setShowLeaveConfirm(true);
-      },
-      danger: true,
-    });
+    if (!isLeader) {
+      actions.push({
+        icon: 'exit-outline',
+        label: 'Rời nhóm',
+        onPress: () => {
+          setShowActionSheet(false);
+          setShowLeaveConfirm(true);
+        },
+        danger: true,
+      });
+    }
 
     if (isLeader) {
       actions.push({
