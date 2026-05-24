@@ -1090,7 +1090,6 @@ export default function ManualItineraryScreen() {
           setEditingItem(null);
         }}
         onSave={handleSaveTime}
-        selectedDate={editingItem?.timeRange.start}
       />
 
       <AppDialogModal
