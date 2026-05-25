@@ -226,13 +226,16 @@ export const conversationService = {
    * PUT /api/v1/conversations/{conversationId}/read
    */
   async markConversationRead(conversationId: string): Promise<ApiResponse<null>> {
+    console.log(`\n📬 [CONVERSATION SERVICE] Marking conversation read: ${conversationId}`);
     try {
       const response = await httpClient.put<ApiResponse<null>, Record<string, never>>(
         `/conversations/${conversationId}/read`,
         {}
       );
+      console.log(`✅ [CONVERSATION SERVICE] Mark read success:`, response);
       return response;
     } catch (error: any) {
+      console.error(`❌ [CONVERSATION SERVICE] Mark read failed:`, error.message);
       throw error;
     }
   },

@@ -240,18 +240,7 @@ export function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
                   <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={() => {
-                    onClose();
-                    // TODO: Navigate to settings
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="settings-outline" size={24} color="#111827" />
-                  <Text style={styles.menuItemText}>Cài đặt</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-                </TouchableOpacity>
+
 
                 {/* Chỉ hiển thị nút đăng xuất nếu không phải guest mode */}
                 {!isGuest && (

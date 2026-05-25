@@ -3,6 +3,7 @@ export enum ContentType {
   POST = "POST",
   COMMENT = "COMMENT",
   USER = "USER",
+  MESSAGE = "MESSAGE",
 }
 
 export enum ReportType {
@@ -89,4 +90,5 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   [ContentType.POST]: "Bài viết",
   [ContentType.COMMENT]: "Bình luận",
   [ContentType.USER]: "Người dùng",
+  [ContentType.MESSAGE]: "Tin nhắn",
 };

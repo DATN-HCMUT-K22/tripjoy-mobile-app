@@ -10,6 +10,8 @@ interface ChatState {
   unreadCount: Record<string, number>;
   // Cache conversation groupId by conversationId
   conversationGroupIdCache: Record<string, string | null>;
+  // Track local read timestamps to override stale backend data during race conditions
+  localReadTimestamps: Record<string, number>;
 }
 
 interface ChatActions {
@@ -21,6 +23,8 @@ interface ChatActions {
   increaseUnread: (chatId: string) => void;
   // Reset unread count for a conversation
   resetUnread: (chatId: string) => void;
+  // Mark local read timestamp
+  markLocalRead: (chatId: string) => void;
   // Set unread count explicitly
   setUnread: (chatId: string, count: number) => void;
   // Replace unread counts from server snapshot
@@ -42,6 +46,7 @@ const initialState: ChatState = {
   currentChatId: null,
   unreadCount: {},
   conversationGroupIdCache: {},
+  localReadTimestamps: {},
 };
 
 export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
@@ -82,6 +87,19 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       unreadCount: {
         ...state.unreadCount,
         [chatId]: 0,
+      },
+      localReadTimestamps: {
+        ...state.localReadTimestamps,
+        [chatId]: Date.now(),
+      },
+    }));
+  },
+
+  markLocalRead: (chatId) => {
+    set((state) => ({
+      localReadTimestamps: {
+        ...state.localReadTimestamps,
+        [chatId]: Date.now(),
       },
     }));
   },

@@ -28,11 +28,21 @@ export function useConversations(options?: { enabled?: boolean }) {
     queryFn: async () => {
       const response = await conversationService.getConversations();
       if (isApiSuccess(response.code) && response.data) {
+        const { localReadTimestamps } = useChatStore.getState();
+        const now = Date.now();
         const unreadSnapshot: Record<string, number> = {};
         for (const conversation of response.data) {
+          // Ignore backend unread count if we locally marked it as read in the last 10 seconds
+          // This prevents race conditions where refetch happens before backend processes PUT /read
+          const lastRead = localReadTimestamps[conversation.id];
+          if (lastRead && now - lastRead < 10000) {
+            console.log(`🛡️ [USE CONVERSATIONS] Overriding unread count for ${conversation.id} to 0 due to recent local read.`);
+            conversation.unread_count = 0;
+          }
           unreadSnapshot[conversation.id] = Math.max(0, conversation.unread_count ?? 0);
         }
 
+        console.log(`📦 [USE CONVERSATIONS] Returning ${response.data.length} conversations from API`);
         // Zustand reconciliation for backward compatibility
         reconcileUnreadFromServer(unreadSnapshot);
 

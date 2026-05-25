@@ -10,6 +10,8 @@ import { MessageActionSheet } from "@/components/chat/MessageActionSheet";
 import { conversationService } from "@/services/conversations";
 import { PinnedMessageBar, PINNED_BAR_HEIGHT } from "@/components/chat/PinnedMessageBar";
 import { PinnedMessagesModal } from "@/components/chat/PinnedMessagesModal";
+import { ReportModal } from "@/components/social/ReportModal";
+import { ContentType } from "@/types/report";
 import { messageService } from "@/services/messages";
 import { uploadImage, uploadVideo } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
@@ -114,6 +116,8 @@ export default function ChatScreen() {
   const [isPinning, setIsPinning] = useState(false);
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageResponse | null>(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportedMessage, setReportedMessage] = useState<ChatMessageResponse | null>(null);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
   const conversationId = params.id;
@@ -160,6 +164,14 @@ export default function ChatScreen() {
             resetUnread(conversationId);
             // 🔥 Redux: Reset unread count
             dispatch(resetUnreadRedux({ conversationId }));
+            queryClient.setQueryData(["conversations"], (prev: any) => {
+              if (!prev || !Array.isArray(prev)) return prev;
+              return prev.map((conversation: any) =>
+                conversation.id === conversationId
+                  ? { ...conversation, unread_count: 0 }
+                  : conversation
+              );
+            });
           }
           return;
         } catch {
@@ -169,18 +181,32 @@ export default function ChatScreen() {
       }
     };
 
-    const timer = setTimeout(() => {
-      void markReadWithRetry();
-    }, 180);
+    void markReadWithRetry();
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
       if (conversationId) {
-        conversationService.markConversationRead(conversationId).catch(() => {});
+        // Optimistic update immediately
+        resetUnread(conversationId);
+        dispatch(resetUnreadRedux({ conversationId }));
+        queryClient.setQueryData(["conversations"], (prev: any) => {
+          if (!prev || !Array.isArray(prev)) return prev;
+          return prev.map((conversation: any) =>
+            conversation.id === conversationId
+              ? { ...conversation, unread_count: 0 }
+              : conversation
+          );
+        });
+
+        // Backend call & update after confirm
+        conversationService.markConversationRead(conversationId)
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          })
+          .catch(() => {});
       }
     };
-  }, [conversationId, resetUnread, dispatch]);
+  }, [conversationId, resetUnread, dispatch, queryClient]);
 
   // Đảm bảo header bị tắt
   useLayoutEffect(() => {
@@ -614,6 +640,11 @@ export default function ChatScreen() {
     );
   }, [deleteMessage]);
 
+  const handleReport = useCallback((message: ChatMessageResponse) => {
+    setReportedMessage(message);
+    setReportModalVisible(true);
+  }, []);
+
   const handlePinnedBarTap = useCallback(() => {
     if (pinnedMessages.length === 0) return;
     const msg = pinnedMessages[pinnedIndex];
@@ -681,6 +712,8 @@ export default function ChatScreen() {
               ...conv,
               updated_at: latestMessage?.created_at || fallbackUpdatedAt,
               last_message: latestMessage || conv.last_message,
+              unread_count: 0,
+              unreadCount: 0,
             };
           });
 
@@ -703,8 +736,11 @@ export default function ChatScreen() {
       );
     }
 
-    queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
+    // Delay refetch slightly to allow markRead API to process on backend
+    setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
+    }, 500);
 
     // Luôn quay về danh sách tin nhắn
     router.push("/messages");
@@ -771,8 +807,8 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 90}
       >
         {/* Messages */}
         <View style={styles.messagesWrapper}>
@@ -997,6 +1033,7 @@ export default function ChatScreen() {
           // Note: TextInput doesn't have a direct ref here yet, but usually autofocus works when state changes if implemented
         }}
         onDelete={handleDelete}
+        onReport={handleReport}
         currentUserId={currentUser?.id}
       />
 
@@ -1018,6 +1055,26 @@ export default function ChatScreen() {
         }}
         onUnpinMessage={handleUnpin}
       />
+
+      {/* Report Modal */}
+      {reportedMessage && (
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={() => {
+            setReportModalVisible(false);
+            setReportedMessage(null);
+          }}
+          contentId={reportedMessage.id}
+          contentType={ContentType.MESSAGE}
+          contentTitle={
+            reportedMessage.message_content 
+              ? (reportedMessage.message_content.length > 30 
+                  ? reportedMessage.message_content.substring(0, 30) + '...' 
+                  : reportedMessage.message_content)
+              : "Đính kèm media"
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

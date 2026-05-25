@@ -175,14 +175,6 @@ export default function UserProfileScreen() {
           headerTitle: '',
           headerTintColor: '#FFFFFF',
           headerBackTitle: 'Quay lại',
-          headerRight: () => (
-            <TouchableOpacity 
-              onPress={() => console.log('More options')}
-              style={styles.headerButton}
-            >
-              <Ionicons name="ellipsis-horizontal" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-          ),
         }}
       />
 

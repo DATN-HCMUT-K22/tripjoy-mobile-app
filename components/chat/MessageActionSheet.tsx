@@ -24,6 +24,7 @@ export interface MessageActionSheetProps {
   onReply?: (message: ChatMessageResponse) => void;
   onForward?: (message: ChatMessageResponse) => void;
   onDelete?: (message: ChatMessageResponse) => void;
+  onReport?: (message: ChatMessageResponse) => void;
   /** ID người dùng hiện tại để check ownership */
   currentUserId?: string;
 }
@@ -38,6 +39,7 @@ export function MessageActionSheet({
   onUnpin,
   onReply,
   onDelete,
+  onReport,
   currentUserId,
 }: MessageActionSheetProps) {
   const insets = useSafeAreaInsets();
@@ -91,6 +93,13 @@ export function MessageActionSheet({
     if (!message) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onDelete?.(message);
+    onDismiss();
+  };
+
+  const handleReport = () => {
+    if (!message) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onReport?.(message);
     onDismiss();
   };
 
@@ -158,6 +167,22 @@ export function MessageActionSheet({
                   <Text style={styles.actionText}>Phản hồi</Text>
                 </View>
               </Pressable>
+
+              {/* Report action - Hiện cho tất cả mọi người (trừ chủ tin nhắn, hoặc nếu muốn thì cho cả chủ) - ta cứ cho phép nếu onReport có */}
+              {onReport && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.actionRow,
+                    pressed && styles.actionRowPressed,
+                  ]}
+                  onPress={handleReport}
+                >
+                  <View style={styles.actionIconText}>
+                    <Ionicons name="flag-outline" size={22} color="#111827" style={styles.actionIcon} />
+                    <Text style={styles.actionText}>Báo cáo</Text>
+                  </View>
+                </Pressable>
+              )}
 
               {/* Delete action - Chỉ hiện cho chủ tin nhắn */}
               {isOwner && onDelete && (

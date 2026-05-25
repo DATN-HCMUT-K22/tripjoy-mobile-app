@@ -61,11 +61,13 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   const isPost = contentType === ContentType.POST;
   const isComment = contentType === ContentType.COMMENT;
   const isUser = contentType === ContentType.USER;
+  const isMessage = contentType === ContentType.MESSAGE;
 
   let title = "Báo cáo";
   if (isPost) title = "Báo cáo bài viết";
   if (isComment) title = "Báo cáo bình luận";
   if (isUser) title = "Báo cáo người dùng";
+  if (isMessage) title = "Báo cáo tin nhắn";
 
   return (
     <Modal

@@ -3,8 +3,6 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } fr
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { conversationService } from '@/services/conversations';
-import { ReportModal } from '@/components/social/ReportModal';
-import { ContentType } from '@/types/report';
 import { useAppSelector } from '@/store/hooks';
 
 interface ProfileActionsProps {
@@ -15,10 +13,6 @@ export function ProfileActions({ userId }: ProfileActionsProps) {
   const router = useRouter();
   const currentUserId = useAppSelector((state) => state.auth.user?.id);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-
-  // Prevent reporting own profile
-  const canReport = userId !== currentUserId;
 
   const handleMessagePress = async () => {
     if (isCreatingConversation) return;
@@ -61,26 +55,7 @@ export function ProfileActions({ userId }: ProfileActionsProps) {
             </>
           )}
         </TouchableOpacity>
-
-        {/* Report Button (only if not own profile) */}
-        {canReport && (
-          <TouchableOpacity
-            style={styles.reportButton}
-            onPress={() => setShowReportModal(true)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="flag-outline" size={20} color="#EF4444" />
-          </TouchableOpacity>
-        )}
       </View>
-
-      <ReportModal
-        visible={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        contentId={userId}
-        contentType={ContentType.USER}
-        contentTitle={`User ID: ${userId}`}
-      />
     </View>
   );
 }
@@ -116,15 +91,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
-  },
-  reportButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FEF2F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
   },
 });

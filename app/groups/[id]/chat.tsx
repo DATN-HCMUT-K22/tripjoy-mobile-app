@@ -1,44 +1,45 @@
 import { ChatBubble } from "@/components/chat/ChatBubble";
-import { SwipeableMessage } from "@/components/chat/SwipeableMessage";
+import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { DateSeparator } from "@/components/chat/DateSeparator";
+import { MentionSuggestions, MentionUser } from "@/components/chat/MentionSuggestions";
 import { MessageActionSheet } from "@/components/chat/MessageActionSheet";
 import { MessageLikesModal } from "@/components/chat/MessageLikesModal";
-import { PinnedMessageBar, PINNED_BAR_HEIGHT } from "@/components/chat/PinnedMessageBar";
-import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
+import { PINNED_BAR_HEIGHT, PinnedMessageBar } from "@/components/chat/PinnedMessageBar";
+import { SwipeableMessage } from "@/components/chat/SwipeableMessage";
 import { TypingIndicatorBubble } from "@/components/chat/TypingIndicatorBubble";
-import { MentionSuggestions, MentionUser } from "@/components/chat/MentionSuggestions";
-import { mockItineraries } from "@/data/mockItineraries";
+import { LocationImage } from "@/components/location/LocationImage";
+import { ReportModal } from "@/components/social/ReportModal";
+import { PLACEHOLDER_ITINERARY_IMAGE, useGroupConfirmedItinerary, useItineraryTripItems } from "@/hooks/useItineraries";
 import { useMessages } from "@/hooks/useMessages";
 import { usePinnedMessages } from "@/hooks/usePinnedMessages";
-import { useGroupConfirmedItinerary } from "@/hooks/useItineraries";
+import { useSocketTyping } from "@/hooks/useSocketTyping";
 import { conversationService } from "@/services/conversations";
 import { uploadImage, uploadVideo } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { resetUnread as resetUnreadRedux, selectTypingUsersForConversation, setActiveConversation } from "@/store/slices/conversationSlice";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
-import { setActiveConversation, resetUnread as resetUnreadRedux, selectTypingUsersForConversation } from "@/store/slices/conversationSlice";
-import { useSocketTyping } from "@/hooks/useSocketTyping";
 import { useChatStore } from "@/stores/chat.store";
 import {
   ChatMessageResponse,
   ConversationResponse,
   getChatSenderId,
 } from "@/types/message";
+import { ContentType } from "@/types/report";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import { useIsFocused } from "@react-navigation/native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Video, ResizeMode } from "expo-av";
+import { ResizeMode, Video } from "expo-av";
+import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import { useDeleteTripItem, useItineraryTripItems, useUpdateTripItem } from "@/hooks/useItineraries";
-import { LocationImage } from "@/components/location/LocationImage";
-import { PLACEHOLDER_ITINERARY_IMAGE } from "@/hooks/useItineraries";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -46,12 +47,11 @@ import {
   TouchableOpacity,
   View,
   useColorScheme,
-  Modal,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+// import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { ImageZoom } from '@likashefqet/react-native-image-zoom';
+import type { FlashListRef } from "@shopify/flash-list";
 import { FlashList } from "@shopify/flash-list";
-import type { FlashListProps, FlashListRef } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
@@ -109,7 +109,7 @@ type ListItem =
 const ItineraryBannerImage = ({ itineraryId, defaultImage, style }: { itineraryId: string, defaultImage?: string, style: any }) => {
   const { data: items, isLoading } = useItineraryTripItems(itineraryId);
   const firstLocation = items?.[0]?.location;
-  
+
   if (isLoading) {
     return <Image source={{ uri: defaultImage || PLACEHOLDER_ITINERARY_IMAGE }} style={style} contentFit="cover" />;
   }
@@ -165,6 +165,12 @@ export default function GroupChatScreen() {
   const [mentionSearchQuery, setMentionSearchQuery] = useState("");
   const [cursorPosition, setCursorPosition] = useState(0);
 
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportedMessage, setReportedMessage] = useState<ChatMessageResponse | null>(null);
+
+  // Focus tracking
+  const isFocused = useIsFocused();
+
   // Đảm bảo header bị tắt
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -199,7 +205,7 @@ export default function GroupChatScreen() {
     queryFn: async () => {
       if (paramConversationId) return paramConversationId;
       if (!groupId) return null;
-      
+
       console.log(`🔍 [GROUP CHAT] Resolving conversationId for groupId: ${groupId}`);
       const res = await conversationService.getConversations();
       if (isApiSuccess(res.code)) {
@@ -255,6 +261,14 @@ export default function GroupChatScreen() {
             resetUnread(conversationId);
             // 🔥 Redux: Reset unread count
             dispatch(resetUnreadRedux({ conversationId }));
+            queryClient.setQueryData(["conversations"], (prev: any) => {
+              if (!prev || !Array.isArray(prev)) return prev;
+              return prev.map((conversation: any) =>
+                conversation.id === conversationId
+                  ? { ...conversation, unread_count: 0 }
+                  : conversation
+              );
+            });
           }
           return;
         } catch {
@@ -264,19 +278,33 @@ export default function GroupChatScreen() {
       }
     };
 
-    const timer = setTimeout(() => {
-      void markReadWithRetry();
-    }, 180);
+    void markReadWithRetry();
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
       if (conversationId) {
-        conversationService.markConversationRead(conversationId).catch(() => {});
+        // Optimistic update immediately
+        resetUnread(conversationId);
+        dispatch(resetUnreadRedux({ conversationId }));
+        queryClient.setQueryData(["conversations"], (prev: any) => {
+          if (!prev || !Array.isArray(prev)) return prev;
+          return prev.map((conversation: any) =>
+            conversation.id === conversationId
+              ? { ...conversation, unread_count: 0 }
+              : conversation
+          );
+        });
+
+        // Backend call & update after confirm
+        conversationService.markConversationRead(conversationId)
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          })
+          .catch(() => {});
       }
     };
-  }, [conversationId, resetUnread, dispatch]);
-  
+  }, [conversationId, resetUnread, dispatch, queryClient]);
+
   // Load conversation info để lấy members và tên nhóm
   const { data: conversation } = useQuery({
     queryKey: ["conversation", conversationId],
@@ -303,7 +331,7 @@ export default function GroupChatScreen() {
     staleTime: 60000,
     refetchOnWindowFocus: false,
   });
-  
+
 
   // Pinned messages
   const { pinnedMessages, refetch: refetchPinned } = usePinnedMessages(conversationId);
@@ -331,7 +359,7 @@ export default function GroupChatScreen() {
 
   // Log error nếu không có conversationId và hiển thị error state
   const hasConversationIdError = !conversationId && groupId;
-  
+
   useEffect(() => {
     if (hasConversationIdError) {
       console.error("\n❌ [GROUP CHAT] Missing conversationId!");
@@ -508,17 +536,17 @@ export default function GroupChatScreen() {
           const uploadResult =
             mediaToSend.kind === "video"
               ? await uploadVideo({
-                  fileUri: mediaToSend.uri,
-                  fileName,
-                  fileType,
-                  folder,
-                })
+                fileUri: mediaToSend.uri,
+                fileName,
+                fileType,
+                folder,
+              })
               : await uploadImage({
-                  fileUri: mediaToSend.uri,
-                  fileName,
-                  fileType,
-                  folder,
-                });
+                fileUri: mediaToSend.uri,
+                fileName,
+                fileType,
+                folder,
+              });
 
           const mediaUrl = uploadResult.secure_url;
           const caption =
@@ -603,12 +631,12 @@ export default function GroupChatScreen() {
       if (showSep) {
         list.push({ type: "date", key: `date-${msg.id}-${msg.created_at}`, date: msg.created_at });
       }
-      list.push({ 
-        type: "message", 
-        key: msg.id, 
-        message: msg, 
+      list.push({
+        type: "message",
+        key: msg.id,
+        message: msg,
         showSenderName: showSender,
-        showAvatar: showSender 
+        showAvatar: showSender
       });
       map.set(msg.id, list.length - 1);
       prev = msg;
@@ -635,7 +663,7 @@ export default function GroupChatScreen() {
   const hasScrolledToBottomRef = useRef(false);
   /** Chỉ cuộn tới messageId từ params một lần (tránh mỗi lần messages đổi lại nhảy) */
   const appliedParamMessageScrollRef = useRef<string | null>(null);
-  
+
   // Auto scroll to bottom khi có tin mới, load messages lần đầu, hoặc mở từ notification (scrollToEnd=1)
   useEffect(() => {
     if (messages.length > 0) {
@@ -785,6 +813,11 @@ export default function GroupChatScreen() {
     );
   }, [deleteMessage]);
 
+  const handleReport = useCallback((message: ChatMessageResponse) => {
+    setReportedMessage(message);
+    setReportModalVisible(true);
+  }, []);
+
   const handlePinnedBarTap = useCallback(() => {
     if (pinnedMessages.length === 0) return;
     const msg = pinnedMessages[currentPinnedIndex];
@@ -850,6 +883,8 @@ export default function GroupChatScreen() {
               ...conv,
               updated_at: latestMessage?.created_at || fallbackUpdatedAt,
               last_message: latestMessage || conv.last_message,
+              unread_count: 0,
+              unreadCount: 0,
             };
           });
 
@@ -871,8 +906,11 @@ export default function GroupChatScreen() {
       );
     }
 
-    queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
+    // Delay refetch slightly to allow markRead API to process on backend
+    setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.refetchQueries({ queryKey: ["conversations"], type: "all" });
+    }, 500);
 
     // Luôn quay về danh sách tin nhắn
     router.push("/messages");
@@ -996,14 +1034,10 @@ export default function GroupChatScreen() {
         </TouchableOpacity>
       )}
 
-      <KeyboardAwareScrollView
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={{ flex: 1 }}
-        enableOnAndroid={true}
-        enableAutomaticScroll={true}
-        extraScrollHeight={10}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 90}
       >
         {/* Messages: FlashList + PinnedMessageBar (absolute, không chiếm flow) */}
         <View style={styles.messagesWrapper}>
@@ -1016,50 +1050,50 @@ export default function GroupChatScreen() {
               paddingBottom: 16,
               ...(pinnedMessages.length > 0 ? { paddingTop: PINNED_BAR_HEIGHT } : {}),
             }}
-          showsVerticalScrollIndicator={false}
-          onScroll={(e) => {
-            const { contentOffset } = e.nativeEvent;
-            if (contentOffset.y <= 100 && hasMore && !loading) loadMore();
-          }}
-          scrollEventThrottle={400}
-          ListEmptyComponent={
-            (loading || isResolving) && messages.length === 0 ? (
-              <View className="py-8 items-center">
-                <ActivityIndicator size="large" color="#34B27D" />
-                <Text className="text-gray-500 mt-2">Đang tải tin nhắn...</Text>
-              </View>
-            ) : !loading && !error && messages.length === 0 ? (
-              <View className="py-8 items-center">
-                <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
-                <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
-                <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
-              </View>
-            ) : (error || hasConversationIdError) && messages.length === 0 ? (
-              <View className="py-8 items-center">
-                <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
-                <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
-                <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
-              </View>
-            ) : null
-          }
-          ListFooterComponent={
-            <>
-              {(typingUsers.length > 0 || typingUsersRedux.length > 0) && (
-                <TypingIndicatorBubble
-                  usernames={
-                    typingUsersRedux.length > 0
-                      ? typingUsersRedux.map(u => u.username)
-                      : typingUsers.map(u => String(u.username ?? ''))
-                  }
-                />
-              )}
-              {loading && messages.length > 0 && (
-                <View className="py-4 items-center">
-                  <ActivityIndicator size="small" color="#34B27D" />
+            showsVerticalScrollIndicator={false}
+            onScroll={(e) => {
+              const { contentOffset } = e.nativeEvent;
+              if (contentOffset.y <= 100 && hasMore && !loading) loadMore();
+            }}
+            scrollEventThrottle={400}
+            ListEmptyComponent={
+              (loading || isResolving) && messages.length === 0 ? (
+                <View className="py-8 items-center">
+                  <ActivityIndicator size="large" color="#34B27D" />
+                  <Text className="text-gray-500 mt-2">Đang tải tin nhắn...</Text>
                 </View>
-              )}
-            </>
-          }
+              ) : !loading && !error && messages.length === 0 ? (
+                <View className="py-8 items-center">
+                  <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+                  <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
+                  <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
+                </View>
+              ) : (error || hasConversationIdError) && messages.length === 0 ? (
+                <View className="py-8 items-center">
+                  <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+                  <Text className="text-gray-500 mt-4 text-center">Chưa có tin nhắn nào</Text>
+                  <Text className="text-gray-400 text-sm mt-2 text-center">Hãy bắt đầu cuộc trò chuyện</Text>
+                </View>
+              ) : null
+            }
+            ListFooterComponent={
+              <>
+                {(typingUsers.length > 0 || typingUsersRedux.length > 0) && (
+                  <TypingIndicatorBubble
+                    usernames={
+                      typingUsersRedux.length > 0
+                        ? typingUsersRedux.map(u => u.username)
+                        : typingUsers.map(u => String(u.username ?? ''))
+                    }
+                  />
+                )}
+                {loading && messages.length > 0 && (
+                  <View className="py-4 items-center">
+                    <ActivityIndicator size="small" color="#34B27D" />
+                  </View>
+                )}
+              </>
+            }
           />
           <PinnedMessageBar
             pinnedMessages={pinnedMessages}
@@ -1068,7 +1102,7 @@ export default function GroupChatScreen() {
             isDark={isDark}
           />
         </View>
-  
+
         {/* Preview ảnh / video trước khi gửi */}
         {selectedMedia && (
           <View style={styles.imagePreviewContainer}>
@@ -1095,7 +1129,7 @@ export default function GroupChatScreen() {
             </TouchableOpacity>
           </View>
         )}
-  
+
         {/* Reply Preview */}
         {replyingToMessage && (
           <View style={[styles.replyContainer, { backgroundColor: isDark ? "#1A1A1A" : "#F3F4F6", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}>
@@ -1108,7 +1142,7 @@ export default function GroupChatScreen() {
                 {replyingToMessage.message_content || (replyingToMessage.message_type === "IMAGE" ? "Hình ảnh" : replyingToMessage.message_type === "VIDEO" ? "Video" : "Tin nhắn")}
               </Text>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => setReplyingToMessage(null)}
               style={styles.closeReplyButton}
             >
@@ -1116,98 +1150,98 @@ export default function GroupChatScreen() {
             </TouchableOpacity>
           </View>
         )}
-  
+
         {/* Input */}
-        <SafeAreaView 
-          edges={["bottom"]} 
+        <SafeAreaView
+          edges={["bottom"]}
           style={[styles.inputContainer, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}
         >
           <View style={styles.inputWrapper}>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={{ marginRight: 12 }}
-            onPress={handlePickMedia}
-            disabled={uploadingMedia || !conversationId}
-          >
-            <Ionicons
-              name="images-outline"
-              size={26}
-              color={uploadingMedia || !conversationId ? "#9CA3AF" : (isDark ? "#9CA3AF" : "#6B7280")}
-            />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            {showMentionSuggestions && (
-              <View style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 100 }}>
-                <MentionSuggestions
-                  suggestions={mentionSuggestions}
-                  onSelect={handleSelectMention}
-                  isDark={isDark}
-                />
-              </View>
-            )}
-            <TextInput
-              value={input}
-              onChangeText={(text) => {
-                setInput(text);
-                if (text.length > 0) {
-                  emitTyping();
-                } else {
-                  emitStopTyping();
-                }
-  
-                // Detect @ for mentions
-                const lastAtPos = text.lastIndexOf("@", cursorPosition);
-                if (lastAtPos !== -1) {
-                  const query = text.substring(lastAtPos + 1, cursorPosition + 1);
-                  if (!query.includes(" ")) {
-                    setMentionSearchQuery(query);
-                    setShowMentionSuggestions(true);
-                    return;
-                  }
-                }
-                setShowMentionSuggestions(false);
-              }}
-              onSelectionChange={(event) => {
-                setCursorPosition(event.nativeEvent.selection.start);
-              }}
-              placeholder="Nhắn tin..."
-              style={{
-                backgroundColor: isDark ? "#2A2A2A" : "#F3F4F6",
-                borderRadius: 24,
-                paddingHorizontal: 16,
-                paddingVertical: 10,
-                fontSize: 15,
-                color: isDark ? "#FFFFFF" : "#000000",
-                maxHeight: 120,
-              }}
-              placeholderTextColor="#9CA3AF"
-              multiline
-              onSubmitEditing={handleSend}
-              returnKeyType="send"
-              editable={!loading && !uploadingMedia}
-            />
-          </View>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            className="ml-3"
-            onPress={handleSend}
-            disabled={(!input.trim() && !selectedMedia) || loading || uploadingMedia}
-          >
-            {uploadingMedia ? (
-              <ActivityIndicator size="small" color="#34B27D" />
-            ) : (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={{ marginRight: 12 }}
+              onPress={handlePickMedia}
+              disabled={uploadingMedia || !conversationId}
+            >
               <Ionicons
-                name="send"
-                size={24}
-                color={
-                  (input.trim() || selectedMedia) && !loading ? "#34B27D" : "#9CA3AF"
-                }
+                name="images-outline"
+                size={26}
+                color={uploadingMedia || !conversationId ? "#9CA3AF" : (isDark ? "#9CA3AF" : "#6B7280")}
               />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              {showMentionSuggestions && (
+                <View style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 100 }}>
+                  <MentionSuggestions
+                    suggestions={mentionSuggestions}
+                    onSelect={handleSelectMention}
+                    isDark={isDark}
+                  />
+                </View>
+              )}
+              <TextInput
+                value={input}
+                onChangeText={(text) => {
+                  setInput(text);
+                  if (text.length > 0) {
+                    emitTyping();
+                  } else {
+                    emitStopTyping();
+                  }
+
+                  // Detect @ for mentions
+                  const lastAtPos = text.lastIndexOf("@", cursorPosition);
+                  if (lastAtPos !== -1) {
+                    const query = text.substring(lastAtPos + 1, cursorPosition + 1);
+                    if (!query.includes(" ")) {
+                      setMentionSearchQuery(query);
+                      setShowMentionSuggestions(true);
+                      return;
+                    }
+                  }
+                  setShowMentionSuggestions(false);
+                }}
+                onSelectionChange={(event) => {
+                  setCursorPosition(event.nativeEvent.selection.start);
+                }}
+                placeholder="Nhắn tin..."
+                style={{
+                  backgroundColor: isDark ? "#2A2A2A" : "#F3F4F6",
+                  borderRadius: 24,
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  fontSize: 15,
+                  color: isDark ? "#FFFFFF" : "#000000",
+                  maxHeight: 120,
+                }}
+                placeholderTextColor="#9CA3AF"
+                multiline
+                onSubmitEditing={handleSend}
+                returnKeyType="send"
+                editable={!loading && !uploadingMedia}
+              />
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              className="ml-3"
+              onPress={handleSend}
+              disabled={(!input.trim() && !selectedMedia) || loading || uploadingMedia}
+            >
+              {uploadingMedia ? (
+                <ActivityIndicator size="small" color="#34B27D" />
+              ) : (
+                <Ionicons
+                  name="send"
+                  size={24}
+                  color={
+                    (input.trim() || selectedMedia) && !loading ? "#34B27D" : "#9CA3AF"
+                  }
+                />
+              )}
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
-      </KeyboardAwareScrollView>
+      </KeyboardAvoidingView>
 
       <MessageActionSheet
         visible={actionSheetVisible}
@@ -1219,6 +1253,7 @@ export default function GroupChatScreen() {
           setReplyingToMessage(msg);
         }}
         onDelete={handleDelete}
+        onReport={handleReport}
         currentUserId={currentUser?.id}
       />
       <MessageLikesModal
@@ -1244,6 +1279,26 @@ export default function GroupChatScreen() {
           )}
         </View>
       </Modal>
+
+      {/* Report Modal */}
+      {reportedMessage && (
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={() => {
+            setReportModalVisible(false);
+            setReportedMessage(null);
+          }}
+          contentId={reportedMessage.id}
+          contentType={ContentType.MESSAGE}
+          contentTitle={
+            reportedMessage.message_content
+              ? (reportedMessage.message_content.length > 30
+                ? reportedMessage.message_content.substring(0, 30) + '...'
+                : reportedMessage.message_content)
+              : "Đính kèm media"
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

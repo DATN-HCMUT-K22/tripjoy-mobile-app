@@ -26,13 +26,13 @@ import { notificationService } from "@/services/notification.service";
 import { getCurrentUser } from "@/services/users";
 import { store } from "@/store";
 import { useAppSelector } from "@/store/hooks";
-import { setCredentials } from "@/store/slices/authSlice";
+import { setCredentials, logout } from "@/store/slices/authSlice";
 import { storage } from "@/utils/storage";
 import { socketService } from "@/services/socket/socketService";
 import { appStateManager } from "@/utils/appStateManager";
 import { Ionicons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { LogBox, Platform, Text, View, StyleSheet } from "react-native";
+import { LogBox, Platform, Text, View, StyleSheet, Alert, AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
 import { Provider } from "react-redux";
@@ -181,6 +181,38 @@ function RootLayoutContent() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
+    const subscription = AppState.addEventListener("change", async (nextState) => {
+      if (nextState === "active") {
+        const token = await storage.getAccessToken();
+        if (token) {
+          try {
+            const userResponse = await getCurrentUser();
+            if (userResponse.code === 1000 || userResponse.code === 0) {
+              const userData = userResponse.data;
+              const isLocked = userData.locked || (userData as any).isLocked;
+              if (isLocked) {
+                Alert.alert(
+                  "Tài khoản bị khóa",
+                  "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
+                  [{ text: "Đóng", style: "cancel" }]
+                );
+                await storage.clearTokens();
+                store.dispatch(logout());
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     async function prepare() {
       try {
         const [token, refreshToken, isGuest] = await Promise.all([
@@ -198,10 +230,23 @@ function RootLayoutContent() {
             try {
               const userResponse = await getCurrentUser();
               if (userResponse.code === 1000 || userResponse.code === 0) {
+                const userData = userResponse.data;
+                const isLocked = userData.locked || (userData as any).isLocked;
+                console.log("[Auth] User data fetched, isLocked:", isLocked);
+
+                if (isLocked) {
+                  Alert.alert(
+                    "Tài khoản bị khóa",
+                    "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
+                    [{ text: "Đóng", style: "cancel" }]
+                  );
+                  throw new Error("User is locked");
+                }
+
                 store.dispatch(setCredentials({
                   accessToken: token,
                   refreshToken: refreshToken || "",
-                  user: userResponse.data,
+                  user: userData,
                 }));
                 isActuallyAuthenticated = true;
               } else {
@@ -210,6 +255,7 @@ function RootLayoutContent() {
             } catch {
               await storage.clearTokens();
               await storage.setGuestMode(false);
+              store.dispatch(logout());
             }
           } else {
             isActuallyAuthenticated = true;

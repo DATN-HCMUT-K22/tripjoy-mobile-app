@@ -68,10 +68,19 @@ export const login = async (payload: LoginPayload) => {
       const userResponse = await getCurrentUser();
       if (userResponse.code === 1000 || userResponse.code === 0) {
         user = userResponse.data;
+        const isLocked = user.locked || (user as any).isLocked;
+        if (isLocked) {
+          await storage.clearTokens();
+          throw new Error("Tài khoản của bạn đã bị khóa");
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to fetch user info after login:", error);
-      // Không throw error, chỉ log để không làm gián đoạn quá trình login
+      // Nếu lỗi là do tài khoản bị khóa, throw ra ngoài để login thất bại
+      if (error.message === "Tài khoản của bạn đã bị khóa") {
+        throw error;
+      }
+      // Ngược lại chỉ log để không làm gián đoạn quá trình login
     }
 
     return {
