@@ -105,7 +105,7 @@ class SocketService {
         const apiUrl = new URL(baseUrl);
         const socketProtocol = apiUrl.protocol === "https:" ? "https" : "http";
         const host = apiUrl.hostname;
-        const socketPort = "8085";
+        const socketPort = "8086";
         const connectUrl = `${socketProtocol}://${host}:${socketPort}`;
 
         console.log(`[SOCKET] Connecting to: ${connectUrl}`);
