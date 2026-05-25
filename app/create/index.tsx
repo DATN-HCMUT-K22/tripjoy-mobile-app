@@ -27,6 +27,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { formatCurrencyVND } from "@/utils/format";
 import { showErrorToast } from "@/utils/toast";
@@ -116,7 +117,7 @@ export default function CreateTripScreen() {
   const [selectedTripTypes, setSelectedTripTypes] = useState<string[]>(tripData.tripTypes);
   const [startDate, setStartDate] = useState<string | null>(tripData.startDate);
   const [endDate, setEndDate] = useState<string | null>(tripData.endDate);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<KeyboardAwareScrollView>(null);
 
   const provincesErrorToastShownRef = useRef(false);
 
@@ -272,7 +273,7 @@ export default function CreateTripScreen() {
       const willExpand = !prev;
       if (willExpand) {
         setTimeout(() => {
-          scrollViewRef.current?.scrollToEnd({ animated: true });
+          scrollViewRef.current?.scrollToEnd(true);
         }, 80);
       }
       return willExpand;
@@ -378,11 +379,13 @@ export default function CreateTripScreen() {
         </View>
       )}
 
-      <ScrollView
+      <KeyboardAwareScrollView
         ref={scrollViewRef}
         className="flex-1"
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}
+        extraScrollHeight={100}
       >
         <View>
           {/* Điểm đi */}
@@ -977,7 +980,7 @@ export default function CreateTripScreen() {
             )}
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <View className="px-4 py-4 border-t border-gray-200 bg-white">
         {!hasAllCriteria && (

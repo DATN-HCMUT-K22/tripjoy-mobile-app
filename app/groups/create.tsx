@@ -20,6 +20,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 
 export default function CreateGroupScreen() {
   const router = useRouter();
@@ -188,7 +189,13 @@ export default function CreateGroupScreen() {
             <View style={{ width: 24 }} />
           </View>
 
-          <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+          <KeyboardAwareScrollView
+            className="flex-1"
+            showsVerticalScrollIndicator={false}
+            enableOnAndroid={true}
+            extraScrollHeight={50}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Group Info Section */}
             <View className="px-4 py-6">
               {/* Name Input */}
@@ -277,7 +284,7 @@ export default function CreateGroupScreen() {
                 )}
               </View>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
           {/* Bottom Action Bar */}
           {selectedMembers.length > 0 && (

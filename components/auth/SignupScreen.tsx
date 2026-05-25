@@ -117,7 +117,9 @@ export function SignupScreen() {
           }}
           showsVerticalScrollIndicator={false}
           enableOnAndroid={true}
-          extraScrollHeight={20}
+          enableAutomaticScroll={true}
+          extraScrollHeight={120}
+          keyboardShouldPersistTaps="handled"
         >
             {/* Logo text */}
             <View

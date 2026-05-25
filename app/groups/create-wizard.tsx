@@ -5,9 +5,10 @@
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, TouchableOpacity, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -39,7 +40,12 @@ const THEME_COLORS = [
   { color: '#8B5CF6', name: 'Tím', emoji: '🟣' },
 ];
 
-function WizardHeader({ step, progress, onBack, onClose }: any) {
+function WizardHeader({ step, progress, onBack, onClose }: {
+  step: WizardStep;
+  progress: number;
+  onBack: () => void;
+  onClose: () => void;
+}) {
   const stepLabels = {
     basic: 'Thông tin cơ bản',
     customize: 'Tùy chỉnh',
@@ -116,15 +122,15 @@ export default function CreateGroupWizard() {
       />
 
       {step === 'basic' && (
-        <BasicInfoStep data={wizardData} onNext={(data) => updateAndNext('customize', data)} />
+        <BasicInfoStep data={wizardData} onNext={(data: Partial<WizardData>) => updateAndNext('customize', data)} />
       )}
       {step === 'customize' && (
-        <CustomizeStep data={wizardData} onNext={(data) => updateAndNext('members', data)} />
+        <CustomizeStep data={wizardData} onNext={(data: Partial<WizardData>) => updateAndNext('members', data)} />
       )}
       {step === 'members' && (
         <AddMembersStep
           data={wizardData}
-          onNext={(data) => updateAndNext('review', data)}
+          onNext={(data: Partial<WizardData>) => updateAndNext('review', data)}
           onSkip={() => updateAndNext('review', {})}
         />
       )}
@@ -158,7 +164,12 @@ function BasicInfoStep({ data, onNext }: any) {
   };
 
   return (
-    <ScrollView className="flex-1 px-4 py-6">
+    <KeyboardAwareScrollView
+      className="flex-1 px-4 py-6"
+      enableOnAndroid={true}
+      extraScrollHeight={80}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text className="text-2xl font-bold mb-2">Tạo nhóm mới</Text>
       <Text className="text-gray-600 mb-6">Bắt đầu với thông tin cơ bản</Text>
 
@@ -197,7 +208,7 @@ function BasicInfoStep({ data, onNext }: any) {
             />
             <View className="flex-row justify-between mt-1">
               {errors.name && (
-                <Text className="text-red-500 text-xs">{errors.name.message}</Text>
+                <Text className="text-red-500 text-xs">{errors.name.message as string}</Text>
               )}
               <Text className="text-gray-400 text-xs ml-auto">{name.length}/50</Text>
             </View>
@@ -236,7 +247,7 @@ function BasicInfoStep({ data, onNext }: any) {
           Tiếp theo →
         </Text>
       </TouchableOpacity>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -316,7 +327,7 @@ function AddMembersStep({ data, onNext, onSkip }: any) {
   const debouncedSearch = useDebounce(searchQuery, 300);
 
   // Search users
-  useState(() => {
+  useEffect(() => {
     if (debouncedSearch.length >= 2) {
       setIsSearching(true);
       searchService.searchUsers(debouncedSearch)
@@ -330,7 +341,7 @@ function AddMembersStep({ data, onNext, onSkip }: any) {
     } else {
       setSearchResults([]);
     }
-  });
+  }, [debouncedSearch]);
 
   const addMember = (user: UserSimpleResponse) => {
     setSelectedMembers([...selectedMembers, { user, role: 'MEMBER' }]);
@@ -349,7 +360,12 @@ function AddMembersStep({ data, onNext, onSkip }: any) {
   };
 
   return (
-    <ScrollView className="flex-1 px-4 py-6">
+    <KeyboardAwareScrollView
+      className="flex-1 px-4 py-6"
+      enableOnAndroid={true}
+      extraScrollHeight={80}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text className="text-2xl font-bold mb-2">Thêm thành viên</Text>
       <Text className="text-gray-600 mb-4">Tùy chọn - có thể thêm sau</Text>
 
@@ -426,7 +442,7 @@ function AddMembersStep({ data, onNext, onSkip }: any) {
           <Text className="text-white text-center font-semibold">Tiếp theo →</Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -443,7 +459,7 @@ function ReviewStep({ data }: { data: WizardData }) {
         description: data.description,
         avatar: data.avatar,
         theme_color: data.themeColor,
-        isPro: data.isPro,
+        is_pro: data.isPro,
         member_ids: data.members.map(m => m.user.id),
       });
 

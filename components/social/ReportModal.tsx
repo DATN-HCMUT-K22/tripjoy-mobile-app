@@ -127,7 +127,9 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             ))}
 
             <View style={styles.descriptionContainer}>
-              <Text style={styles.descriptionTitle}>Thêm chi tiết (không bắt buộc)</Text>
+              <Text style={styles.descriptionTitle}>
+                {selectedType === ReportType.OTHER ? 'Thêm chi tiết (bắt buộc)' : 'Thêm chi tiết (không bắt buộc)'}
+              </Text>
               <TextInput
                 style={styles.textInput}
                 placeholder="Hãy cho chúng tôi biết thêm..."
@@ -144,10 +146,10 @@ export const ReportModal: React.FC<ReportModalProps> = ({
               <TouchableOpacity
                 style={[
                   styles.submitButton,
-                  (!selectedType || reportMutation.isPending) && styles.submitButtonDisabled,
+                  (!selectedType || reportMutation.isPending || (selectedType === ReportType.OTHER && !description.trim())) && styles.submitButtonDisabled,
                 ]}
                 onPress={handleSubmit}
-                disabled={!selectedType || reportMutation.isPending}
+                disabled={!selectedType || reportMutation.isPending || (selectedType === ReportType.OTHER && !description.trim())}
               >
                 <Text style={styles.submitButtonText}>
                   {reportMutation.isPending ? "Đang gửi..." : "Gửi báo cáo"}

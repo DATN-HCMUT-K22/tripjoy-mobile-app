@@ -1,8 +1,9 @@
-import { useItineraries } from "@/hooks/useItineraries";
+import { useItineraries, ITINERARY_STATUS } from "@/hooks/useItineraries";
 import type { Itinerary } from "@/types/group";
 import { setPendingItinerary } from "@/utils/pendingItinerarySelection";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { ItineraryThumb } from "@/components/itinerary/ItineraryThumb";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
@@ -28,9 +29,16 @@ export default function SelectItineraryScreen() {
   );
 
   const itineraries: Itinerary[] = useMemo(() => {
-    if (!search.trim()) return allItineraries;
+    // Chỉ hiển thị các lịch trình đã hoàn thành
+    const completedItineraries = allItineraries.filter((it) => {
+      if (!it.status) return false;
+      const normalizedStatus = String(it.status).toUpperCase().replace(/-/g, "_");
+      return normalizedStatus === ITINERARY_STATUS.COMPLETED;
+    });
+
+    if (!search.trim()) return completedItineraries;
     const q = search.trim().toLowerCase();
-    return allItineraries.filter((it) => it.name.toLowerCase().includes(q));
+    return completedItineraries.filter((it) => it.name.toLowerCase().includes(q));
   }, [search, allItineraries]);
 
   const handleDone = () => {
@@ -138,10 +146,10 @@ export default function SelectItineraryScreen() {
               ]}
               onPress={() => setSelectedId(itinerary.id)}
             >
-              <Image
-                source={itinerary.image ? { uri: itinerary.image } : require("@/assets/images/loading_img.jpg")}
+              <ItineraryThumb
+                itineraryId={itinerary.id}
+                imageUri={itinerary.image}
                 style={styles.itemImage}
-                contentFit="cover"
               />
               <View style={styles.itemContent}>
                 <Text style={styles.itemTitle} numberOfLines={2}>

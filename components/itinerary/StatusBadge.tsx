@@ -42,8 +42,8 @@ const STATUS_CONFIG = {
   },
   [ITINERARY_STATUS.COMPLETED]: {
     label: 'Hoàn thành',
-    color: '#6B7280',
-    bgColor: '#F3F4F6',
+    color: '#10B981',
+    bgColor: '#D1FAE5',
     icon: 'checkmark-done' as const,
   },
 } as const;

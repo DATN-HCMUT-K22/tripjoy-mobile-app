@@ -1,6 +1,6 @@
 import { isInvalidSameDayTimeRange } from "@/utils/timeRange";
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, Text, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform } from "react-native";
 import DatePicker from "react-native-date-picker";
 
 type Props = {
@@ -115,8 +115,12 @@ const TimePickerModal: React.FC<Props> = ({
 
   return (
     <Modal transparent visible={visible} animationType="fade">
-      <View className="flex-1 bg-black/50 items-center justify-center px-4">
-        <View className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
+      >
+        <View className="flex-1 bg-black/50 items-center justify-center px-4">
+          <View className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
           <View className="mb-3 flex-row items-center justify-between">
             <Text className="text-lg font-semibold text-black">
               Chọn khung giờ
@@ -205,6 +209,7 @@ const TimePickerModal: React.FC<Props> = ({
           </View>
         </View>
       </View>
+    </KeyboardAvoidingView>
     </Modal>
   );
 };

@@ -16,7 +16,6 @@ import { useNotifications } from "@/hooks/useNotifications";
 import {
   useBookmarkPost,
   useCommentPost,
-  useFilteredPosts,
   useLikePost,
   usePostRealtimeUpdates,
   usePosts,
@@ -52,7 +51,6 @@ export default function HomeScreen() {
   const shouldLoadAuthenticatedData =
     isGuest === false && (isAuthenticated || !!accessToken);
   const { data: allPosts = [], isLoading: postsLoading, refetch } = usePosts();
-  const filteredPosts = useFilteredPosts(allPosts);
   const likePostMutation = useLikePost();
   const bookmarkPostMutation = useBookmarkPost();
   const commentPostMutation = useCommentPost();
@@ -65,17 +63,16 @@ export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("popular");
   const [refreshing, setRefreshing] = useState(false);
 
-  // Sắp xếp posts: Phổ biến (theo likes) và Gần đây (theo thời gian)
   const posts = useMemo(() => {
     if (activeTab === "popular") {
-      return [...filteredPosts].sort((a, b) => b.likes - a.likes);
+      return [...allPosts].sort((a, b) => b.likes - a.likes);
     }
-    return [...filteredPosts].sort((a, b) => {
+    return [...allPosts].sort((a, b) => {
       const timeA = new Date(a.created_at).getTime();
       const timeB = new Date(b.created_at).getTime();
       return timeB - timeA; // Mới nhất lên đầu
     });
-  }, [activeTab, filteredPosts]);
+  }, [activeTab, allPosts]);
   const [activeIcon, setActiveIcon] = useState<
     "notification" | "message" | null
   >(null);

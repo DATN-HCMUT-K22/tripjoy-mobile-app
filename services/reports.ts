@@ -8,7 +8,7 @@ import type {
   ReportResponse,
 } from "@/types/report";
 
-const BASE_PATH = "/api/v1/reports";
+const BASE_PATH = "/reports";
 
 /**
  * Submit a new report

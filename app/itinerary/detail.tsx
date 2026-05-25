@@ -635,15 +635,13 @@ export default function ItineraryDetailScreen() {
           <View style={styles.actionsContainer}>
             {/* Hàng 1: Các nút công cụ phụ trợ */}
             <View style={styles.toolsRow}>
-              {(isOwner || status === ITINERARY_STATUS.DRAFT) && (
-                <TouchableOpacity
-                  onPress={() => setShowExpenses(true)}
-                  style={[styles.actionButton, styles.expenseButton]}
-                >
-                  <Ionicons name="wallet-outline" size={20} color="#047857" />
-                  <Text style={styles.expenseText} numberOfLines={1}>Chi phí</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                onPress={() => setShowExpenses(true)}
+                style={[styles.actionButton, styles.expenseButton]}
+              >
+                <Ionicons name="wallet-outline" size={20} color="#047857" />
+                <Text style={styles.expenseText} numberOfLines={1}>Chi phí</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => router.push(`/itinerary/notebook?id=${itineraryId}`)}
@@ -790,6 +788,7 @@ export default function ItineraryDetailScreen() {
         itineraryId={itineraryId || ""}
         itineraryTitle={title}
         budget={detail?.budget_estimate}
+        isCompleted={status === ITINERARY_STATUS.COMPLETED}
       />
 
       <TimePickerModal

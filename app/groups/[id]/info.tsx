@@ -11,6 +11,7 @@ import {
   type GroupItineraryTab,
 } from "@/hooks/useItineraries";
 import { LocationImage } from "@/components/location/LocationImage";
+import { ItineraryThumb } from "@/components/itinerary/ItineraryThumb";
 import { formatCurrencyVND, formatDateRange } from "@/utils/format";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,64 +34,22 @@ const TAB_CONFIG: Record<
 > = {
   ongoing: {
     label: "Đang diễn ra",
-    dotColor: "#16A34A",
-    borderColor: "#16A34A",
+    dotColor: "#F59E0B",
+    borderColor: "#F59E0B",
   },
   completed: {
     label: "Đã hoàn thành",
-    dotColor: "#2563EB",
-    borderColor: "#2563EB",
+    dotColor: "#10B981",
+    borderColor: "#10B981",
   },
   draft: {
     label: "Nháp",
-    dotColor: "#EA580C",
-    borderColor: "#EA580C",
+    dotColor: "#9CA3AF",
+    borderColor: "#9CA3AF",
   },
 };
 
-function GroupItineraryThumb({
-  itineraryId,
-  imageUri,
-  style,
-}: {
-  itineraryId: string;
-  imageUri: string;
-  style: any;
-}) {
-  const { data: items } = useItineraryTripItems(itineraryId);
-  const firstLocation = items?.[0]?.location;
 
-  if (imageUri && imageUri !== PLACEHOLDER_ITINERARY_IMAGE && imageUri.trim() !== "") {
-    return (
-      <Image
-        source={{ uri: imageUri }}
-        style={style}
-        contentFit="cover"
-        transition={200}
-      />
-    );
-  }
-
-  if (firstLocation) {
-    return (
-      <LocationImage
-        location={firstLocation}
-        style={style}
-        containerStyle={style}
-        placeholderIcon="map"
-      />
-    );
-  }
-
-  return (
-    <Image
-      source={{ uri: PLACEHOLDER_ITINERARY_IMAGE }}
-      style={style}
-      contentFit="cover"
-      transition={200}
-    />
-  );
-}
 
 export default function GroupInfoScreen() {
   const router = useRouter();
@@ -450,7 +409,7 @@ export default function GroupInfoScreen() {
                     { borderColor: tabStyle.borderColor },
                   ]}
                 >
-                  <GroupItineraryThumb
+                  <ItineraryThumb
                     itineraryId={it.id}
                     imageUri={it.image}
                     style={styles.itineraryThumb}
@@ -713,6 +672,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 12,
     gap: 4,
+    flexWrap: "wrap",
+    rowGap: 8,
   },
   tabItem: {
     flexDirection: "row",

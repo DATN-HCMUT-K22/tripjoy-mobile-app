@@ -27,6 +27,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -1054,8 +1055,12 @@ export default function AiItineraryWaitScreen() {
         animationType="fade"
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <View className="flex-1 items-center justify-center bg-black/50 px-6">
-          <View className="w-full rounded-3xl bg-white p-6">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <View className="flex-1 items-center justify-center bg-black/50 px-6">
+            <View className="w-full rounded-3xl bg-white p-6">
             <Text className="mb-2 text-xl font-bold text-gray-900">Chỉnh sửa hoạt động</Text>
             <Text className="mb-6 text-sm text-gray-500">
               Thay đổi thời gian bắt đầu và thời lượng dự kiến.
@@ -1109,6 +1114,7 @@ export default function AiItineraryWaitScreen() {
             </View>
           </View>
         </View>
+      </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

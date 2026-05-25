@@ -45,17 +45,7 @@ const retryConfig = {
   },
 };
 
-export function useFilteredPosts(posts: Post[]): Post[] {
-  const currentUserId = useAppSelector((state) => state.auth.user?.id);
-
-  return posts.filter((post) => {
-    if (post.visibility === "PUBLIC") return true;
-    if (post.visibility === "PRIVATE") {
-      return post.creator_id === currentUserId;
-    }
-    return false;
-  });
-}
+// Removed useFilteredPosts, visibility filtering is now handled by the backend.
 
 export function usePosts(params?: GetPostsParams) {
   return useQuery({

@@ -30,7 +30,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Video, ResizeMode } from "expo-av";
 import { Image } from "expo-image";
-import { useDeleteTripItems, useItineraryTripItems, useUpdateTripItem } from "@/hooks/useItineraries";
+import { useDeleteTripItem, useItineraryTripItems, useUpdateTripItem } from "@/hooks/useItineraries";
 import { LocationImage } from "@/components/location/LocationImage";
 import { PLACEHOLDER_ITINERARY_IMAGE } from "@/hooks/useItineraries";
 import * as ImagePicker from "expo-image-picker";
@@ -48,9 +48,10 @@ import {
   useColorScheme,
   Modal,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { ImageZoom } from '@likashefqet/react-native-image-zoom';
 import { FlashList } from "@shopify/flash-list";
-import type { FlashListProps } from "@shopify/flash-list";
+import type { FlashListProps, FlashListRef } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
@@ -143,7 +144,7 @@ export default function GroupChatScreen() {
   const [input, setInput] = useState("");
   const [selectedMedia, setSelectedMedia] = useState<PickedMedia | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const flashListRef = useRef<FlashList<any> | null>(null);
+  const flashListRef = useRef<FlashListRef<ListItem>>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -995,30 +996,32 @@ export default function GroupChatScreen() {
         </TouchableOpacity>
       )}
 
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        contentContainerStyle={{ flex: 1 }}
+        enableOnAndroid={true}
+        enableAutomaticScroll={true}
+        extraScrollHeight={10}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
       >
         {/* Messages: FlashList + PinnedMessageBar (absolute, không chiếm flow) */}
         <View style={styles.messagesWrapper}>
           <FlashList
-            ref={flashListRef}
+            ref={flashListRef as any}
             data={listData}
             keyExtractor={(i) => i.key}
             renderItem={renderListItem}
-            estimatedItemSize={120}
-            contentContainerStyle={[
-              styles.messagesContent,
-              pinnedMessages.length > 0 && { paddingTop: PINNED_BAR_HEIGHT },
-            ]}
+            contentContainerStyle={{
+              paddingBottom: 16,
+              ...(pinnedMessages.length > 0 ? { paddingTop: PINNED_BAR_HEIGHT } : {}),
+            }}
           showsVerticalScrollIndicator={false}
           onScroll={(e) => {
             const { contentOffset } = e.nativeEvent;
             if (contentOffset.y <= 100 && hasMore && !loading) loadMore();
           }}
           scrollEventThrottle={400}
-          onScrollToIndexFailed={onScrollToIndexFailed}
           ListEmptyComponent={
             (loading || isResolving) && messages.length === 0 ? (
               <View className="py-8 items-center">
@@ -1046,7 +1049,7 @@ export default function GroupChatScreen() {
                   usernames={
                     typingUsersRedux.length > 0
                       ? typingUsersRedux.map(u => u.username)
-                      : typingUsers.map(u => u.username || u)
+                      : typingUsers.map(u => String(u.username ?? ''))
                   }
                 />
               )}
@@ -1057,9 +1060,6 @@ export default function GroupChatScreen() {
               )}
             </>
           }
-          initialNumToRender={20}
-          maxToRenderPerBatch={15}
-          windowSize={10}
           />
           <PinnedMessageBar
             pinnedMessages={pinnedMessages}
@@ -1207,7 +1207,7 @@ export default function GroupChatScreen() {
           </TouchableOpacity>
           </View>
         </SafeAreaView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
 
       <MessageActionSheet
         visible={actionSheetVisible}

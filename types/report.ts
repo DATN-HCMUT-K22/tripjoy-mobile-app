@@ -8,10 +8,11 @@ export enum ContentType {
 export enum ReportType {
   SPAM = "SPAM",
   HARASSMENT = "HARASSMENT",
-  INAPPROPRIATE = "INAPPROPRIATE",
-  MISINFORMATION = "MISINFORMATION",
   VIOLENCE = "VIOLENCE",
+  NUDITY = "NUDITY",
+  FALSE_INFO = "FALSE_INFO",
   HATE_SPEECH = "HATE_SPEECH",
+  OTHER = "OTHER",
 }
 
 export enum ReportStatus {
@@ -69,12 +70,13 @@ export interface PaginatedResponse<T> {
 
 // Helper labels for UI dropdowns
 export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
-  [ReportType.SPAM]: "Spam (Quảng cáo rác)",
-  [ReportType.HARASSMENT]: "Quấy rối",
-  [ReportType.INAPPROPRIATE]: "Nội dung không phù hợp",
-  [ReportType.MISINFORMATION]: "Thông tin sai sự thật",
-  [ReportType.VIOLENCE]: "Bạo lực",
-  [ReportType.HATE_SPEECH]: "Ngôn từ kích động",
+  [ReportType.SPAM]: "Spam hoặc quảng cáo rác",
+  [ReportType.HARASSMENT]: "Quấy rối hoặc bắt nạt",
+  [ReportType.VIOLENCE]: "Bạo lực hoặc kích động",
+  [ReportType.NUDITY]: "Ảnh khoả thân hoặc tình dục",
+  [ReportType.FALSE_INFO]: "Thông tin sai lệch / Lừa đảo",
+  [ReportType.HATE_SPEECH]: "Ngôn từ đả kích / Thù ghét",
+  [ReportType.OTHER]: "Lý do khác",
 };
 
 export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {

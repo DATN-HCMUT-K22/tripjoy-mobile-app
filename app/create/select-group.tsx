@@ -324,13 +324,7 @@ export default function SelectGroupScreen() {
             activeOpacity={0.8}
             className="px-6 py-3 rounded-full border-2 border-primary bg-white flex-row items-center"
             onPress={() => {
-              router.push({
-                pathname: "/groups/create",
-                params: {
-                  returnTo: "/create/select-group",
-                  autoSelect: "1",
-                },
-              } as any);
+              setIsCreateModalVisible(true);
             }}
           >
             <Text className="text-primary text-base font-semibold mr-2">
@@ -339,6 +333,13 @@ export default function SelectGroupScreen() {
             <Ionicons name="paper-plane-outline" size={18} color="#34B27D" />
           </TouchableOpacity>
         </View>
+
+        <CreateGroupModal
+          visible={isCreateModalVisible}
+          onClose={() => setIsCreateModalVisible(false)}
+          redirectToGroups={false}
+          onSuccess={(group) => setSelectedGroupId(group.id)}
+        />
       </SafeAreaView>
     );
   }
@@ -451,6 +452,8 @@ export default function SelectGroupScreen() {
       <CreateGroupModal
         visible={isCreateModalVisible}
         onClose={() => setIsCreateModalVisible(false)}
+        redirectToGroups={false}
+        onSuccess={(group) => setSelectedGroupId(group.id)}
       />
 
     </SafeAreaView>

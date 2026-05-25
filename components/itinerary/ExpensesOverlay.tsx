@@ -52,6 +52,7 @@ interface ExpensesOverlayProps {
   itineraryId: string;
   itineraryTitle: string;
   budget?: number;
+  isCompleted?: boolean;
 }
 
 export function ExpensesOverlay({
@@ -60,6 +61,7 @@ export function ExpensesOverlay({
   itineraryId,
   itineraryTitle,
   budget = 0,
+  isCompleted = false,
 }: ExpensesOverlayProps) {
   const insets = useSafeAreaInsets();
   const { data: expenses = [], isLoading, isError, error, refetch } = useExpenses(itineraryId, { enabled: visible });
@@ -291,7 +293,8 @@ export function ExpensesOverlay({
               const cat = getCategoryData(item.type);
               return (
                 <TouchableOpacity
-                  onPress={() => handleOpenEdit(item)}
+                  onPress={() => !isCompleted && handleOpenEdit(item)}
+                  activeOpacity={isCompleted ? 1 : 0.2}
                   className="flex-row items-center bg-slate-50 rounded-2xl p-4 mb-3 border border-slate-100"
                 >
                   <View
@@ -310,13 +313,15 @@ export function ExpensesOverlay({
                     <Text className="text-slate-900 font-bold text-base">
                       {formatCurrencyVND(item.amount || 0)}
                     </Text>
-                    <TouchableOpacity
-                      onPress={() => handleDelete(item.id!, item.name)}
-                      className="mt-1"
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#94A3B8" />
-                    </TouchableOpacity>
+                    {!isCompleted && (
+                      <TouchableOpacity
+                        onPress={() => handleDelete(item.id!, item.name)}
+                        className="mt-1"
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#94A3B8" />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </TouchableOpacity>
               );
@@ -338,14 +343,16 @@ export function ExpensesOverlay({
       </View>
 
       {/* FAB */}
-      <TouchableOpacity
-        onPress={handleOpenAdd}
-        activeOpacity={0.8}
-        className="absolute bottom-10 right-6 w-16 h-16 rounded-full bg-emerald-500 items-center justify-center shadow-xl shadow-emerald-400"
-        style={{ elevation: 8 }}
-      >
-        <Ionicons name="add" size={36} color="white" />
-      </TouchableOpacity>
+      {!isCompleted && (
+        <TouchableOpacity
+          onPress={handleOpenAdd}
+          activeOpacity={0.8}
+          className="absolute bottom-10 right-6 w-16 h-16 rounded-full bg-emerald-500 items-center justify-center shadow-xl shadow-emerald-400"
+          style={{ elevation: 8 }}
+        >
+          <Ionicons name="add" size={36} color="white" />
+        </TouchableOpacity>
+      )}
 
       {/* Add/Edit Bottom Sheet */}
       <BottomSheet

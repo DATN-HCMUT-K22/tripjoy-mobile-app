@@ -8,8 +8,7 @@ const loginSchema = yup.object().shape({
     .required("Vui lòng nhập tên tài khoản"),
   password: yup
     .string()
-    .required("Vui lòng nhập mật khẩu")
-    .min(8, "Mật khẩu phải có ít nhất 8 ký tự"),
+    .required("Vui lòng nhập mật khẩu"),
 });
 
 export type LoginFormData = yup.InferType<typeof loginSchema>;

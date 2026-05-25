@@ -2,6 +2,7 @@ import { ContactItem } from "@/components/group/ContactItem";
 import { useCreateGroup } from "@/hooks/useGroups";
 import { useUserSearchDebounce } from "@/hooks/useUserSearchDebounce";
 import { UserSimpleResponse } from "@/types/search";
+import { Group } from "@/types/group";
 import { useAppSelector } from "@/store/hooks";
 import { uploadImage } from "@/services/media";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
@@ -23,11 +24,14 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface CreateGroupModalProps {
   visible: boolean;
   onClose: () => void;
+  onSuccess?: (group: Group) => void;
+  redirectToGroups?: boolean;
 }
 
 interface CreateGroupFormValues {
@@ -39,6 +43,8 @@ interface CreateGroupFormValues {
 export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   visible,
   onClose,
+  onSuccess,
+  redirectToGroups = true,
 }) => {
   const insets = useSafeAreaInsets();
   const windowHeight = Dimensions.get("window").height;
@@ -73,7 +79,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const { results: searchResults, isLoading: isSearchingUsers } =
     useUserSearchDebounce(searchText || "", { enabled: searchEnabled });
 
-  const createGroupMutation = useCreateGroup();
+  const createGroupMutation = useCreateGroup({ redirectToGroups });
 
   const currentUser = useAppSelector((state) => state.auth.user);
 
@@ -212,13 +218,17 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       }
 
       // Tạo nhóm với avatar URL đã upload
-      await createGroupMutation.mutateAsync({
+      const createdGroup = await createGroupMutation.mutateAsync({
         name: trimmedName,
         avatar: avatarUrl,
         description: values.groupDescription.trim() || undefined,
         theme_color: "#34B27D", // Màu mặc định, có thể thêm picker sau
         member_ids: selectedMembers.map((m) => m.id),
       });
+
+      if (onSuccess) {
+        onSuccess(createdGroup);
+      }
 
       // Close modal sau khi tạo thành công
       showSuccessToast("Tạo nhóm thành công!");
@@ -297,12 +307,14 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             <View style={{ width: 24 }} />
           </View>
 
-          <ScrollView
+          <KeyboardAwareScrollView
             className="flex-1"
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
             contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
+            enableOnAndroid={true}
+            extraScrollHeight={50}
           >
             {/* Group Info Section */}
             <View className="px-4 py-6">
@@ -444,7 +456,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 )}
               </View>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
           {/* Bottom Action Bar */}
           {selectedMembers.length > 0 && (
