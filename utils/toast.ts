@@ -63,7 +63,7 @@ function resolveErrorDetail(error?: any): string {
 export function showErrorToast(
   title: string,
   error?: any,
-  options?: { hideDetail?: boolean }
+  options?: { hideDetail?: boolean; onRetry?: () => void }
 ) {
   const message = options?.hideDetail ? undefined : resolveErrorDetail(error);
   Toast.show({
@@ -71,6 +71,8 @@ export function showErrorToast(
     text1: title,
     text2: message,
     position: "top",
+    visibilityTime: options?.onRetry ? 5000 : 4000,
+    onPress: options?.onRetry,
   });
 }
 

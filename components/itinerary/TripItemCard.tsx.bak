@@ -1,7 +1,7 @@
 import { LocationImage } from '@/components/location/LocationImage';
 import type { TripItemResponse, TripItemStatus } from '@/services/itineraries';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { RatingModal } from './RatingModal';
 
@@ -105,23 +105,42 @@ export function TripItemCard({
   isLast = false,
   showTimeline = false,
 }: TripItemCardProps) {
+  const [menuVisible, setMenuVisible] = useState(false);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
 
   const location = item.location;
   const status = item.status || 'PENDING';
   const statusStyle = STATUS_STYLES[status];
 
-  // Memoized handlers for performance
-  const handleOpenRating = useCallback(() => {
+  const handleOpenRating = () => {
     setRatingModalVisible(true);
-  }, []);
+  };
 
-  const handleSaveRating = useCallback((rating: number, review: string) => {
+  const handleSaveRating = (rating: number, review: string) => {
     onRate?.(item.id!, rating, review);
     setRatingModalVisible(false);
-  }, [onRate, item.id]);
+  };
+  const category = location?.category || (location?.categories && location.categories.length > 0 ? location.categories[0] : undefined);
+  const icon = getCategoryIcon(category);
+  const timeRange = formatTimeRange(item.start_time, item.duration);
+  const priceRange = formatPriceRange(
+    (location as any)?.min_price,
+    (location as any)?.max_price
+  );
 
-  const handleMenuPress = useCallback(() => {
+  // Location display name logic
+  const displayName = useMemo(() => {
+    if (location?.name) return location.name;
+    if (item.note) {
+      const cleanNote = item.note.trim();
+      const match = cleanNote.match(/^([^.,!?:;]+?)\s+(là|có|mang đến|mang lại|là bãi biển|là địa điểm|là một ngôi đền)/i);
+      if (match && match[1].length < 60) return match[1].trim();
+      return cleanNote.split(/[.,!?:;]/)[0].trim().substring(0, 50);
+    }
+    return 'Hoạt động';
+  }, [location, item.note]);
+
+  const handleMenuPress = () => {
     if (!onEdit && !onDelete) return;
 
     Alert.alert(
@@ -161,31 +180,7 @@ export function TripItemCard({
         { text: 'Đóng', style: 'cancel' as const },
       ]
     );
-  }, [onEdit, onDelete, location?.name]);
-
-  // Memoized values for performance
-  const category = useMemo(() =>
-    location?.category || (location?.categories && location.categories.length > 0 ? location.categories[0] : undefined),
-    [location?.category, location?.categories]
-  );
-  const icon = useMemo(() => getCategoryIcon(category), [category]);
-  const timeRange = useMemo(() => formatTimeRange(item.start_time, item.duration), [item.start_time, item.duration]);
-  const priceRange = useMemo(() => formatPriceRange(
-    (location as any)?.min_price,
-    (location as any)?.max_price
-  ), [location]);
-
-  // Location display name logic
-  const displayName = useMemo(() => {
-    if (location?.name) return location.name;
-    if (item.note) {
-      const cleanNote = item.note.trim();
-      const match = cleanNote.match(/^([^.,!?:;]+?)\s+(là|có|mang đến|mang lại|là bãi biển|là địa điểm|là một ngôi đền)/i);
-      if (match && match[1].length < 60) return match[1].trim();
-      return cleanNote.split(/[.,!?:;]/)[0].trim().substring(0, 50);
-    }
-    return 'Hoạt động';
-  }, [location?.name, item.note]);
+  };
 
   return (
     <View style={styles.outerContainer}>
@@ -196,18 +191,12 @@ export function TripItemCard({
         </View>
       )}
       <TouchableOpacity
-        style={[
-          styles.card,
-          showTimeline && styles.cardWithTimeline,
-          status === 'CHECKED_IN' && styles.cardCheckedIn,
-          isUpdating && styles.cardUpdating,
-        ]}
+        style={[styles.card, showTimeline && styles.cardWithTimeline, status === 'CHECKED_IN' && styles.cardCheckedIn]}
         onPress={onPress}
         activeOpacity={onPress ? 0.7 : 1}
         disabled={!onPress || isUpdating}
         accessibilityRole="button"
         accessibilityLabel={`Hoạt động ${displayName}`}
-        accessibilityHint={status === 'CHECKED_IN' ? 'Đã check-in' : status === 'SKIPPED' ? 'Đã bỏ qua' : 'Chưa check-in'}
       >
         {/* Status Badge - Top Right */}
         <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
@@ -234,8 +223,6 @@ export function TripItemCard({
                 style={styles.menuButton}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityLabel="Tùy chọn"
-                accessibilityRole="button"
-                accessibilityHint="Mở menu để sửa hoặc xóa hoạt động này"
               >
                 <Ionicons name="ellipsis-vertical" size={20} color="#6B7280" />
               </TouchableOpacity>
@@ -292,12 +279,11 @@ export function TripItemCard({
           {onCheckIn && status === 'PENDING' && (
             <View style={styles.actionButtons}>
               <TouchableOpacity
-                style={[styles.checkInButton, isUpdating && styles.buttonDisabled]}
+                style={styles.checkInButton}
                 onPress={() => onCheckIn(item.id!, 'CHECKED_IN')}
                 disabled={isUpdating}
                 accessibilityLabel="Check-in tại địa điểm này"
                 accessibilityRole="button"
-                accessibilityHint="Đánh dấu bạn đã đến địa điểm này"
               >
                 {isUpdating ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
@@ -309,12 +295,11 @@ export function TripItemCard({
                 )}
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.skipButton, isUpdating && styles.buttonDisabled]}
+                style={styles.skipButton}
                 onPress={() => onCheckIn(item.id!, 'SKIPPED')}
                 disabled={isUpdating}
                 accessibilityLabel="Bỏ qua địa điểm này"
                 accessibilityRole="button"
-                accessibilityHint="Đánh dấu bạn không đến địa điểm này"
               >
                 <Text style={styles.skipButtonText}>Bỏ qua</Text>
               </TouchableOpacity>
@@ -324,12 +309,11 @@ export function TripItemCard({
           {/* Undo Button - When Checked In or Skipped */}
           {onCheckIn && (status === 'CHECKED_IN' || status === 'SKIPPED') && (
             <TouchableOpacity
-              style={[styles.undoButton, isUpdating && styles.buttonDisabled]}
+              style={styles.undoButton}
               onPress={() => onCheckIn(item.id!, 'PENDING')}
               disabled={isUpdating}
               accessibilityLabel="Hoàn tác"
               accessibilityRole="button"
-              accessibilityHint="Đưa trạng thái về chưa check-in"
             >
               <Ionicons name="arrow-undo" size={16} color="#6B7280" />
               <Text style={styles.undoButtonText}>Hoàn tác</Text>
@@ -367,7 +351,6 @@ export function TripItemCard({
               onPress={handleOpenRating}
               accessibilityLabel="Đánh giá địa điểm"
               accessibilityRole="button"
-              accessibilityHint="Mở form để đánh giá và viết nhận xét"
             >
               <Ionicons name="star-outline" size={20} color="#F59E0B" />
               <Text style={styles.rateButtonText}>Đánh giá</Text>
@@ -381,7 +364,6 @@ export function TripItemCard({
               onPress={handleOpenRating}
               accessibilityLabel="Sửa đánh giá"
               accessibilityRole="button"
-              accessibilityHint="Thay đổi đánh giá và nhận xét của bạn"
             >
               <Ionicons name="pencil" size={16} color="#6B7280" />
               <Text style={styles.editRateButtonText}>Sửa đánh giá</Text>
@@ -418,12 +400,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flex: 1,
   },
-  cardUpdating: {
-    opacity: 0.6,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
   locationImage: {
     width: '100%',
     height: 180,
@@ -454,10 +430,6 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     padding: 4,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   locationRow: {
     flexDirection: 'row',

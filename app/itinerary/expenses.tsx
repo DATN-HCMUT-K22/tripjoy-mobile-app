@@ -14,11 +14,18 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useExpenses, useAddExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/useExpenses";
-import { useItineraryDetail } from "@/hooks/useItineraries";
+import { useItineraryDetail, useItineraryTripItems } from "@/hooks/useItineraries";
 import { ExpenseRequest, ExpenseResponse } from "@/services/itineraries";
 import { SharedHeader } from "@/components/common/SharedHeader";
 import { AppDialogModal } from "@/components/common/AppDialogModal";
+import { TripItemPicker } from "@/components/expense/TripItemPicker";
+import { MemberPicker, type MemberOption } from "@/components/expense/MemberPicker";
+import { ReceiptImagePicker } from "@/components/expense/ReceiptImagePicker";
+import { useAppSelector } from "@/store/hooks";
+import { useGroup } from "@/hooks/useGroups";
 
 const EXPENSE_CATEGORIES = [
   { id: "FOOD", name: "Ăn uống", icon: "restaurant-outline", color: "#F59E0B", bg: "bg-amber-100" },
@@ -34,6 +41,15 @@ function getCategoryData(type?: string) {
   return found || EXPENSE_CATEGORIES[4];
 }
 
+function formatDateTime(date: Date): string {
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `${hours}:${minutes}, ${day}/${month}/${year}`;
+}
+
 export default function ExpensesScreen() {
   // const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -42,6 +58,12 @@ export default function ExpensesScreen() {
 
   const { data: detail, isLoading: detailLoading } = useItineraryDetail(itineraryId);
   const { data: expenses = [], isLoading, isError, error, refetch } = useExpenses(itineraryId);
+  const { data: tripItems = [] } = useItineraryTripItems(itineraryId);
+  const currentUser = useAppSelector((state) => state.auth.user);
+
+  // Fetch group members if itinerary belongs to a group
+  const groupId = detail?.group_id;
+  const { data: groupDetail } = useGroup(groupId || undefined);
 
   const addExpenseMut = useAddExpense();
   const updateExpenseMut = useUpdateExpense();
@@ -56,15 +78,44 @@ export default function ExpensesScreen() {
     amount: 0,
     type: "OTHER",
     method: "CASH",
+    trip_item_id: null,
+    receipt_image_urls: [],
+    paid_by: undefined,
+    paid_at: undefined,
   });
 
-
-
   const [strAmount, setStrAmount] = useState("");
+  const [receiptImages, setReceiptImages] = useState<string[]>([]);
+  const [showTripItemPicker, setShowTripItemPicker] = useState(false);
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [showDateTimePicker, setShowDateTimePicker] = useState(false);
+  const [paymentDate, setPaymentDate] = useState<Date>(new Date());
 
   // Deletion confirm state
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<{ id: string; name?: string } | null>(null);
+
+  // Build member options from group or current user
+  const memberOptions = useMemo<MemberOption[]>(() => {
+    if (groupDetail?.members && groupDetail.members.length > 0) {
+      return groupDetail.members.map(m => ({
+        id: m.user.id,
+        fullName: m.user.fullName,
+        username: m.user.username,
+        avatarUrl: m.user.avatarUrl,
+      }));
+    }
+    // Fallback to current user if no group
+    if (currentUser?.id) {
+      return [{
+        id: currentUser.id,
+        fullName: currentUser.fullName || currentUser.username || 'Tôi',
+        username: currentUser.username,
+        avatarUrl: currentUser.avatarUrl,
+      }];
+    }
+    return [];
+  }, [groupDetail?.members, currentUser]);
 
   const totalExpense = useMemo(() => {
     return expenses.reduce((sum, item) => sum + (item.amount || 0), 0);
@@ -75,8 +126,19 @@ export default function ExpensesScreen() {
 
   const handleOpenAdd = () => {
     setEditingId(null);
-    setFormData({ name: "", amount: 0, type: "OTHER", method: "CASH" });
+    setFormData({
+      name: "",
+      amount: 0,
+      type: "OTHER",
+      method: "CASH",
+      trip_item_id: null,
+      receipt_image_urls: [],
+      paid_by: currentUser?.id,
+      paid_at: new Date().toISOString(),
+    });
     setStrAmount("");
+    setReceiptImages([]);
+    setPaymentDate(new Date());
     setModalVisible(true);
   };
 
@@ -88,8 +150,14 @@ export default function ExpensesScreen() {
       description: item.description || "",
       type: item.type || "OTHER",
       method: item.method || "CASH",
+      trip_item_id: item.trip_item_id || null,
+      receipt_image_urls: item.receipt_image_urls || [],
+      paid_by: item.paid_by || currentUser?.id,
+      paid_at: item.paid_at || new Date().toISOString(),
     });
     setStrAmount(item.amount ? item.amount.toString() : "");
+    setReceiptImages(item.receipt_image_urls || []);
+    setPaymentDate(item.paid_at ? new Date(item.paid_at) : new Date());
     setModalVisible(true);
   };
 
@@ -118,9 +186,11 @@ export default function ExpensesScreen() {
       return;
     }
 
-    const payload = {
+    const payload: ExpenseRequest = {
       ...formData,
       amount: numAmt,
+      receipt_image_urls: receiptImages,
+      paid_at: paymentDate.toISOString(),
     };
 
     try {
@@ -141,6 +211,9 @@ export default function ExpensesScreen() {
       // hook will report error
     }
   };
+
+  const selectedTripItem = tripItems.find(item => item.id === formData.trip_item_id);
+  const selectedMember = memberOptions.find(m => m.id === formData.paid_by);
 
   if (!itineraryId) {
     return (
@@ -214,33 +287,85 @@ export default function ExpensesScreen() {
               <Text className="mt-4 text-gray-500 text-sm">Chưa có khoản chi nào!</Text>
             </View>
           ) : (
-            <View className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100">
+<View className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100">
               {expenses.map((item, index) => {
                 const cat = getCategoryData(item.type);
+                const hasReceipts = item.receipt_image_urls && item.receipt_image_urls.length > 0;
+                const payerName = item.paid_by_user?.fullName || item.paid_by_user?.full_name || 'Không rõ';
+                const paymentTime = item.paid_at ? formatDateTime(new Date(item.paid_at)) : '';
+
                 return (
                   <TouchableOpacity
                     key={item.id}
-                    className={`flex-row p-4 items-center ${index !== expenses.length - 1 ? 'border-b border-gray-100' : ''}`}
+                    className={`p-4 ${index !== expenses.length - 1 ? 'border-b border-gray-100' : ''}`}
                     onPress={() => handleOpenEdit(item)}
                   >
-                    <View className={`w-12 h-12 rounded-full items-center justify-center ${cat.bg}`}>
-                      <Ionicons name={cat.icon as any} size={24} color={cat.color} />
-                    </View>
-                    <View className="flex-1 ml-3 justify-center">
-                      <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>{item.name}</Text>
-                      <Text className="text-xs text-gray-500 mt-0.5">{cat.name}</Text>
-                    </View>
-                    <View className="items-end ml-2 justify-center">
-                      <Text className="text-base font-bold text-gray-900">
-                        {item.amount ? item.amount.toLocaleString("vi-VN") : "0"} ₫
-                      </Text>
-                      <TouchableOpacity
-                        className="mt-2"
-                        onPress={() => handleDelete(item.id!, item.name)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                      </TouchableOpacity>
+                    <View className="flex-row items-start">
+                      <View className={`w-12 h-12 rounded-full items-center justify-center ${cat.bg}`}>
+                        <Ionicons name={cat.icon as any} size={24} color={cat.color} />
+                      </View>
+                      <View className="flex-1 ml-3">
+                        <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text className="text-xs text-gray-500 mt-0.5">{cat.name}</Text>
+
+                        {/* Trip item tag */}
+                        {item.trip_item && (
+                          <View className="flex-row items-center mt-2">
+                            <Ionicons name="location" size={14} color="#2BB673" />
+                            <Text className="text-xs text-[#2BB673] ml-1" numberOfLines={1}>
+                              {item.trip_item.location?.name || 'Địa điểm'}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Payer & time */}
+                        <View className="flex-row items-center mt-1.5 flex-wrap" style={{ gap: 8 }}>
+                          {item.paid_by_user && (
+                            <View className="flex-row items-center">
+                              <Ionicons name="person-outline" size={12} color="#6B7280" />
+                              <Text className="text-xs text-gray-500 ml-1">{payerName}</Text>
+                            </View>
+                          )}
+                          {paymentTime && (
+                            <View className="flex-row items-center">
+                              <Ionicons name="time-outline" size={12} color="#6B7280" />
+                              <Text className="text-xs text-gray-500 ml-1">{paymentTime}</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Receipt thumbnails */}
+                        {hasReceipts && (
+                          <View className="flex-row mt-2" style={{ gap: 6 }}>
+                            {item.receipt_image_urls!.slice(0, 3).map((url, idx) => (
+                              <Image
+                                key={idx}
+                                source={{ uri: url }}
+                                className="w-12 h-12 rounded-lg"
+                                contentFit="cover"
+                              />
+                            ))}
+                          </View>
+                        )}
+                      </View>
+
+                      <View className="items-end ml-2">
+                        <Text className="text-base font-bold text-gray-900">
+                          {item.amount ? item.amount.toLocaleString("vi-VN") : "0"} ₫
+                        </Text>
+                        <TouchableOpacity
+                          className="mt-2"
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleDelete(item.id!, item.name);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -336,6 +461,70 @@ export default function ExpensesScreen() {
                 </View>
               </View>
 
+              {/* Trip Item Picker */}
+              <View className="mb-5">
+                <Text className="text-sm font-semibold text-gray-700 mb-1.5">Địa điểm liên quan</Text>
+                <TouchableOpacity
+                  onPress={() => setShowTripItemPicker(true)}
+                  className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 flex-row items-center justify-between"
+                >
+                  <View className="flex-row items-center flex-1">
+                    <Ionicons
+                      name={formData.trip_item_id ? "location" : "close-circle-outline"}
+                      size={20}
+                      color={formData.trip_item_id ? "#2BB673" : "#6B7280"}
+                    />
+                    <Text className="ml-2 text-base text-gray-700" numberOfLines={1}>
+                      {selectedTripItem?.location?.name || 'Không gắn địa điểm'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Receipt Images */}
+              <View className="mb-5">
+                <ReceiptImagePicker
+                  images={receiptImages}
+                  onChange={setReceiptImages}
+                  maxImages={3}
+                />
+              </View>
+
+              {/* Payer Picker */}
+              <View className="mb-5">
+                <Text className="text-sm font-semibold text-gray-700 mb-1.5">Người thanh toán</Text>
+                <TouchableOpacity
+                  onPress={() => setShowMemberPicker(true)}
+                  className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 flex-row items-center justify-between"
+                >
+                  <View className="flex-row items-center flex-1">
+                    <Ionicons name="person-outline" size={20} color="#6B7280" />
+                    <Text className="ml-2 text-base text-gray-700" numberOfLines={1}>
+                      {selectedMember?.fullName || 'Chọn người thanh toán'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Payment Date Time */}
+              <View className="mb-5">
+                <Text className="text-sm font-semibold text-gray-700 mb-1.5">Thời gian thanh toán</Text>
+                <TouchableOpacity
+                  onPress={() => setShowDateTimePicker(true)}
+                  className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 flex-row items-center justify-between"
+                >
+                  <View className="flex-row items-center">
+                    <Ionicons name="time-outline" size={20} color="#6B7280" />
+                    <Text className="ml-2 text-base text-gray-700">
+                      {formatDateTime(paymentDate)}
+                    </Text>
+                  </View>
+                  <Ionicons name="calendar-outline" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+
               {/* Mô tả */}
               <View className="mb-5">
                 <Text className="text-sm font-semibold text-gray-700 mb-1.5">Ghi chú thêm</Text>
@@ -379,6 +568,40 @@ export default function ExpensesScreen() {
         onSecondaryPress={() => setDeleteConfirmVisible(false)}
         onRequestClose={() => setDeleteConfirmVisible(false)}
       />
+
+      {/* Trip Item Picker Modal */}
+      <TripItemPicker
+        visible={showTripItemPicker}
+        onClose={() => setShowTripItemPicker(false)}
+        tripItems={tripItems}
+        selectedItemId={formData.trip_item_id}
+        onSelect={(itemId) => setFormData({ ...formData, trip_item_id: itemId })}
+      />
+
+      {/* Member Picker Modal */}
+      <MemberPicker
+        visible={showMemberPicker}
+        onClose={() => setShowMemberPicker(false)}
+        members={memberOptions}
+        selectedMemberId={formData.paid_by}
+        onSelect={(memberId) => setFormData({ ...formData, paid_by: memberId })}
+        title="Chọn người thanh toán"
+      />
+
+      {/* DateTime Picker */}
+      {showDateTimePicker && (
+        <DateTimePicker
+          value={paymentDate}
+          mode="datetime"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(event, selectedDate) => {
+            setShowDateTimePicker(Platform.OS === 'ios');
+            if (selectedDate) {
+              setPaymentDate(selectedDate);
+            }
+          }}
+        />
+      )}
     </View>
   );
 }

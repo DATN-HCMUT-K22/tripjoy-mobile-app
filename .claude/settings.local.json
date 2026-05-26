@@ -100,7 +100,8 @@
       "WebSearch",
       "Bash(cat)",
       "Read(//tmp/**)",
-      "Bash(npx react-native *)"
+      "Bash(npx react-native *)",
+      "Bash(npx expo *)"
     ]
   }
 }

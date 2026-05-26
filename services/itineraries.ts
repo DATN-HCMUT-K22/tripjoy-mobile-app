@@ -90,12 +90,26 @@ export type AiModifyItineraryRequest = {
   unwantedPlaceIds: string[];
 };
 
+// Trip item status enum
+export type TripItemStatus = 'PENDING' | 'CHECKED_IN' | 'SKIPPED';
+
+// Request payload for status updates
+export type UpdateTripItemStatusRequest = {
+  status: TripItemStatus;
+  rating?: number;      // 1-5, for Phase 3
+  review?: string;      // for Phase 3
+};
+
 export type ExpenseRequest = {
   name: string;
   description?: string;
   amount: number;
   type?: string;
   method?: string;
+  trip_item_id?: string | null;      // NEW - Link to trip item
+  receipt_image_urls?: string[];     // NEW - Max 3 receipt images
+  paid_by?: string;                  // NEW - UUID of payer (defaults to current user)
+  paid_at?: string;                  // NEW - ISO timestamp (defaults to now)
 };
 
 export type ExpenseResponse = {
@@ -110,6 +124,12 @@ export type ExpenseResponse = {
   created_by?: string;
   updated_at?: string;
   updated_by?: string;
+  trip_item_id?: string | null;      // NEW - Linked trip item ID
+  trip_item?: TripItemResponse;      // NEW - Populated trip item data
+  receipt_image_urls?: string[];     // NEW - Receipt images
+  paid_by?: string;                  // NEW - Payer user ID
+  paid_by_user?: UserSimpleResponse; // NEW - Populated payer data
+  paid_at?: string;                  // NEW - Payment timestamp
 };
 
 export type TripItemRequest = {
@@ -159,6 +179,12 @@ export type TripItemResponse = {
   updated_at?: string;
   updated_by?: string;
   start_time?: string;
+
+  // NEW FIELDS - Phase 1
+  status?: TripItemStatus;      // Trip item status
+  rating?: number;              // 1-5 stars (Phase 3)
+  review?: string;              // Review text (Phase 3)
+  checked_in_at?: string;       // ISO timestamp when checked in
 };
 
 export type TravelNotebookResponse = {
@@ -333,6 +359,20 @@ export const itineraryService = {
   deleteTripItem: (itineraryId: string, tripItemId: string) =>
     httpClient.delete<ApiEnvelope<Record<string, unknown>>>(
       `/itineraries/${itineraryId}/items/${tripItemId}`
+    ),
+
+  /**
+   * Update trip item status (check-in, skip, or reset to pending).
+   * Also accepts rating and review for Phase 3.
+   */
+  updateTripItemStatus: (
+    itineraryId: string,
+    tripItemId: string,
+    payload: UpdateTripItemStatusRequest
+  ) =>
+    httpClient.patch<ApiEnvelope<TripItemResponse>>(
+      `/itineraries/${itineraryId}/items/${tripItemId}/status`,
+      payload
     ),
 
   /**

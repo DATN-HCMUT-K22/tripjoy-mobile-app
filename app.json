@@ -16,7 +16,16 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "TripJoy cần vị trí của bạn để ước lượng thời gian di chuyển tới các điểm trong lịch trình."
+          "locationAlwaysAndWhenInUsePermission": "Để nhận thông báo khi bạn đến gần địa điểm trong hành trình, vui lòng cho phép truy cập vị trí luôn luôn.",
+          "locationAlwaysPermission": "Cho phép TripJoy truy cập vị trí của bạn ngay cả khi ứng dụng đang đóng để gửi thông báo khi bạn đến gần địa điểm.",
+          "locationWhenInUsePermission": "Cho phép TripJoy truy cập vị trí của bạn khi sử dụng ứng dụng."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#2BB673"
         }
       ],
       "expo-router",
@@ -40,8 +49,7 @@
             "usesCleartextTraffic": true
           }
         }
-      ],
-      "expo-notifications"
+      ]
     ],
     "ios": {
       "supportsTablet": true,
@@ -66,9 +74,11 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "CAMERA"
+        "CAMERA",
+        "POST_NOTIFICATIONS"
       ]
     },
     "experiments": {

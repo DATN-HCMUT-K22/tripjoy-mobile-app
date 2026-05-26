@@ -5,8 +5,13 @@ import { ExpensesOverlay } from "@/components/itinerary/ExpensesOverlay";
 import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
 import { StatusBadge } from "@/components/itinerary/StatusBadge";
 import { TripItemCard } from "@/components/itinerary/TripItemCard";
+import { TripItemCardSkeleton } from "@/components/itinerary/TripItemCardSkeleton";
+import { ErrorState } from "@/components/itinerary/ErrorState";
+import { OfflineQueueBanner } from "@/components/itinerary/OfflineQueueBanner";
+import { NoTripItemsEmpty } from "@/components/shared/EmptyState";
 import { LocationImage } from "@/components/location/LocationImage";
 import TimePickerModal from "@/components/TimePickerModal";
+import { PermissionModal } from "@/components/itinerary/PermissionModal";
 import {
   useAiModifyItinerary,
   useAiSuggestLocation,
@@ -20,11 +25,19 @@ import {
   useUpdateItineraryStatus,
   useUpdateTripItem,
 } from "@/hooks/useItineraries";
+import { useUpdateTripItemStatus } from "@/hooks/useTripItemStatus";
 import {
   ITINERARY_STATUS,
-  type TripItemResponse
+  type TripItemResponse,
+  type TripItemStatus,
 } from "@/services/itineraries";
+import { checkinQueue } from "@/utils/checkinQueue";
+import NetInfo from "@react-native-community/netinfo";
+import { showSuccessToast } from "@/utils/toast";
 import { useAppSelector } from "@/store/hooks";
+import { startGeofencing, stopGeofencing } from "@/tasks/geofencingTask";
+import { requestNotificationPermissions, setupNotificationHandlers } from "@/utils/notifications";
+import * as Location from "expo-location";
 import { parseItineraryDateToDayOnly, tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,6 +46,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   Modal,
@@ -178,6 +192,10 @@ export default function ItineraryDetailScreen() {
   const [timeConfirmVisible, setTimeConfirmVisible] = useState(false);
   const [pendingTimeEdit, setPendingTimeEdit] = useState<{ dayKey: string; item: TripItemResponse; newStart: string; newDuration: number } | null>(null);
 
+  // Phase 5: Geofencing state
+  const [permissionModalVisible, setPermissionModalVisible] = useState(false);
+  const [geofencingEnabled, setGeofencingEnabled] = useState(false);
+
   const {
     data: detail,
     isLoading: detailLoading,
@@ -196,6 +214,209 @@ export default function ItineraryDetailScreen() {
     enabled: !!itineraryId,
     itineraryStatus: detail?.status,
   });
+
+  // Phase 2: Check-in status management
+  const updateStatusMutation = useUpdateTripItemStatus();
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+
+  // Process offline queue on mount and network change
+  useEffect(() => {
+    const processOfflineQueue = async () => {
+      const failed = await checkinQueue.processQueue(
+        async (itineraryId, tripItemId, status, rating, review) => {
+          await updateStatusMutation.mutateAsync({
+            itineraryId,
+            tripItemId,
+            payload: { status, rating, review },
+          });
+        }
+      );
+
+      if (failed.length > 0) {
+        console.log(`[CheckinSync] ${failed.length} check-ins still pending sync`);
+      }
+    };
+
+    // Process on mount
+    processOfflineQueue();
+
+    // Listen for network changes
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected) {
+        console.log('[CheckinSync] Network restored, processing queue...');
+        processOfflineQueue();
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Phase 5: Show permission modal when status becomes IN_PROGRESS
+  useEffect(() => {
+    if (detail?.status === ITINERARY_STATUS.IN_PROGRESS && !geofencingEnabled) {
+      const timer = setTimeout(() => {
+        setPermissionModalVisible(true);
+      }, 500); // Small delay for smoother UX
+
+      return () => clearTimeout(timer);
+    }
+  }, [detail?.status, geofencingEnabled]);
+
+  // Phase 5: Stop geofencing when itinerary is completed
+  useEffect(() => {
+    if (detail?.status === ITINERARY_STATUS.COMPLETED && geofencingEnabled) {
+      stopGeofencing();
+      setGeofencingEnabled(false);
+      console.log('[Geofencing] Stopped - itinerary completed');
+    }
+  }, [detail?.status, geofencingEnabled]);
+
+  // Phase 5: Setup notification handlers
+  useEffect(() => {
+    const cleanup = setupNotificationHandlers((data) => {
+      console.log('[Notification] Tapped:', data);
+      // Could navigate to specific trip item or show check-in prompt
+    });
+
+    return cleanup;
+  }, []);
+
+  // Phase 5: Handle accept permissions
+  const handleAcceptPermissions = async () => {
+    try {
+      // Step 1: Request notification permissions
+      const notificationGranted = await requestNotificationPermissions();
+      if (!notificationGranted) {
+        Alert.alert(
+          'Cần quyền thông báo',
+          'Vui lòng cho phép thông báo trong cài đặt để nhận cảnh báo vị trí.',
+          [{ text: 'OK' }]
+        );
+        setPermissionModalVisible(false);
+        return;
+      }
+
+      // Step 2: Request foreground location permission
+      const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
+      if (foregroundStatus !== 'granted') {
+        Alert.alert(
+          'Cần quyền vị trí',
+          'Vui lòng cho phép truy cập vị trí trong cài đặt.',
+          [{ text: 'OK' }]
+        );
+        setPermissionModalVisible(false);
+        return;
+      }
+
+      // Step 3: Request background location permission
+      const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+      if (backgroundStatus !== 'granted') {
+        // Fallback: Still allow but warn user
+        Alert.alert(
+          'Quyền vị trí nền bị từ chối',
+          'Thông báo chỉ hoạt động khi ứng dụng đang mở. Để nhận thông báo khi ứng dụng đóng, vui lòng bật "Luôn luôn" trong cài đặt vị trí.',
+          [
+            {
+              text: 'Tiếp tục',
+              onPress: async () => {
+                // Start geofencing anyway (works in foreground)
+                const success = await startGeofencing(tripItems);
+                if (success) {
+                  setGeofencingEnabled(true);
+                  showSuccessToast('Đã bật thông báo vị trí', 'Chỉ hoạt động khi ứng dụng mở');
+                }
+                setPermissionModalVisible(false);
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      // Step 4: Start geofencing
+      const success = await startGeofencing(tripItems);
+      if (success) {
+        setGeofencingEnabled(true);
+        showSuccessToast('Đã bật thông báo vị trí', 'Bạn sẽ nhận thông báo khi đến gần địa điểm');
+      } else {
+        Alert.alert(
+          'Không thể bật thông báo',
+          'Không có địa điểm nào được lên lịch cho hôm nay.',
+          [{ text: 'OK' }]
+        );
+      }
+
+      setPermissionModalVisible(false);
+    } catch (error) {
+      console.error('[Geofencing] Permission error:', error);
+      Alert.alert(
+        'Lỗi',
+        'Không thể thiết lập thông báo vị trí. Vui lòng thử lại.',
+        [{ text: 'OK' }]
+      );
+      setPermissionModalVisible(false);
+    }
+  };
+
+  // Phase 5: Handle decline permissions
+  const handleDeclinePermissions = () => {
+    setPermissionModalVisible(false);
+    showSuccessToast('Bạn vẫn có thể check-in thủ công', '');
+  };
+
+  // Handle check-in with offline support
+  const handleCheckIn = async (tripItemId: string, status: TripItemStatus) => {
+    setUpdatingItemId(tripItemId);
+
+    try {
+      await updateStatusMutation.mutateAsync({
+        itineraryId,
+        tripItemId,
+        payload: { status },
+      });
+    } catch (error) {
+      // Add to offline queue
+      await checkinQueue.add({
+        itineraryId,
+        tripItemId,
+        status,
+      });
+
+      showSuccessToast('Đã lưu offline', 'Sẽ đồng bộ khi có mạng');
+    } finally {
+      setUpdatingItemId(null);
+    }
+  };
+
+  // Handle rating with offline support
+  const handleRate = async (tripItemId: string, rating: number, review: string) => {
+    setUpdatingItemId(tripItemId);
+
+    try {
+      await updateStatusMutation.mutateAsync({
+        itineraryId,
+        tripItemId,
+        payload: {
+          status: 'CHECKED_IN', // Maintain checked-in status
+          rating,
+          review,
+        },
+      });
+    } catch (error) {
+      // Add to offline queue with rating data
+      await checkinQueue.add({
+        itineraryId,
+        tripItemId,
+        status: 'CHECKED_IN',
+        rating,
+        review,
+      });
+
+      showSuccessToast('Đã lưu offline', 'Sẽ đồng bộ khi có mạng');
+    } finally {
+      setUpdatingItemId(null);
+    }
+  };
 
   useEffect(() => {
     if (tripItems.length === 0) return;
@@ -746,9 +967,12 @@ export default function ItineraryDetailScreen() {
                           onEdit={() => openTimePicker(dayKey, row)}
                         />
                       ) : (
-                        <TripItemCard 
-                          key={row.id || idx} 
-                          item={row} 
+                        <TripItemCard
+                          key={row.id || idx}
+                          item={row}
+                          onCheckIn={handleCheckIn}
+                          onRate={handleRate}
+                          isUpdating={updatingItemId === row.id}
                           showMenu={false}
                           showTimeline={status !== ITINERARY_STATUS.DRAFT && status !== ""}
                           isLast={idx === itemsForDay.length - 1}
@@ -926,6 +1150,13 @@ export default function ItineraryDetailScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+
+      {/* Phase 5: Permission Modal for Geofencing */}
+      <PermissionModal
+        visible={permissionModalVisible}
+        onAccept={handleAcceptPermissions}
+        onDecline={handleDeclinePermissions}
+      />
     </View>
   );
 }

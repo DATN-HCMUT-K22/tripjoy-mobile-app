@@ -2,6 +2,20 @@
 
 Tripjoy là một ứng dụng di động đa nền tảng giúp người dùng lập kế hoạch du lịch, chia sẻ trải nghiệm và tương tác với cộng đồng du lịch.
 
+## ✨ Tính Năng Nổi Bật
+
+- **Lập Kế Hoạch Thông Minh:** Tạo hành trình tự động bằng AI hoặc thủ công
+- **Check-in Tại Điểm Đến:** Đánh dấu địa điểm đã thăm, hoạt động cả offline
+- **Đánh Giá & Nhận Xét:** Đánh giá sao (1-5) và viết review cho địa điểm đã check-in
+- **Quản Lý Chi Phí:** Theo dõi chi tiêu chi tiết, liên kết với điểm đến, upload hóa đơn
+- **Geofencing:** Nhận thông báo tự động khi gần điểm trong hành trình (tùy chọn)
+- **Làm Việc Offline:** Check-in và xem hành trình mà không cần internet, tự động đồng bộ
+- **Mạng Xã Hội Du Lịch:** Chia sẻ hành trình, tương tác với cộng đồng
+- **Nhóm & Chat:** Lập kế hoạch cùng bạn bè, trò chuyện nhóm real-time
+- **Sổ Tay Du Lịch:** Tự động tạo nhật ký chuyến đi bằng AI
+
+Xem chi tiết tại [docs/SMART_ITINERARY_FEATURES.md](./docs/SMART_ITINERARY_FEATURES.md)
+
 ## 📱 Công Nghệ Sử Dụng
 
 Dự án được xây dựng với:
