@@ -8,6 +8,7 @@ export default function ItineraryLayout() {
       <Stack.Screen name="expenses" options={{ headerShown: false }} />
       <Stack.Screen name="detail" options={{ headerShown: false }} />
       <Stack.Screen name="notebook" options={{ headerShown: false }} />
+      <Stack.Screen name="item-detail" options={{ headerShown: false }} />
 
     </Stack>
   );

@@ -1081,6 +1081,14 @@ export default function ItineraryDetailScreen() {
                         <TripItemCard
                           key={row.id || idx}
                           item={row}
+                          onPress={() => {
+                            router.push({
+                              pathname: "/itinerary/item-detail",
+                              params: {
+                                itemData: JSON.stringify(row),
+                              },
+                            });
+                          }}
                           onCheckIn={canControlTrip ? handleCheckIn : undefined}
                           onRate={canEditRating ? handleRate : undefined}
                           isUpdating={updatingItemId === row.id}
