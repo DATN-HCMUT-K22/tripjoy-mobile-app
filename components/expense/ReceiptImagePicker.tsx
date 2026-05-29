@@ -11,6 +11,7 @@ interface ReceiptImagePickerProps {
   onChange: (images: string[]) => void;
   maxImages?: number;
   onImagePress?: (index: number) => void;
+  disabled?: boolean;
 }
 
 export function ReceiptImagePicker({
@@ -18,10 +19,12 @@ export function ReceiptImagePicker({
   onChange,
   maxImages = 3,
   onImagePress,
+  disabled = false,
 }: ReceiptImagePickerProps) {
   const [uploading, setUploading] = useState(false);
 
   const handleAddImage = async () => {
+    if (disabled) return;
     if (images.length >= maxImages) {
       Alert.alert('Giới hạn ảnh', `Chỉ được tải tối đa ${maxImages} ảnh hóa đơn`);
       return;
@@ -55,6 +58,7 @@ export function ReceiptImagePicker({
   };
 
   const handleRemoveImage = (index: number) => {
+    if (disabled) return;
     const newImages = images.filter((_, i) => i !== index);
     onChange(newImages);
   };
@@ -93,24 +97,26 @@ export function ReceiptImagePicker({
                 style={{ width: "100%", height: "100%", resizeMode: 'cover' }}
               />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleRemoveImage(index)}
-              style={{
-                position: "absolute",
-                top: 4,
-                right: 4,
-                backgroundColor: "rgba(0, 0, 0, 0.5)",
-                borderRadius: 12,
-                padding: 2,
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="close-circle" size={24} color="#fff" />
-            </TouchableOpacity>
+            {!disabled && (
+              <TouchableOpacity
+                onPress={() => handleRemoveImage(index)}
+                style={{
+                  position: "absolute",
+                  top: 4,
+                  right: 4,
+                  backgroundColor: "rgba(0, 0, 0, 0.5)",
+                  borderRadius: 12,
+                  padding: 2,
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close-circle" size={24} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
         ))}
 
-        {images.length < maxImages && (
+        {images.length < maxImages && !disabled && (
           <TouchableOpacity
             onPress={handleAddImage}
             disabled={uploading}

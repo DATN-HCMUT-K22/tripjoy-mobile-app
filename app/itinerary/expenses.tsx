@@ -64,6 +64,7 @@ export default function ExpensesScreen() {
   const [filterPaidById, setFilterPaidById] = useState<string | undefined>(undefined);
 
   const { data: detail, isLoading: detailLoading } = useItineraryDetail(itineraryId);
+  const isCompleted = detail?.status === "COMPLETED";
   const { data: expenses = [], isLoading, isError, error, refetch } = useExpenses(itineraryId, filterPaidById);
   const { data: expenseSummary, isLoading: summaryLoading } = useExpenseSummary(itineraryId);
   const { data: tripItems = [] } = useItineraryTripItems(itineraryId);
@@ -299,6 +300,7 @@ export default function ExpensesScreen() {
                 placeholder="Vd: Ăn tối nhà hàng..."
                 style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', fontSize: 16 }}
                 placeholderTextColor="#9CA3AF"
+                editable={!isCompleted}
               />
             </View>
 
@@ -315,6 +317,7 @@ export default function ExpensesScreen() {
                 keyboardType="numeric"
                 style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', fontSize: 16, fontWeight: 'bold', color: '#2BB673' }}
                 placeholderTextColor="#9CA3AF"
+                editable={!isCompleted}
               />
             </View>
 
@@ -327,11 +330,13 @@ export default function ExpensesScreen() {
                     <TouchableOpacity
                       key={c.id}
                       onPress={() => setFormData((prev) => ({ ...prev, type: c.id }))}
+                      disabled={isCompleted}
                       style={{
                         paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
                         flexDirection: 'row', alignItems: 'center', borderWidth: 1,
                         backgroundColor: isSel ? '#F0FDF4' : '#FFFFFF',
                         borderColor: isSel ? '#2BB673' : '#E5E7EB',
+                        opacity: isCompleted ? 0.8 : 1,
                       }}
                     >
                       <Ionicons name={c.icon as any} size={16} color={isSel ? '#2BB673' : '#6B7280'} />
@@ -350,7 +355,8 @@ export default function ExpensesScreen() {
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 }}>Hoạt động trong lịch trình</Text>
               <TouchableOpacity
                 onPress={() => setShowTripItemPicker(true)}
-                style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                disabled={isCompleted}
+                style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: isCompleted ? 0.8 : 1 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                   <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
@@ -362,7 +368,7 @@ export default function ExpensesScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
               </TouchableOpacity>
-              {selectedTripItem && (
+              {selectedTripItem && !isCompleted && (
                 <TouchableOpacity 
                   onPress={() => setFormData(prev => ({ ...prev, trip_item_id: null }))}
                   style={{ marginTop: 8, alignSelf: 'flex-start' }}
@@ -376,7 +382,8 @@ export default function ExpensesScreen() {
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 }}>Người thanh toán</Text>
               <TouchableOpacity
                 onPress={() => setShowMemberPicker(true)}
-                style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                disabled={isCompleted}
+                style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: isCompleted ? 0.8 : 1 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                   {selectedMember?.avatarUrl ? (
@@ -402,7 +409,8 @@ export default function ExpensesScreen() {
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 }}>Thời gian chi</Text>
               <TouchableOpacity
                 onPress={handleOpenDatePicker}
-                style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                disabled={isCompleted}
+                style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: isCompleted ? 0.8 : 1 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
@@ -421,6 +429,7 @@ export default function ExpensesScreen() {
               <ReceiptImagePicker
                 images={receiptImages}
                 onChange={setReceiptImages}
+                disabled={isCompleted}
                 onImagePress={(index) => {
                   setGalleryImages(
                     receiptImages.map((imgUrl) => ({
@@ -438,20 +447,32 @@ export default function ExpensesScreen() {
           </ScrollView>
 
           <View style={{ padding: 16, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
-            <TouchableOpacity
-              onPress={handleSave}
-              disabled={addExpenseMut.isPending || updateExpenseMut.isPending}
-              style={{
-                paddingVertical: 16, borderRadius: 12, alignItems: 'center',
-                flexDirection: 'row', justifyContent: 'center', backgroundColor: '#2BB673',
-                opacity: addExpenseMut.isPending || updateExpenseMut.isPending ? 0.5 : 1,
-              }}
-            >
-              {(addExpenseMut.isPending || updateExpenseMut.isPending) && (
-                <ActivityIndicator color="white" style={{ marginRight: 8 }} />
-              )}
-              <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 16 }}>Lưu khoản chi</Text>
-            </TouchableOpacity>
+            {isCompleted ? (
+              <TouchableOpacity
+                onPress={() => setViewMode('list')}
+                style={{
+                  paddingVertical: 16, borderRadius: 12, alignItems: 'center',
+                  justifyContent: 'center', backgroundColor: '#9CA3AF',
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 16 }}>Quay lại</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={addExpenseMut.isPending || updateExpenseMut.isPending}
+                style={{
+                  paddingVertical: 16, borderRadius: 12, alignItems: 'center',
+                  flexDirection: 'row', justifyContent: 'center', backgroundColor: '#2BB673',
+                  opacity: addExpenseMut.isPending || updateExpenseMut.isPending ? 0.5 : 1,
+                }}
+              >
+                {(addExpenseMut.isPending || updateExpenseMut.isPending) && (
+                  <ActivityIndicator color="white" style={{ marginRight: 8 }} />
+                )}
+                <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 16 }}>Lưu khoản chi</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </KeyboardAvoidingView>
 
@@ -763,16 +784,18 @@ export default function ExpensesScreen() {
                         <Text style={{ fontSize: 15, fontWeight: '900', color: '#111827' }}>
                           {item.amount ? item.amount.toLocaleString("vi-VN") : "0"} ₫
                         </Text>
-                        <TouchableOpacity
-                          style={{ marginTop: 12, backgroundColor: '#FEF2F2', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleDelete(item.id!, item.name);
-                          }}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                          <Ionicons name="trash" size={16} color="#EF4444" />
-                        </TouchableOpacity>
+                        {!isCompleted && (
+                          <TouchableOpacity
+                            style={{ marginTop: 12, backgroundColor: '#FEF2F2', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleDelete(item.id!, item.name);
+                            }}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            <Ionicons name="trash" size={16} color="#EF4444" />
+                          </TouchableOpacity>
+                        )}
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -783,19 +806,21 @@ export default function ExpensesScreen() {
         </View>
       </ScrollView>
 
-      <View style={{ position: 'absolute', bottom: 24, right: 20 }}>
-        <TouchableOpacity
-          onPress={handleOpenAdd}
-          style={{
-            width: 56, height: 56, backgroundColor: '#2BB673',
-            borderRadius: 28, alignItems: 'center', justifyContent: 'center',
-            shadowColor: '#2BB673', shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
-          }}
-        >
-          <Ionicons name="add" size={30} color="white" />
-        </TouchableOpacity>
-      </View>
+      {!isCompleted && (
+        <View style={{ position: 'absolute', bottom: 24, right: 20 }}>
+          <TouchableOpacity
+            onPress={handleOpenAdd}
+            style={{
+              width: 56, height: 56, backgroundColor: '#2BB673',
+              borderRadius: 28, alignItems: 'center', justifyContent: 'center',
+              shadowColor: '#2BB673', shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
+            }}
+          >
+            <Ionicons name="add" size={30} color="white" />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <AttachedMediaGalleryModal
         visible={galleryVisible}
