@@ -29,6 +29,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AttachedMediaGalleryModal } from "@/components/create-post/AttachedMediaGalleryModal";
 import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
+import { ItineraryCardImage } from "@/components/itinerary/ItineraryCardImage";
 import {
   clearPendingItinerary,
   getPendingItinerary,
@@ -732,14 +733,10 @@ export default function CreatePostScreen() {
             >
               {selectedItinerary ? (
                 <View style={styles.itineraryCard}>
-                  <Image
-                    source={
-                      selectedItinerary.image?.trim()
-                        ? { uri: selectedItinerary.image.trim() }
-                        : ITINERARY_PLACEHOLDER_IMAGE
-                    }
+                  <ItineraryCardImage
+                    itineraryId={selectedItinerary.id}
+                    defaultImage={selectedItinerary.image?.trim() || undefined}
                     style={styles.itineraryCardImage}
-                    contentFit="cover"
                   />
                   <View style={styles.itineraryCardBody}>
                     <Text style={styles.itineraryCardTitle} numberOfLines={2}>

@@ -17,6 +17,8 @@ type TripItemCardProps = {
   showTransport?: boolean;
   isLast?: boolean;
   showTimeline?: boolean;
+  isCompleted?: boolean;
+  hideStatusBadge?: boolean;
 };
 
 // Status badge styles
@@ -104,6 +106,8 @@ export function TripItemCard({
   showTransport = false,
   isLast = false,
   showTimeline = false,
+  isCompleted = false,
+  hideStatusBadge = false,
 }: TripItemCardProps) {
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
 
@@ -210,11 +214,13 @@ export function TripItemCard({
         accessibilityHint={status === 'CHECKED_IN' ? 'Đã check-in' : status === 'SKIPPED' ? 'Đã bỏ qua' : 'Chưa check-in'}
       >
         {/* Status Badge - Top Right */}
-        <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-          <Text style={[styles.statusText, { color: statusStyle.text }]}>
-            {statusStyle.label}
-          </Text>
-        </View>
+        {!hideStatusBadge && (
+          <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+            <Text style={[styles.statusText, { color: statusStyle.text }]}>
+              {statusStyle.label}
+            </Text>
+          </View>
+        )}
 
         {/* Location Image */}
         <LocationImage
@@ -322,7 +328,7 @@ export function TripItemCard({
           )}
 
           {/* Undo Button - When Checked In or Skipped */}
-          {onCheckIn && (status === 'CHECKED_IN' || status === 'SKIPPED') && (
+          {onCheckIn && !isCompleted && (status === 'CHECKED_IN' || status === 'SKIPPED') && (
             <TouchableOpacity
               style={[styles.undoButton, isUpdating && styles.buttonDisabled]}
               onPress={() => onCheckIn(item.id!, 'PENDING')}

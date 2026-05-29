@@ -18,7 +18,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Để nhận thông báo khi bạn đến gần địa điểm trong hành trình, vui lòng cho phép truy cập vị trí luôn luôn.",
           "locationAlwaysPermission": "Cho phép TripJoy truy cập vị trí của bạn ngay cả khi ứng dụng đang đóng để gửi thông báo khi bạn đến gần địa điểm.",
-          "locationWhenInUsePermission": "Cho phép TripJoy truy cập vị trí của bạn khi sử dụng ứng dụng."
+          "locationWhenInUsePermission": "Cho phép TripJoy truy cập vị trí của bạn khi sử dụng ứng dụng.",
+          "isAndroidBackgroundLocationEnabled": true
         }
       ],
       [

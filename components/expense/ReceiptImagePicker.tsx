@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+import { Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '@/services/media';
 import { showErrorToast, showSuccessToast } from '@/utils/toast';
@@ -10,12 +10,14 @@ interface ReceiptImagePickerProps {
   images: string[];
   onChange: (images: string[]) => void;
   maxImages?: number;
+  onImagePress?: (index: number) => void;
 }
 
 export function ReceiptImagePicker({
   images,
   onChange,
   maxImages = 3,
+  onImagePress,
 }: ReceiptImagePickerProps) {
   const [uploading, setUploading] = useState(false);
 
@@ -72,29 +74,38 @@ export function ReceiptImagePicker({
         {images.map((uri, index) => (
           <View
             key={index}
-            className="relative"
             style={{
               width: 100,
               height: 100,
+              borderRadius: 8,
+              overflow: "hidden",
+              position: "relative",
             }}
           >
-            <Image
-              source={{ uri }}
-              className="w-full h-full rounded-xl"
-              contentFit="cover"
-            />
+            <TouchableOpacity
+              onPress={() => onImagePress?.(index)}
+              disabled={!onImagePress}
+              style={{ width: "100%", height: "100%" }}
+              activeOpacity={0.8}
+            >
+              <Image
+                source={{ uri }}
+                style={{ width: "100%", height: "100%", resizeMode: 'cover' }}
+              />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleRemoveImage(index)}
-              className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 items-center justify-center"
               style={{
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.2,
-                shadowRadius: 4,
-                elevation: 4,
+                position: "absolute",
+                top: 4,
+                right: 4,
+                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                borderRadius: 12,
+                padding: 2,
               }}
+              activeOpacity={0.7}
             >
-              <Ionicons name="close" size={16} color="#fff" />
+              <Ionicons name="close-circle" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
         ))}
@@ -103,19 +114,24 @@ export function ReceiptImagePicker({
           <TouchableOpacity
             onPress={handleAddImage}
             disabled={uploading}
-            className="items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50"
             style={{
               width: 100,
               height: 100,
+              minWidth: 100,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: "#E5E7EB",
+              borderStyle: "dashed",
+              backgroundColor: "#F9FAFB",
+              alignItems: "center",
+              justifyContent: "center",
             }}
+            activeOpacity={0.7}
           >
             {uploading ? (
-              <ActivityIndicator color="#2BB673" size="small" />
+              <ActivityIndicator color="#34B27D" size="small" />
             ) : (
-              <>
-                <Ionicons name="camera-outline" size={32} color="#9CA3AF" />
-                <Text className="text-xs text-gray-500 mt-1">Thêm ảnh</Text>
-              </>
+              <Ionicons name="add" size={32} color="#999" />
             )}
           </TouchableOpacity>
         )}

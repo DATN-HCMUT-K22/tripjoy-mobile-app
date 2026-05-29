@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { AppBottomSheet } from '@/components/common/AppBottomSheet';
+import { Image } from 'react-native';
+import { SlideUpModal } from '@/components/common/SlideUpModal';
 import { resolveUserAvatarUri } from '@/utils/userAvatar';
 
 export interface MemberOption {
@@ -35,17 +35,16 @@ export function MemberPicker({
   };
 
   return (
-    <AppBottomSheet
+    <SlideUpModal
       visible={visible}
       onClose={onClose}
-      snapPoints={['40%', '60%']}
       title={title}
     >
-      <View className="px-4 py-2">
+      <ScrollView style={{ paddingHorizontal: 16, paddingVertical: 8, maxHeight: 400 }}>
         {members.length === 0 ? (
-          <View className="py-8 items-center">
+          <View style={{ paddingVertical: 32, alignItems: 'center' }}>
             <Ionicons name="people-outline" size={48} color="#D1D5DB" />
-            <Text className="text-gray-400 mt-2 text-sm">
+            <Text style={{ color: '#9CA3AF', marginTop: 8, fontSize: 14 }}>
               Chưa có thành viên nào
             </Text>
           </View>
@@ -58,12 +57,12 @@ export function MemberPicker({
               <TouchableOpacity
                 key={member.id}
                 onPress={() => handleSelect(member.id)}
-                className={`flex-row items-center p-4 mb-2 rounded-xl border ${
-                  isSelected
-                    ? 'border-[#2BB673] bg-[#2BB673]/5'
-                    : 'border-gray-200 bg-white'
-                }`}
                 style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  padding: 16, marginBottom: 8, borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: isSelected ? '#2BB673' : '#E5E7EB',
+                  backgroundColor: isSelected ? 'rgba(43, 182, 115, 0.05)' : '#FFFFFF',
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.05,
@@ -74,25 +73,22 @@ export function MemberPicker({
                 {avatarUri ? (
                   <Image
                     source={{ uri: avatarUri }}
-                    className="w-12 h-12 rounded-full"
-                    contentFit="cover"
+                    style={{ width: 48, height: 48, borderRadius: 9999, resizeMode: 'cover' }}
                   />
                 ) : (
-                  <View className="w-12 h-12 rounded-full bg-gray-200 items-center justify-center">
+                  <View style={{ width: 48, height: 48, borderRadius: 9999, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' }}>
                     <Ionicons name="person" size={24} color="#6B7280" />
                   </View>
                 )}
-                <View className="flex-1 ml-3">
+                <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text
-                    className={`text-base font-semibold ${
-                      isSelected ? 'text-[#2BB673]' : 'text-gray-800'
-                    }`}
+                    style={{ fontSize: 16, fontWeight: '600', color: isSelected ? '#2BB673' : '#1F2937' }}
                     numberOfLines={1}
                   >
                     {member.fullName}
                   </Text>
                   {member.username && (
-                    <Text className="text-xs text-gray-500 mt-0.5">
+                    <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
                       @{member.username}
                     </Text>
                   )}
@@ -104,7 +100,7 @@ export function MemberPicker({
             );
           })
         )}
-      </View>
-    </AppBottomSheet>
+      </ScrollView>
+    </SlideUpModal>
   );
 }

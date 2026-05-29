@@ -1,5 +1,5 @@
 import { useGroup } from "@/hooks/useGroups";
-import { useGroupItinerariesByTab, GroupInfoItineraryListItem, useConfirmItinerary, useDeleteItinerary, ITINERARY_STATUS, useGroupConfirmedItinerary, useItineraryTripItems, PLACEHOLDER_ITINERARY_IMAGE } from "@/hooks/useItineraries";
+import { useGroupItinerariesByTab, GroupInfoItineraryListItem, useConfirmItinerary, useUndoConfirmItinerary, useDeleteItinerary, ITINERARY_STATUS, useGroupConfirmedItinerary, useItineraryTripItems, PLACEHOLDER_ITINERARY_IMAGE } from "@/hooks/useItineraries";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { isGroupManager } from "@/utils/roleUtils";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,29 +23,7 @@ import { AppDialogModal } from "@/components/common/AppDialogModal";
 
 type TabType = "ongoing" | "completed" | "draft";
 
-const ItineraryCardImage = ({ itineraryId, defaultImage, style }: { itineraryId: string, defaultImage?: string, style: any }) => {
-  const { data: items, isLoading } = useItineraryTripItems(itineraryId);
-  const firstLocation = items?.[0]?.location;
-  
-  // Nếu đang load danh sách items, hiển thị ảnh mặc định trước để tránh bị trống (xám)
-  if (isLoading) {
-    return <Image source={{ uri: defaultImage || PLACEHOLDER_ITINERARY_IMAGE }} style={style} contentFit="cover" />;
-  }
-
-  // Nếu có ảnh thủ công hoặc không tìm thấy địa điểm nào, dùng ảnh mặc định
-  if (!firstLocation || (defaultImage && defaultImage !== PLACEHOLDER_ITINERARY_IMAGE)) {
-    return <Image source={{ uri: defaultImage || PLACEHOLDER_ITINERARY_IMAGE }} style={style} contentFit="cover" />;
-  }
-
-  return (
-    <LocationImage
-      location={firstLocation}
-      style={style}
-      containerStyle={style}
-      placeholderIcon="map"
-    />
-  );
-};
+import { ItineraryCardImage } from "@/components/itinerary/ItineraryCardImage";
 
 export default function GroupItinerariesScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -68,6 +46,7 @@ export default function GroupItinerariesScreen() {
     return role === 'LEADER';
   }, [group, currentUser]);
   const { mutateAsync: confirmItinerary, isPending: isConfirming } = useConfirmItinerary();
+  const { mutateAsync: undoConfirmItinerary, isPending: isUndoing } = useUndoConfirmItinerary();
 
   const handleApply = (itinerary: GroupInfoItineraryListItem) => {
     setItemToApply(itinerary);
@@ -114,6 +93,28 @@ export default function GroupItinerariesScreen() {
     if (!itinerariesByTab) return [];
     return itinerariesByTab[activeTab] || [];
   }, [itinerariesByTab, activeTab]);
+
+  const handleUndoConfirm = (itinerary: GroupInfoItineraryListItem) => {
+    Alert.alert(
+      "Hoàn tác lịch trình",
+      `Bạn có chắc chắn muốn hoàn tác lịch trình "${itinerary.name}" về bản nháp? Hành động này sẽ chuyển trạng thái về chưa xác nhận.`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Hoàn tác",
+          style: "destructive",
+          onPress: async () => {
+            if (!itinerary.raw) return;
+            try {
+              await undoConfirmItinerary(itinerary.raw);
+            } catch (err) {
+              // error handled by hook
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const renderItineraryItem = ({ item }: { item: GroupInfoItineraryListItem }) => (
     <TouchableOpacity
@@ -177,12 +178,8 @@ export default function GroupItinerariesScreen() {
               let canShowApply = true;
               
               if (activeOfficial) {
-                const draftStart = new Date(item.startDate);
-                const officialEnd = new Date(activeOfficial.endDate);
-                // Only allow apply if it starts AFTER the current official one ends
-                canShowApply = !Number.isNaN(draftStart.getTime()) && 
-                               !Number.isNaN(officialEnd.getTime()) && 
-                               draftStart > officialEnd;
+                // If there's an active official itinerary (CONFIRMED or IN_PROGRESS), do NOT allow applying another
+                canShowApply = false;
               }
               
               if (!canShowApply) return null;
@@ -199,6 +196,19 @@ export default function GroupItinerariesScreen() {
                 </TouchableOpacity>
               );
             })()}
+
+            {isManager && 
+             (item.raw?.status || "").toUpperCase() === ITINERARY_STATUS.CONFIRMED && (
+              <TouchableOpacity
+                style={[styles.applyBtn, { backgroundColor: "#EF4444", marginRight: 8 }]}
+                onPress={() => handleUndoConfirm(item)}
+                disabled={isUndoing}
+              >
+                <Text style={styles.applyBtnText}>
+                  {isUndoing ? "Đang xử lý..." : "Hoàn tác"}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {isManager && 
              (item.raw?.status || "").toUpperCase() !== ITINERARY_STATUS.IN_PROGRESS && (
@@ -242,7 +252,7 @@ export default function GroupItinerariesScreen() {
     return (
       <View style={styles.confirmedSection}>
         <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>
-          Lịch trình đã xác nhận
+          {(confirmedItinerary.raw?.status || "").toUpperCase() === "IN_PROGRESS" ? "Lịch trình đang diễn ra" : "Lịch trình đã xác nhận"}
         </Text>
         {renderItineraryItem({ item: confirmedItinerary as any })}
       </View>

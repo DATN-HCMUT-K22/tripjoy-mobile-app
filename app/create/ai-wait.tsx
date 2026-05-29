@@ -63,8 +63,12 @@ function formatDayChipLabel(dayKey: string): string {
 
 function coordsFromTripItem(row: TripItemResponse): { latitude: number; longitude: number } | null {
   const loc = row.location;
-  const lat = loc?.routable_lat ?? loc?.lat;
-  const lng = loc?.routable_lng ?? loc?.lng;
+  const rawLat = loc?.routable_lat ?? loc?.lat;
+  const rawLng = loc?.routable_lng ?? loc?.lng;
+  
+  const lat = typeof rawLat === 'string' ? parseFloat(rawLat) : rawLat;
+  const lng = typeof rawLng === 'string' ? parseFloat(rawLng) : rawLng;
+
   if (
     typeof lat === "number" &&
     typeof lng === "number" &&
