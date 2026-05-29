@@ -1,17 +1,13 @@
 import { AppDialogModal } from "@/components/common/AppDialogModal";
 import { SharedHeader } from "@/components/common/SharedHeader";
 import { DraggableApiItineraryItemCard } from "@/components/itinerary/DraggableApiItineraryItemCard";
-import { ExpensesOverlay } from "@/components/itinerary/ExpensesOverlay";
 import ItineraryRouteMap, { type ItineraryMapLocation } from "@/components/itinerary/ItineraryRouteMap";
+import { PermissionModal } from "@/components/itinerary/PermissionModal";
 import { StatusBadge } from "@/components/itinerary/StatusBadge";
 import { TripItemCard } from "@/components/itinerary/TripItemCard";
-import { TripItemCardSkeleton } from "@/components/itinerary/TripItemCardSkeleton";
-import { ErrorState } from "@/components/itinerary/ErrorState";
-import { OfflineQueueBanner } from "@/components/itinerary/OfflineQueueBanner";
-import { NoTripItemsEmpty } from "@/components/shared/EmptyState";
 import { LocationImage } from "@/components/location/LocationImage";
 import TimePickerModal from "@/components/TimePickerModal";
-import { PermissionModal } from "@/components/itinerary/PermissionModal";
+import { useGroup } from "@/hooks/useGroups";
 import {
   useAiModifyItinerary,
   useAiSuggestLocation,
@@ -31,19 +27,21 @@ import {
   type TripItemResponse,
   type TripItemStatus,
 } from "@/services/itineraries";
-import { checkinQueue } from "@/utils/checkinQueue";
-import NetInfo from "@react-native-community/netinfo";
-import { showSuccessToast } from "@/utils/toast";
 import { useAppSelector } from "@/store/hooks";
 import { startGeofencing, stopGeofencing } from "@/tasks/geofencingTask";
-import { requestNotificationPermissions, setupNotificationHandlers } from "@/utils/notifications";
-import * as Location from "expo-location";
+import { checkinQueue } from "@/utils/checkinQueue";
 import { parseItineraryDateToDayOnly, tripPickerDateToItineraryDateTime } from "@/utils/itineraryDates";
 import { getLocationImageUrl, getLocationImageUrlAsync } from "@/utils/locationImages";
+import { requestNotificationPermissions, setupNotificationHandlers } from "@/utils/notifications";
+import { showSuccessToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
 import { Image } from "expo-image";
+import * as Location from "expo-location";
+import * as Notifications from "expo-notifications";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -88,10 +86,10 @@ const AI_TIPS = [
 function AiLoadingView({ message }: { message: string }) {
   const [tipIndex, setTipIndex] = React.useState(0);
   const spinValue = React.useRef(new Animated.Value(0)).current;
-  
+
   React.useEffect(() => {
     const id = setInterval(() => setTipIndex(i => (i + 1) % AI_TIPS.length), 3000);
-    
+
     Animated.loop(
       Animated.timing(spinValue, {
         toValue: 1,
@@ -116,21 +114,21 @@ function AiLoadingView({ message }: { message: string }) {
     <View className="flex-1 items-center justify-center px-8 py-20">
       <View className="relative h-24 w-24 items-center justify-center">
         <View className="absolute h-full w-full rounded-full border-4 border-emerald-100 opacity-20" />
-        <Animated.View 
+        <Animated.View
           style={{ transform: [{ rotate: spin }] }}
-          className="absolute h-full w-full rounded-full border-t-4 border-primary" 
+          className="absolute h-full w-full rounded-full border-t-4 border-primary"
         />
         <Ionicons name="sparkles" size={40} color="#2BB673" />
       </View>
       <Text className="mt-8 text-center text-lg font-bold text-gray-900">{message}</Text>
       <Text className="mt-2 text-center text-sm text-gray-500 italic">"{AI_TIPS[tipIndex]}"</Text>
-      
+
       <View className="mt-10 flex-row gap-2">
         {[0, 1, 2, 3].map((i) => (
-          <View 
-            key={i} 
-            className="h-2 w-2 rounded-full bg-primary" 
-            style={{ opacity: 0.3 + (i === tipIndex % 4 ? 0.7 : 0) }} 
+          <View
+            key={i}
+            className="h-2 w-2 rounded-full bg-primary"
+            style={{ opacity: 0.3 + (i === tipIndex % 4 ? 0.7 : 0) }}
           />
         ))}
       </View>
@@ -165,15 +163,14 @@ function formatItemDateTime(dayKey: string, time: string): string {
 export default function ItineraryDetailScreen() {
   // const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id: itineraryId } = useLocalSearchParams<{ id: string }>();
+  const { id: itineraryId, from, postOwnerId } = useLocalSearchParams<{ id: string; from?: string; postOwnerId?: string }>();
   const currentUserId = useAppSelector((state) => state.auth.user?.id);
-  const [showExpenses, setShowExpenses] = useState(false);
   const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
 
   // Setup Mode State
   const [isSetupMode, setIsSetupMode] = useState(false);
   const [draftItemsByDay, setDraftItemsByDay] = useState<Record<string, TripItemResponse[]>>({});
-  
+
   // Modals & Active Items
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [editingTimeSlot, setEditingTimeSlot] = useState<{ dayKey: string; item: TripItemResponse } | null>(null);
@@ -217,6 +214,7 @@ export default function ItineraryDetailScreen() {
 
   // Phase 2: Check-in status management
   const updateStatusMutation = useUpdateTripItemStatus();
+  const updateTripItemMutation = useUpdateTripItem();
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
   // Process offline queue on mount and network change
@@ -253,14 +251,96 @@ export default function ItineraryDetailScreen() {
 
   // Phase 5: Show permission modal when status becomes IN_PROGRESS
   useEffect(() => {
-    if (detail?.status === ITINERARY_STATUS.IN_PROGRESS && !geofencingEnabled) {
-      const timer = setTimeout(() => {
-        setPermissionModalVisible(true);
-      }, 500); // Small delay for smoother UX
+    const initGeofencing = async () => {
+      if (detail?.status === ITINERARY_STATUS.IN_PROGRESS && !geofencingEnabled && itineraryId) {
+        const prompted = await AsyncStorage.getItem(`geofence_prompted_${itineraryId}`);
+        if (prompted === 'true') {
+          // If we already prompted, try to silently start if we have permissions
+          const { status: fgStatus } = await Location.getForegroundPermissionsAsync();
+          if (fgStatus === 'granted') {
+            const success = await startGeofencing(tripItems);
+            if (success) setGeofencingEnabled(true);
+          }
+          return;
+        }
 
-      return () => clearTimeout(timer);
-    }
-  }, [detail?.status, geofencingEnabled]);
+        const timer = setTimeout(() => {
+          setPermissionModalVisible(true);
+        }, 500); // Small delay for smoother UX
+
+        return () => clearTimeout(timer);
+      }
+    };
+    initGeofencing();
+  }, [detail?.status, geofencingEnabled, itineraryId, tripItems]);
+
+  // Phase 5: Fallback foreground geofencing for Emulator testing (DEV only)
+  // Google Play Services Geofencing is notoriously flaky on Android emulators.
+  const notifiedLocations = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let locationSub: Location.LocationSubscription;
+
+    const startDevTracker = async () => {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (__DEV__ && status === 'granted' && detail?.status === ITINERARY_STATUS.IN_PROGRESS) {
+        const pendingItems = tripItems.filter(item => item.status === 'PENDING' || !item.status);
+        if (pendingItems.length === 0) return;
+
+        locationSub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 3000,
+            distanceInterval: 10,
+          },
+          async (location) => {
+            const { latitude, longitude } = location.coords;
+            for (const item of pendingItems) {
+              const rawLat = item.location?.routable_lat ?? item.location?.lat ?? item.location?.latitude;
+              const rawLng = item.location?.routable_lng ?? item.location?.lng ?? item.location?.longitude;
+              const lat = typeof rawLat === 'string' ? parseFloat(rawLat) : rawLat;
+              const lng = typeof rawLng === 'string' ? parseFloat(rawLng) : rawLng;
+
+              if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+                // Calculate distance in km
+                const R = 6371;
+                const dLat = (lat - latitude) * Math.PI / 180;
+                const dLon = (lng - longitude) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(latitude * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                const distance = R * c;
+
+                if (distance <= 1.0 && !notifiedLocations.current.has(item.id ?? "")) {
+                  notifiedLocations.current.add(item.id ?? "");
+                  const locationName = item.location?.name || `Địa điểm`;
+
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: '📍 Bạn đã đến gần địa điểm!',
+                      body: `(DEV) Bạn đang ở gần ${locationName}. Nhấn để check-in ngay!`,
+                      data: {
+                        type: 'geofence_enter',
+                        locationName: locationName,
+                        timestamp: new Date().toISOString(),
+                      },
+                      sound: true,
+                    },
+                    trigger: null,
+                  });
+                }
+              }
+            }
+          }
+        );
+      }
+    };
+
+    startDevTracker();
+    return () => {
+      if (locationSub) locationSub.remove();
+    };
+  }, [detail?.status, geofencingEnabled, tripItems]);
 
   // Phase 5: Stop geofencing when itinerary is completed
   useEffect(() => {
@@ -284,6 +364,9 @@ export default function ItineraryDetailScreen() {
   // Phase 5: Handle accept permissions
   const handleAcceptPermissions = async () => {
     try {
+      if (itineraryId) {
+        await AsyncStorage.setItem(`geofence_prompted_${itineraryId}`, 'true');
+      }
       // Step 1: Request notification permissions
       const notificationGranted = await requestNotificationPermissions();
       if (!notificationGranted) {
@@ -359,7 +442,10 @@ export default function ItineraryDetailScreen() {
   };
 
   // Phase 5: Handle decline permissions
-  const handleDeclinePermissions = () => {
+  const handleDeclinePermissions = async () => {
+    if (itineraryId) {
+      await AsyncStorage.setItem(`geofence_prompted_${itineraryId}`, 'true');
+    }
     setPermissionModalVisible(false);
     showSuccessToast('Bạn vẫn có thể check-in thủ công', '');
   };
@@ -393,11 +479,19 @@ export default function ItineraryDetailScreen() {
     setUpdatingItemId(tripItemId);
 
     try {
-      await updateStatusMutation.mutateAsync({
+      const item = tripItems.find(t => t.id === tripItemId);
+      if (!item) return;
+
+      await updateTripItemMutation.mutateAsync({
         itineraryId,
         tripItemId,
         payload: {
-          status: 'CHECKED_IN', // Maintain checked-in status
+          start_time: item.start_time || "",
+          duration: item.duration,
+          note: item.note,
+          location_id: item.location_id || item.location?.id,
+          place_id: (item as any).place_id || item.location?.provider_id,
+          status: 'CHECKED_IN',
           rating,
           review,
         },
@@ -473,21 +567,20 @@ export default function ItineraryDetailScreen() {
   // Mutations
   const updateItineraryMutation = useUpdateItinerary();
   const deleteTripItemMutation = useDeleteTripItem();
-  const updateTripItemMutation = useUpdateTripItem();
   const aiSuggestMutation = useAiSuggestLocation();
   const aiModifyMutation = useAiModifyItinerary();
-  const updateStatusMutation = useUpdateItineraryStatus();
+  const updateItineraryStatusMutation = useUpdateItineraryStatus();
 
   const handleUpdateStatus = async (newStatus: string) => {
     if (!itineraryId) return;
     try {
-      await updateStatusMutation.mutateAsync({
+      await updateItineraryStatusMutation.mutateAsync({
         itineraryId,
         status: newStatus,
         groupId: detail?.group_id ?? ""
       });
       refetchDetail();
-    } catch {}
+    } catch { }
   };
 
   const { data: favoriteList = [] } = useFavoriteItineraries(itineraryId);
@@ -554,7 +647,7 @@ export default function ItineraryDetailScreen() {
       }
       await Promise.all(promises);
       refetchItems();
-    } catch {} finally {
+    } catch { } finally {
       setSwapConfirmVisible(false);
       setPendingSwap(null);
     }
@@ -569,7 +662,7 @@ export default function ItineraryDetailScreen() {
     if (!itemToDelete || !itineraryId) return;
     const { id } = itemToDelete;
     if (id) {
-      try { await deleteTripItemMutation.mutateAsync({ itineraryId, tripItemId: id }); } catch {}
+      try { await deleteTripItemMutation.mutateAsync({ itineraryId, tripItemId: id }); } catch { }
     }
     refetchItems();
     setDeleteConfirmVisible(false);
@@ -584,9 +677,9 @@ export default function ItineraryDetailScreen() {
   const handleSaveTime = useCallback((timeRange: { start: string; end: string }, duration?: number) => {
     if (!editingTimeSlot) return;
     const { dayKey, item } = editingTimeSlot;
-    setPendingTimeEdit({ 
-      dayKey, 
-      item, 
+    setPendingTimeEdit({
+      dayKey,
+      item,
       newStart: formatItemDateTime(dayKey, timeRange.start),
       newDuration: duration ?? item.duration ?? 0
     });
@@ -608,7 +701,7 @@ export default function ItineraryDetailScreen() {
         }
       });
       refetchItems();
-    } catch {} finally {
+    } catch { } finally {
       setTimeConfirmVisible(false);
       setPendingTimeEdit(null);
       setEditingTimeSlot(null);
@@ -637,12 +730,12 @@ export default function ItineraryDetailScreen() {
         },
       });
       setIsSetupMode(false);
-    } catch {}
+    } catch { }
   };
 
   const handleOpenAiSuggest = useCallback(async (item: TripItemResponse) => {
     const unwantedPlaceId = placeIdFromTripItem(item);
-    
+
     if (!itineraryId || !unwantedPlaceId) {
       return;
     }
@@ -651,12 +744,12 @@ export default function ItineraryDetailScreen() {
     setAiSuggestions([]);
     setSuggestionModalVisible(true);
     try {
-      const suggestions = await aiSuggestMutation.mutateAsync({ 
-        itineraryId, 
-        unwantedPlaceId 
+      const suggestions = await aiSuggestMutation.mutateAsync({
+        itineraryId,
+        unwantedPlaceId
       });
       setAiSuggestions(suggestions);
-    } catch {}
+    } catch { }
   }, [itineraryId, aiSuggestMutation]);
 
   const handleSelectAiSuggestion = useCallback(async (suggestion: TripItemResponse) => {
@@ -678,36 +771,53 @@ export default function ItineraryDetailScreen() {
       setSuggestionModalVisible(false);
       setActiveTripItem(null);
       refetchItems();
-    } catch {}
+    } catch { }
   }, [itineraryId, activeTripItem, updateTripItemMutation, refetchItems]);
 
   const normItineraryStatus = (s?: string) => (s || "").toUpperCase();
   const status = normItineraryStatus(detail?.status);
+
   const canEdit = status === ITINERARY_STATUS.DRAFT || status === ITINERARY_STATUS.FAILED;
-  const canUseAi = status !== ITINERARY_STATUS.COMPLETED && 
-                  status !== ITINERARY_STATUS.GENERATING && 
-                  status !== ITINERARY_STATUS.PENDING;
-  
+  const canUseAi = status !== ITINERARY_STATUS.COMPLETED &&
+    status !== ITINERARY_STATUS.GENERATING &&
+    status !== ITINERARY_STATUS.PENDING;
+
+  // Group checking for starting/completing the trip
+  const isOwner = detail?.created_by === currentUserId;
+  const { data: group } = useGroup(detail?.group_id || undefined);
+  const currentUserRole = group?.members?.find((m) => m.user?.id === currentUserId)?.role || "MEMBER";
+
+  // A user can control the trip if they are the creator of a solo itinerary OR a leader/co-leader of a group itinerary
+  const isGroupLeaderOrCoLeader = detail?.group_id ? (currentUserRole === "LEADER" || currentUserRole === "CO_LEADER") : false;
+  // Creator (isOwner) also can control trip, even in group itineraries (in case role hasn't loaded yet)
+  const canControlTrip = detail?.group_id ? (isGroupLeaderOrCoLeader || isOwner) : isOwner;
+
+  // Rating editing permissions:
+  // If viewed from a post, you can edit if you are the POST owner (regardless of itinerary ownership)
+  // If viewed normally, you can edit if you are the ITINERARY owner
+  const isPostOwner = postOwnerId ? currentUserId === postOwnerId : false;
+  const canEditRating = from === 'post' ? isPostOwner : canControlTrip;
+
   // Date comparisons for Start/Complete trip
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  
+
   const startDate = detail?.start_date ? new Date(detail.start_date) : null;
   if (startDate && !isNaN(startDate.getTime())) startDate.setHours(0, 0, 0, 0);
-  
+
   const endDate = detail?.end_date ? new Date(detail.end_date) : startDate;
   if (endDate && !isNaN(endDate.getTime())) endDate.setHours(0, 0, 0, 0);
-  
+
   const isWithinTripRange = !!(startDate && endDate && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && now >= startDate && now <= endDate);
   const isPastTripEnd = !!(endDate && !isNaN(endDate.getTime()) && now >= endDate);
   const isStrictlyPastTripEnd = !!(endDate && !isNaN(endDate.getTime()) && now > endDate);
-  
+
   const showStartTrip = status === ITINERARY_STATUS.CONFIRMED && isWithinTripRange;
-  const showCompleteTrip = 
-    status === ITINERARY_STATUS.IN_PROGRESS 
-      ? isPastTripEnd 
+  const showCompleteTrip =
+    status === ITINERARY_STATUS.IN_PROGRESS
+      ? isPastTripEnd   // show on last day AND after (>= end date)
       : (status === ITINERARY_STATUS.CONFIRMED && isStrictlyPastTripEnd);
-  
+
   const placesForAiModify = useMemo(() => {
     const map = new Map<string, any>();
     for (const row of tripItems) {
@@ -734,7 +844,7 @@ export default function ItineraryDetailScreen() {
         payload: { unwantedPlaceIds: selectedUnwantedIds },
       });
       setAdjustModalVisible(false);
-    } catch {}
+    } catch { }
   };
 
   const loading = !!itineraryId && (detailLoading || itemsLoading);
@@ -744,8 +854,8 @@ export default function ItineraryDetailScreen() {
   const hasDateRange = !!(detail?.start_date || detail?.end_date);
   const dateRangeLabel = hasDateRange
     ? `${formatHeaderDate(detail?.start_date)} – ${formatHeaderDate(
-        detail?.end_date || detail?.start_date,
-      )}`
+      detail?.end_date || detail?.start_date,
+    )}`
     : "";
   const firstItemWithImage = useMemo(() => {
     return tripItems.find(item => {
@@ -753,8 +863,6 @@ export default function ItineraryDetailScreen() {
       return img && !img.includes("unsplash") && !img.includes("keyword-fallback");
     });
   }, [tripItems, imageUrlCache]);
-
-  const isOwner = detail?.created_by === currentUserId;
 
   if (!itineraryId) {
     return (
@@ -818,10 +926,10 @@ export default function ItineraryDetailScreen() {
 
           <View style={styles.coverCard}>
             {detail?.cover_image_url || detail?.thumbnail_url ? (
-              <Image 
-                source={{ uri: detail.cover_image_url || detail.thumbnail_url || undefined }} 
-                style={styles.coverImage} 
-                contentFit="cover" 
+              <Image
+                source={{ uri: detail.cover_image_url || detail.thumbnail_url || undefined }}
+                style={styles.coverImage}
+                contentFit="cover"
               />
             ) : (
               <LocationImage
@@ -831,7 +939,7 @@ export default function ItineraryDetailScreen() {
                 placeholderIcon="image-outline"
               />
             )}
-            
+
             <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButtonAbsolute}>
               <Ionicons
                 name={isFavorited ? "heart" : "heart-outline"}
@@ -857,7 +965,7 @@ export default function ItineraryDetailScreen() {
             {/* Hàng 1: Các nút công cụ phụ trợ */}
             <View style={styles.toolsRow}>
               <TouchableOpacity
-                onPress={() => setShowExpenses(true)}
+                onPress={() => router.push(`/itinerary/expenses?itineraryId=${itineraryId}`)}
                 style={[styles.actionButton, styles.expenseButton]}
               >
                 <Ionicons name="wallet-outline" size={20} color="#047857" />
@@ -871,7 +979,7 @@ export default function ItineraryDetailScreen() {
                 <Ionicons name="book-outline" size={20} color="#7C3AED" />
                 <Text style={styles.notebookText} numberOfLines={1}>Hướng dẫn</Text>
               </TouchableOpacity>
-              
+
               {(isOwner || status === ITINERARY_STATUS.DRAFT) && canUseAi && (
                 !isSetupMode ? (
                   <TouchableOpacity
@@ -894,7 +1002,7 @@ export default function ItineraryDetailScreen() {
             </View>
 
             {/* Hàng 2: Nút hành động chính (Bắt đầu / Kết thúc) */}
-            {isOwner && (showStartTrip || showCompleteTrip) && (
+            {canControlTrip && (showStartTrip || showCompleteTrip) && (
               <View style={styles.primaryRow}>
                 {showStartTrip && (
                   <TouchableOpacity
@@ -925,11 +1033,14 @@ export default function ItineraryDetailScreen() {
               const dayLabel = formatDayChipLabel(dayKey);
               const mapPins: ItineraryMapLocation[] = itemsForDay
                 .map((row) => {
-                  const lat = row.location?.routable_lat ?? row.location?.lat;
-                  const lng = row.location?.routable_lng ?? row.location?.lng;
-                  if (typeof lat === "number" && typeof lng === "number") {
+                  const rawLat = row.location?.routable_lat ?? row.location?.lat;
+                  const rawLng = row.location?.routable_lng ?? row.location?.lng;
+                  const lat = typeof rawLat === 'string' ? parseFloat(rawLat) : rawLat;
+                  const lng = typeof rawLng === 'string' ? parseFloat(rawLng) : rawLng;
+
+                  if (typeof lat === "number" && typeof lng === "number" && !Number.isNaN(lat) && !Number.isNaN(lng)) {
                     return {
-                      id: row.id,
+                      id: row.id || `pin-${dayKey}-${row.location?.id}`,
                       latitude: lat,
                       longitude: lng,
                       title: row.location?.name || "Địa điểm",
@@ -970,12 +1081,14 @@ export default function ItineraryDetailScreen() {
                         <TripItemCard
                           key={row.id || idx}
                           item={row}
-                          onCheckIn={handleCheckIn}
-                          onRate={handleRate}
+                          onCheckIn={canControlTrip ? handleCheckIn : undefined}
+                          onRate={canEditRating ? handleRate : undefined}
                           isUpdating={updatingItemId === row.id}
                           showMenu={false}
-                          showTimeline={status !== ITINERARY_STATUS.DRAFT && status !== ""}
+                          showTimeline={status !== ITINERARY_STATUS.DRAFT && status !== "" && from !== 'post'}
                           isLast={idx === itemsForDay.length - 1}
+                          isCompleted={status === ITINERARY_STATUS.COMPLETED}
+                          hideStatusBadge={from === 'post'}
                         />
                       )
                     ))
@@ -1005,15 +1118,6 @@ export default function ItineraryDetailScreen() {
           </View>
         </ScrollView>
       )}
-
-      <ExpensesOverlay
-        visible={showExpenses}
-        onClose={() => setShowExpenses(false)}
-        itineraryId={itineraryId || ""}
-        itineraryTitle={title}
-        budget={detail?.budget_estimate}
-        isCompleted={status === ITINERARY_STATUS.COMPLETED}
-      />
 
       <TimePickerModal
         visible={timePickerVisible}
@@ -1077,7 +1181,7 @@ export default function ItineraryDetailScreen() {
             <View className="w-6" />
           </View>
           <ScrollView className="p-4">
-            {aiSuggestMutation.isPending ? <AiLoadingView message="Đang tìm địa điểm thay thế..." /> : 
+            {aiSuggestMutation.isPending ? <AiLoadingView message="Đang tìm địa điểm thay thế..." /> :
               aiSuggestions.length === 0 ? (
                 <View className="py-20 items-center justify-center">
                   <Ionicons name="search-outline" size={48} color="#D1D5DB" />
@@ -1117,17 +1221,17 @@ export default function ItineraryDetailScreen() {
               <>
                 <Text className="mb-4 text-sm text-gray-600">Chọn các địa điểm bạn muốn AI gợi ý thay thế:</Text>
                 {placesForAiModify.map((p) => (
-                  <TouchableOpacity 
-                    key={p.placeId} 
+                  <TouchableOpacity
+                    key={p.placeId}
                     className={`mb-2 flex-row items-center rounded-xl border p-3 ${selectedUnwantedIds.includes(p.placeId) ? "border-primary bg-emerald-50" : "border-gray-200 bg-white"}`}
                     onPress={() => setSelectedUnwantedIds(prev => prev.includes(p.placeId) ? prev.filter(x => x !== p.placeId) : [...prev, p.placeId])}
                   >
                     <Ionicons name={selectedUnwantedIds.includes(p.placeId) ? "checkbox" : "square-outline"} size={24} color={selectedUnwantedIds.includes(p.placeId) ? "#2BB673" : "#9CA3AF"} />
                     {p.imageUrl && (
-                      <Image 
-                        source={{ uri: p.imageUrl }} 
-                        style={{ width: 48, height: 48, borderRadius: 8, marginLeft: 12 }} 
-                        contentFit="cover" 
+                      <Image
+                        source={{ uri: p.imageUrl }}
+                        style={{ width: 48, height: 48, borderRadius: 8, marginLeft: 12 }}
+                        contentFit="cover"
                       />
                     )}
                     <View className="ml-3 flex-1">
@@ -1140,7 +1244,7 @@ export default function ItineraryDetailScreen() {
             )}
           </ScrollView>
           <View className="border-t border-gray-200 p-4">
-            <TouchableOpacity 
+            <TouchableOpacity
               className={`rounded-full py-3.5 ${selectedUnwantedIds.length === 0 || aiModifyMutation.isPending ? "bg-gray-300" : "bg-primary"}`}
               onPress={handleSubmitAiModify}
               disabled={selectedUnwantedIds.length === 0 || aiModifyMutation.isPending}

@@ -986,13 +986,15 @@ export default function GroupChatScreen() {
         </View>
       </View>
 
-      {/* Information Banner - Lịch trình chính thức */}
+      {/* Information Banner - Lịch trình chính thức / Đang diễn ra */}
       {confirmedItinerary && (
         <TouchableOpacity
           activeOpacity={0.8}
           className="overflow-hidden"
           style={{
-            backgroundColor: "rgba(16, 185, 129, 0.7)", // Green CONFIRMED
+            backgroundColor: (confirmedItinerary.raw?.status || "").toUpperCase() === "IN_PROGRESS" 
+              ? "rgba(59, 130, 246, 0.7)" // Blue for IN_PROGRESS
+              : "rgba(16, 185, 129, 0.7)", // Green for CONFIRMED
             width: "100%",
           }}
           onPress={() => {
@@ -1011,9 +1013,13 @@ export default function GroupChatScreen() {
             {/* Text Content */}
             <View className="flex-1 ml-3">
               <View className="flex-row items-center mb-1">
-                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+                <Ionicons 
+                  name={(confirmedItinerary.raw?.status || "").toUpperCase() === "IN_PROGRESS" ? "play-circle" : "checkmark-circle"} 
+                  size={16} 
+                  color="#FFFFFF" 
+                />
                 <Text className="text-sm text-white ml-1 font-medium">
-                  Lịch trình chính thức
+                  {(confirmedItinerary.raw?.status || "").toUpperCase() === "IN_PROGRESS" ? "Đang diễn ra" : "Lịch trình chính thức"}
                 </Text>
               </View>
               <Text className="text-base font-bold text-white mb-1">

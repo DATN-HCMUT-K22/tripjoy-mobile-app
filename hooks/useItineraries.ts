@@ -417,10 +417,10 @@ export function useGroupConfirmedItinerary(groupId: string | undefined) {
 
       const list = Array.isArray(res?.data) ? res.data : [];
 
-      // Tìm itinerary có status CONFIRMED
+      // Tìm itinerary có status CONFIRMED hoặc IN_PROGRESS
       const confirmed = list.find((it) => {
         const status = normalizeStatus(it.status);
-        return status === ITINERARY_STATUS.CONFIRMED;
+        return status === ITINERARY_STATUS.CONFIRMED || status === ITINERARY_STATUS.IN_PROGRESS;
       });
 
       if (!confirmed) return null;
@@ -639,6 +639,44 @@ export function useUpdateItineraryStatus() {
   });
 }
 
+export function useUndoConfirmItinerary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (itinerary: ItineraryResponse) => {
+      if (!itinerary.id) {
+        throw new Error("Missing itinerary id");
+      }
+
+      const res = await itineraryService.updateItineraryStatus(itinerary.id, ITINERARY_STATUS.PENDING);
+      const code = res?.code;
+      if (code === 0 || code === 1000) {
+        return res.data ?? {};
+      }
+      throw new Error(res?.message || "Không thể hoàn tác lịch trình");
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["itineraries"] });
+      if (variables.group_id) {
+        await queryClient.invalidateQueries({
+          queryKey: ["itineraries", "group", variables.group_id],
+        });
+      }
+      showSuccessToast("Đã hoàn tác lịch trình về bản nháp!");
+    },
+    onError: (error: any) => {
+      const errorCode = error.response?.data?.code;
+      let message = error.message || "Hoàn tác lịch trình thất bại";
+
+      if (errorCode === 3004) {
+        message = "Chỉ trưởng nhóm hoặc phó nhóm mới có quyền hoàn tác.";
+      }
+
+      showErrorToast("Lỗi", message);
+    },
+  });
+}
+
 export function useDeleteItinerary() {
   const queryClient = useQueryClient();
 
@@ -709,11 +747,57 @@ export function useUpdateTripItem() {
       }
       throw new Error(res?.message || "Không thể cập nhật địa điểm");
     },
-    onSuccess: (_, { itineraryId }) => {
-      queryClient.invalidateQueries({
-        queryKey: ["itineraries", "detail", itineraryId, "items"],
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({
+        queryKey: ["itineraries", "detail", variables.itineraryId, "items"],
       });
-      showSuccessToast("Đã cập nhật địa điểm");
+      const previousItems = queryClient.getQueryData<TripItemResponse[]>([
+        "itineraries",
+        "detail",
+        variables.itineraryId,
+        "items",
+      ]);
+      if (previousItems) {
+        queryClient.setQueryData<TripItemResponse[]>(
+          ["itineraries", "detail", variables.itineraryId, "items"],
+          (old) =>
+            old?.map((item) =>
+              item.id === variables.tripItemId
+                ? {
+                    ...item,
+                    ...variables.payload,
+                  }
+                : item
+            ) ?? []
+        );
+      }
+      return { previousItems };
+    },
+    onError: (error, variables, context) => {
+      if (context?.previousItems) {
+        queryClient.setQueryData(
+          ["itineraries", "detail", variables.itineraryId, "items"],
+          context.previousItems
+        );
+      }
+      showErrorToast("Lỗi", error.message || "Không thể cập nhật địa điểm");
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["itineraries", "detail", variables.itineraryId, "items"],
+      });
+      
+      const isRating = variables.payload.rating !== undefined;
+      const isCheckIn = variables.payload.status === 'CHECKED_IN';
+      
+      if (isRating) {
+        showSuccessToast("Đã lưu đánh giá");
+      } else if (isCheckIn && Object.keys(variables.payload).length === 1) {
+        // Just checking in, not a full update
+        showSuccessToast("Đã check-in thành công");
+      } else {
+        showSuccessToast("Đã cập nhật địa điểm");
+      }
     },
   });
 }

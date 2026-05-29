@@ -22,15 +22,16 @@ const screenWidth = Dimensions.get('window').width;
 
 interface ItineraryPreviewProps {
   itinerary: Post['itinerary'];
+  postCreatorId: string;
 }
 
-const ItineraryPreview: React.FC<ItineraryPreviewProps> = ({ itinerary }) => {
+const ItineraryPreview: React.FC<ItineraryPreviewProps> = ({ itinerary, postCreatorId }) => {
   const router = useRouter();
 
   if (!itinerary) return null;
 
   const handlePress = () => {
-    router.push(`/itinerary/detail?id=${itinerary.id}` as any);
+    router.push(`/itinerary/detail?id=${itinerary.id}&from=post&postOwnerId=${postCreatorId}` as any);
   };
 
   return (
@@ -398,7 +399,7 @@ export const PostCard = React.memo<PostCardProps>(
           {/* Itinerary Preview */}
           {post.itinerary && (
             <>
-              <ItineraryPreview itinerary={post.itinerary} />
+              <ItineraryPreview itinerary={post.itinerary} postCreatorId={post.creator_id} />
             </>
           )}
 

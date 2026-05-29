@@ -11,6 +11,7 @@ import "react-native-css-interop/jsx-runtime";
 import "react-native-reanimated";
 import "../global.css";
 
+import "@/tasks/geofencingTask"; // Import globally for TaskManager
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { MessageNotificationProvider } from "@/components/chat/MessageNotificationProvider";
 import { SimpleLogoLoading } from "@/components/loading";
@@ -345,52 +346,63 @@ function RootLayoutContent() {
   );
 }
 
-// Cấu hình Toast
-// Cấu hình Toast với style tường minh để đảm bảo màu sắc
 const toastConfig = {
   success: (props: any) => (
     <View 
-      style={{ backgroundColor: '#34B27D', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 6 }}
-      className="flex-row items-center px-4 py-3 rounded-2xl self-center max-w-[92%] min-w-[300px]"
+      style={{ 
+        backgroundColor: '#34B27D', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, 
+        shadowOpacity: 0.15, shadowRadius: 6, elevation: 6,
+        flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
+        borderRadius: 16, alignSelf: 'center', maxWidth: '92%', minWidth: 300,
+      }}
     >
-      <View className="bg-white/20 p-1.5 rounded-full mr-3">
+      <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 6, borderRadius: 9999, marginRight: 12 }}>
         <Ionicons name="checkmark-circle" size={22} color="#fff" />
       </View>
-      <View className="flex-1">
-        <Text className="text-white text-sm font-bold">{props.text1}</Text>
-        {props.text2 && <Text className="text-white text-xs opacity-90 mt-0.5" numberOfLines={2}>{props.text2}</Text>}
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>{props.text1}</Text>
+        {props.text2 && <Text style={{ color: '#fff', fontSize: 12, opacity: 0.9, marginTop: 2 }} numberOfLines={2}>{props.text2}</Text>}
       </View>
     </View>
   ),
   error: (props: any) => (
     <View 
-      style={{ backgroundColor: '#EF4444', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 6 }}
-      className="flex-row items-center px-4 py-3 rounded-2xl self-center max-w-[92%] min-w-[300px]"
+      style={{ 
+        backgroundColor: '#EF4444', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, 
+        shadowOpacity: 0.15, shadowRadius: 6, elevation: 6,
+        flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
+        borderRadius: 16, alignSelf: 'center', maxWidth: '92%', minWidth: 300,
+      }}
     >
-      <View className="bg-white/20 p-1.5 rounded-full mr-3">
+      <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 6, borderRadius: 9999, marginRight: 12 }}>
         <Ionicons name="close-circle" size={22} color="#fff" />
       </View>
-      <View className="flex-1">
-        <Text className="text-white text-sm font-bold">{props.text1}</Text>
-        {props.text2 && <Text className="text-white text-xs opacity-90 mt-0.5" numberOfLines={2}>{props.text2}</Text>}
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>{props.text1}</Text>
+        {props.text2 && <Text style={{ color: '#fff', fontSize: 12, opacity: 0.9, marginTop: 2 }} numberOfLines={2}>{props.text2}</Text>}
       </View>
     </View>
   ),
   info: (props: any) => (
     <View 
-      style={{ backgroundColor: '#3B82F6', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 6 }}
-      className="flex-row items-center px-4 py-3 rounded-2xl self-center max-w-[92%] min-w-[300px]"
+      style={{ 
+        backgroundColor: '#3B82F6', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, 
+        shadowOpacity: 0.15, shadowRadius: 6, elevation: 6,
+        flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
+        borderRadius: 16, alignSelf: 'center', maxWidth: '92%', minWidth: 300,
+      }}
     >
-      <View className="bg-white/20 p-1.5 rounded-full mr-3">
+      <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 6, borderRadius: 9999, marginRight: 12 }}>
         <Ionicons name="information-circle" size={22} color="#fff" />
       </View>
-      <View className="flex-1">
-        <Text className="text-white text-sm font-bold">{props.text1}</Text>
-        {props.text2 && <Text className="text-white text-xs opacity-90 mt-0.5" numberOfLines={2}>{props.text2}</Text>}
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>{props.text1}</Text>
+        {props.text2 && <Text style={{ color: '#fff', fontSize: 12, opacity: 0.9, marginTop: 2 }} numberOfLines={2}>{props.text2}</Text>}
       </View>
     </View>
   ),
 };
+
 
 export default function RootLayout() {
   return (

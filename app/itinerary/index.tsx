@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, FlatList, RefreshControl, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useDeleteItinerary, useItineraries } from '@/hooks/useItineraries';
@@ -142,12 +142,12 @@ export default function ItineraryListScreen() {
       >
         <View style={styles.tabContent}>
           <View style={styles.tabLabelRow}>
-            <View style={[styles.tabLabel, activeTab === 'ongoing' && styles.activeTabLabel]}>
+            <Text style={[styles.tabLabel, activeTab === 'ongoing' && styles.activeTabLabel]}>
               Đang diễn ra
-            </View>
+            </Text>
             {tabCounts.ongoing > 0 && (
               <View style={[styles.badge, activeTab === 'ongoing' && styles.activeBadge]}>
-                <View style={styles.badgeText}>{tabCounts.ongoing}</View>
+                <Text style={styles.badgeText}>{tabCounts.ongoing}</Text>
               </View>
             )}
           </View>
@@ -163,12 +163,12 @@ export default function ItineraryListScreen() {
       >
         <View style={styles.tabContent}>
           <View style={styles.tabLabelRow}>
-            <View style={[styles.tabLabel, activeTab === 'completed' && styles.activeTabLabel]}>
+            <Text style={[styles.tabLabel, activeTab === 'completed' && styles.activeTabLabel]}>
               Đã xong
-            </View>
+            </Text>
             {tabCounts.completed > 0 && (
               <View style={[styles.badge, activeTab === 'completed' && styles.activeBadge]}>
-                <View style={styles.badgeText}>{tabCounts.completed}</View>
+                <Text style={styles.badgeText}>{tabCounts.completed}</Text>
               </View>
             )}
           </View>
@@ -184,12 +184,12 @@ export default function ItineraryListScreen() {
       >
         <View style={styles.tabContent}>
           <View style={styles.tabLabelRow}>
-            <View style={[styles.tabLabel, activeTab === 'draft' && styles.activeTabLabel]}>
+            <Text style={[styles.tabLabel, activeTab === 'draft' && styles.activeTabLabel]}>
               Nháp
-            </View>
+            </Text>
             {tabCounts.draft > 0 && (
               <View style={[styles.badge, activeTab === 'draft' && styles.activeBadge]}>
-                <View style={styles.badgeText}>{tabCounts.draft}</View>
+                <Text style={styles.badgeText}>{tabCounts.draft}</Text>
               </View>
             )}
           </View>

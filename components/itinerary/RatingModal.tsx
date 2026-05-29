@@ -42,14 +42,14 @@ export function RatingModal({
   onClose,
   isLoading = false,
 }: RatingModalProps) {
-  const [rating, setRating] = useState(currentRating);
-  const [review, setReview] = useState(currentReview);
+  const [rating, setRating] = useState(currentRating || 0);
+  const [review, setReview] = useState(currentReview || '');
 
   // Reset form when modal opens
   useEffect(() => {
     if (visible) {
-      setRating(currentRating);
-      setReview(currentReview);
+      setRating(currentRating || 0);
+      setReview(currentReview || '');
     }
   }, [visible, currentRating, currentReview]);
 
@@ -102,7 +102,7 @@ export function RatingModal({
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}
       >
         <TouchableOpacity
@@ -120,7 +120,10 @@ export function RatingModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Location Name */}
             <Text style={styles.locationName}>
               {tripItem.location?.name || 'Địa điểm'}

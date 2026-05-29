@@ -35,6 +35,7 @@ TaskManager.defineTask(GEOFENCING_TASK, async ({ data, error }) => {
             },
             sound: true,
             priority: Notifications.AndroidNotificationPriority.HIGH,
+            channelId: 'geofencing', // Ensure it pops up
           },
           trigger: null, // Send immediately
         });
@@ -61,31 +62,44 @@ export async function startGeofencing(tripItems: TripItemResponse[]): Promise<bo
       return false;
     }
 
-    // Filter today's items only
+    // Filter today's items and items from the entire trip (for active itineraries)
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Use local date string to avoid timezone offset issues (e.g. UTC vs UTC+7)
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const todayItems = tripItems.filter((item) => {
+    let todayItems = tripItems.filter((item) => {
       if (!item.start_time) return false;
-
-      const itemDate = new Date(item.start_time);
-      itemDate.setHours(0, 0, 0, 0);
-
-      return itemDate.getTime() === today.getTime();
+      // Compare only the date portion (first 10 chars of ISO string or local date)
+      const itemDateStr = item.start_time.slice(0, 10);
+      return itemDateStr === todayStr;
     });
 
+    // Fallback: if no items today, monitor ALL pending items in the itinerary
+    // (useful when itinerary dates don't match today, e.g. during demo/testing)
     if (todayItems.length === 0) {
-      console.log('[Geofencing] No items scheduled for today');
+      console.log('[Geofencing] No items for today (' + todayStr + '), falling back to all items');
+      todayItems = tripItems.filter((item) => item.status === 'PENDING' || !item.status);
+    }
+
+    if (todayItems.length === 0) {
+      console.log('[Geofencing] No items available for geofencing');
       return false;
     }
 
     // Create geofence regions (1km radius)
     const regions: Location.LocationRegion[] = todayItems
-      .filter((item) => item.location?.lat && item.location?.lng)
-      .map((item) => ({
+      .map((item) => {
+        const rawLat = item.location?.routable_lat ?? item.location?.lat ?? item.location?.latitude;
+        const rawLng = item.location?.routable_lng ?? item.location?.lng ?? item.location?.longitude;
+        const lat = typeof rawLat === 'string' ? parseFloat(rawLat) : rawLat;
+        const lng = typeof rawLng === 'string' ? parseFloat(rawLng) : rawLng;
+        return { item, lat, lng };
+      })
+      .filter((data) => typeof data.lat === 'number' && typeof data.lng === 'number' && !Number.isNaN(data.lat) && !Number.isNaN(data.lng))
+      .map(({ item, lat, lng }) => ({
         identifier: item.location?.name || `Location ${item.id}`,
-        latitude: item.location!.lat!,
-        longitude: item.location!.lng!,
+        latitude: lat!,
+        longitude: lng!,
         radius: 1000, // 1km radius
         notifyOnEnter: true,
         notifyOnExit: false,

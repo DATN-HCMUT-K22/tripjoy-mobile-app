@@ -108,7 +108,7 @@ export type ExpenseRequest = {
   method?: string;
   trip_item_id?: string | null;      // NEW - Link to trip item
   receipt_image_urls?: string[];     // NEW - Max 3 receipt images
-  paid_by?: string;                  // NEW - UUID of payer (defaults to current user)
+  paid_by_id?: string;                  // NEW - UUID of payer (defaults to current user)
   paid_at?: string;                  // NEW - ISO timestamp (defaults to now)
 };
 
@@ -127,9 +127,19 @@ export type ExpenseResponse = {
   trip_item_id?: string | null;      // NEW - Linked trip item ID
   trip_item?: TripItemResponse;      // NEW - Populated trip item data
   receipt_image_urls?: string[];     // NEW - Receipt images
-  paid_by?: string;                  // NEW - Payer user ID
-  paid_by_user?: UserSimpleResponse; // NEW - Populated payer data
+  paid_by?: UserSimpleResponse | string; // Populated payer data or ID
   paid_at?: string;                  // NEW - Payment timestamp
+};
+
+export type ExpenseSummaryUser = {
+  user: UserSimpleResponse;
+  totalPaid: number;
+  expenseCount: number;
+};
+
+export type ExpenseSummaryResponse = {
+  totalAmount: number;
+  userSummaries: ExpenseSummaryUser[];
 };
 
 export type TripItemRequest = {
@@ -138,6 +148,9 @@ export type TripItemRequest = {
   note?: string;
   location_id?: string;
   place_id?: string;
+  status?: TripItemStatus;
+  rating?: number;
+  review?: string;
 };
 
 export type LocationResponse = {
@@ -299,9 +312,16 @@ export const itineraryService = {
       `/itineraries/${itineraryId}`
     ),
 
-  getExpenses: (itineraryId: string) =>
-    httpClient.get<ApiEnvelope<ExpenseResponse[]>>(
-      `/itineraries/${itineraryId}/expenses`
+  getExpenses: (itineraryId: string, paidById?: string) => {
+    const url = paidById 
+      ? `/itineraries/${itineraryId}/expenses?paidById=${paidById}`
+      : `/itineraries/${itineraryId}/expenses`;
+    return httpClient.get<ApiEnvelope<ExpenseResponse[]>>(url);
+  },
+
+  getExpenseSummary: (itineraryId: string) =>
+    httpClient.get<ApiEnvelope<ExpenseSummaryResponse>>(
+      `/itineraries/${itineraryId}/expenses/summary`
     ),
 
   addExpense: (itineraryId: string, payload: ExpenseRequest) =>

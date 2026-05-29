@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { AppBottomSheet } from '@/components/common/AppBottomSheet';
+import { SlideUpModal } from '@/components/common/SlideUpModal';
 import { TripItemResponse } from '@/services/itineraries';
 
 interface TripItemPickerProps {
@@ -39,22 +39,21 @@ export function TripItemPicker({
   };
 
   return (
-    <AppBottomSheet
+    <SlideUpModal
       visible={visible}
       onClose={onClose}
-      snapPoints={['50%', '75%']}
       title="Chọn địa điểm"
     >
-      <View className="px-4 py-2">
+      <ScrollView style={{ paddingHorizontal: 16, paddingVertical: 8, maxHeight: 400 }}>
         {/* No location option */}
         <TouchableOpacity
           onPress={() => handleSelect(null)}
-          className={`flex-row items-center p-4 mb-3 rounded-xl border-2 ${
-            selectedItemId === null
-              ? 'border-[#2BB673] bg-[#2BB673]/5'
-              : 'border-gray-200 bg-white'
-          }`}
           style={{
+            flexDirection: 'row', alignItems: 'center',
+            padding: 16, marginBottom: 12, borderRadius: 12,
+            borderWidth: 2,
+            borderColor: selectedItemId === null ? '#2BB673' : '#E5E7EB',
+            backgroundColor: selectedItemId === null ? 'rgba(43, 182, 115, 0.05)' : '#FFFFFF',
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.05,
@@ -63,9 +62,11 @@ export function TripItemPicker({
           }}
         >
           <View
-            className={`w-12 h-12 rounded-full items-center justify-center ${
-              selectedItemId === null ? 'bg-[#2BB673]' : 'bg-gray-100'
-            }`}
+            style={{
+              width: 48, height: 48, borderRadius: 9999,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: selectedItemId === null ? '#2BB673' : '#F3F4F6',
+            }}
           >
             <Ionicons
               name="close-circle-outline"
@@ -73,15 +74,13 @@ export function TripItemPicker({
               color={selectedItemId === null ? '#fff' : '#6B7280'}
             />
           </View>
-          <View className="flex-1 ml-3">
+          <View style={{ flex: 1, marginLeft: 12 }}>
             <Text
-              className={`text-base font-semibold ${
-                selectedItemId === null ? 'text-[#2BB673]' : 'text-gray-700'
-              }`}
+              style={{ fontSize: 16, fontWeight: '600', color: selectedItemId === null ? '#2BB673' : '#374151' }}
             >
               Không gắn địa điểm
             </Text>
-            <Text className="text-xs text-gray-500 mt-0.5">
+            <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
               Chi phí chung, không liên quan đến địa điểm cụ thể
             </Text>
           </View>
@@ -91,14 +90,14 @@ export function TripItemPicker({
         </TouchableOpacity>
 
         {/* Trip items list */}
-        <Text className="text-sm font-semibold text-gray-500 mb-2 mt-2">
+        <Text style={{ fontSize: 14, fontWeight: '600', color: '#6B7280', marginBottom: 8, marginTop: 8 }}>
           Các địa điểm trong lịch trình
         </Text>
 
         {tripItems.length === 0 ? (
-          <View className="py-8 items-center">
+          <View style={{ paddingVertical: 32, alignItems: 'center' }}>
             <Ionicons name="location-outline" size={48} color="#D1D5DB" />
-            <Text className="text-gray-400 mt-2 text-sm">
+            <Text style={{ color: '#9CA3AF', marginTop: 8, fontSize: 14 }}>
               Chưa có địa điểm nào
             </Text>
           </View>
@@ -112,12 +111,12 @@ export function TripItemPicker({
               <TouchableOpacity
                 key={item.id}
                 onPress={() => handleSelect(item.id!)}
-                className={`flex-row items-center p-4 mb-2 rounded-xl border ${
-                  isSelected
-                    ? 'border-[#2BB673] bg-[#2BB673]/5'
-                    : 'border-gray-200 bg-white'
-                }`}
                 style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  padding: 16, marginBottom: 8, borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: isSelected ? '#2BB673' : '#E5E7EB',
+                  backgroundColor: isSelected ? 'rgba(43, 182, 115, 0.05)' : '#FFFFFF',
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.05,
@@ -126,9 +125,11 @@ export function TripItemPicker({
                 }}
               >
                 <View
-                  className={`w-12 h-12 rounded-full items-center justify-center ${
-                    isSelected ? 'bg-[#2BB673]' : 'bg-gray-100'
-                  }`}
+                  style={{
+                    width: 48, height: 48, borderRadius: 9999,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: isSelected ? '#2BB673' : '#F3F4F6',
+                  }}
                 >
                   <Ionicons
                     name="location"
@@ -136,17 +137,15 @@ export function TripItemPicker({
                     color={isSelected ? '#fff' : '#6B7280'}
                   />
                 </View>
-                <View className="flex-1 ml-3">
+                <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text
-                    className={`text-base font-semibold ${
-                      isSelected ? 'text-[#2BB673]' : 'text-gray-800'
-                    }`}
+                    style={{ fontSize: 16, fontWeight: '600', color: isSelected ? '#2BB673' : '#1F2937' }}
                     numberOfLines={1}
                   >
                     {locationName}
                   </Text>
                   {timeStr && (
-                    <Text className="text-xs text-gray-500 mt-0.5">
+                    <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
                       {timeStr}
                     </Text>
                   )}
@@ -158,7 +157,7 @@ export function TripItemPicker({
             );
           })
         )}
-      </View>
-    </AppBottomSheet>
+      </ScrollView>
+    </SlideUpModal>
   );
 }
