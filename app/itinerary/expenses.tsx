@@ -66,7 +66,21 @@ export default function ExpensesScreen() {
   const { data: detail, isLoading: detailLoading } = useItineraryDetail(itineraryId);
   const isCompleted = detail?.status === "COMPLETED";
   const { data: expenses = [], isLoading, isError, error, refetch } = useExpenses(itineraryId, filterPaidById);
-  const { data: expenseSummary, isLoading: summaryLoading } = useExpenseSummary(itineraryId);
+  const { data: expenseSummary, isLoading: summaryLoading, error: summaryError } = useExpenseSummary(itineraryId);
+
+  const isHiddenExpense = useMemo(() => {
+    const checkError = (err: any) => {
+      if (!err) return false;
+      return (
+        err.status === 403 ||
+        err.response?.status === 403 ||
+        err.response?.data?.code === 1004 ||
+        err.message?.includes("1004") ||
+        err.message?.toLowerCase().includes("unauthorized")
+      );
+    };
+    return checkError(error) || checkError(summaryError);
+  }, [error, summaryError]);
   const { data: tripItems = [] } = useItineraryTripItems(itineraryId);
   const currentUser = useAppSelector((state) => state.auth.user);
 
@@ -253,6 +267,40 @@ export default function ExpensesScreen() {
 
   const selectedTripItem = tripItems.find(item => item.id === formData.trip_item_id);
   const selectedMember = memberOptions.find(m => m.id === formData.paid_by_id);
+
+  if (isHiddenExpense) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+        <SharedHeader
+          showBackButton={true}
+          centerElement={<Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Chi phí chuyến đi</Text>}
+          withMenuDrawer={false}
+          showBorderBottom={true}
+        />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, backgroundColor: "#FFFFFF" }}>
+          <View style={{
+            width: 80,
+            height: 80,
+            borderRadius: 40,
+            backgroundColor: "#FEF2F2",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 20,
+            borderWidth: 1,
+            borderColor: "#FCA5A5",
+          }}>
+            <Ionicons name="lock-closed" size={36} color="#DC2626" />
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8, textAlign: "center" }}>
+            Chi phí đã bị ẩn
+          </Text>
+          <Text style={{ fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 22 }}>
+            Chi phí chuyến đi này đã được người đăng ẩn đi. Chỉ thành viên chuyến đi mới có quyền xem chi phí.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   if (!itineraryId) {
     return (

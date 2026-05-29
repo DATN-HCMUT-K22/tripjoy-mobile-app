@@ -50,6 +50,8 @@ export interface Post {
   deleted_at?: string;
   deleted_by?: string;
 
+  hide_expense?: boolean;
+
   // Legacy fields for backward compatibility with display layer
   user: User;
   image: string;
@@ -69,6 +71,7 @@ export interface CreatePostRequest {
   hashtags?: string[];
   visibility?: 'PUBLIC' | 'PRIVATE';
   itinerary_id?: string;
+  hide_expense?: boolean;
 }
 
 export type TabType = "popular" | "recent";

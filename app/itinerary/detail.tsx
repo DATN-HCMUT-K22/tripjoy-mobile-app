@@ -163,7 +163,7 @@ function formatItemDateTime(dayKey: string, time: string): string {
 export default function ItineraryDetailScreen() {
   // const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id: itineraryId, from, postOwnerId } = useLocalSearchParams<{ id: string; from?: string; postOwnerId?: string }>();
+  const { id: itineraryId, from, postOwnerId, hideExpense } = useLocalSearchParams<{ id: string; from?: string; postOwnerId?: string; hideExpense?: string }>();
   const currentUserId = useAppSelector((state) => state.auth.user?.id);
   const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
 
@@ -783,7 +783,10 @@ export default function ItineraryDetailScreen() {
     status !== ITINERARY_STATUS.PENDING;
 
   // Group checking for starting/completing the trip
-  const isOwner = detail?.created_by === currentUserId;
+  const isOwner = useMemo(() => {
+    if (!detail?.created_by || !currentUserId) return false;
+    return detail.created_by === currentUserId;
+  }, [detail?.created_by, currentUserId]);
   const { data: group } = useGroup(detail?.group_id || undefined);
   const currentUserRole = group?.members?.find((m) => m.user?.id === currentUserId)?.role || "MEMBER";
 
@@ -792,11 +795,37 @@ export default function ItineraryDetailScreen() {
   // Creator (isOwner) also can control trip, even in group itineraries (in case role hasn't loaded yet)
   const canControlTrip = detail?.group_id ? (isGroupLeaderOrCoLeader || isOwner) : isOwner;
 
+  const isItineraryMember = useMemo(() => {
+    if (isOwner) return true;
+    if (!detail?.group_id) return false;
+    return !!group?.members?.some((m) => m.user?.id === currentUserId);
+  }, [isOwner, detail?.group_id, group?.members, currentUserId]);
+
+  const shouldShowExpenseButton = useMemo(() => {
+    const isHidden = hideExpense === "true";
+    if (isHidden && !isItineraryMember) {
+      return false;
+    }
+    return true;
+  }, [hideExpense, isItineraryMember]);
+
   // Rating editing permissions:
   // If viewed from a post, you can edit if you are the POST owner (regardless of itinerary ownership)
   // If viewed normally, you can edit if you are the ITINERARY owner
   const isPostOwner = postOwnerId ? currentUserId === postOwnerId : false;
   const canEditRating = from === 'post' ? isPostOwner : canControlTrip;
+
+  console.log("\n--- [DEBUG ItineraryDetail] ---");
+  console.log("itineraryId:", itineraryId);
+  console.log("hideExpense param:", hideExpense);
+  console.log("isOwner:", isOwner);
+  console.log("detail.created_by:", detail?.created_by);
+  console.log("currentUserId:", currentUserId);
+  console.log("detail.group_id:", detail?.group_id);
+  console.log("group?.members count:", group?.members?.length);
+  console.log("isItineraryMember:", isItineraryMember);
+  console.log("shouldShowExpenseButton:", shouldShowExpenseButton);
+  console.log("--------------------------------\n");
 
   // Date comparisons for Start/Complete trip
   const now = new Date();
@@ -964,13 +993,15 @@ export default function ItineraryDetailScreen() {
           <View style={styles.actionsContainer}>
             {/* Hàng 1: Các nút công cụ phụ trợ */}
             <View style={styles.toolsRow}>
-              <TouchableOpacity
-                onPress={() => router.push(`/itinerary/expenses?itineraryId=${itineraryId}`)}
-                style={[styles.actionButton, styles.expenseButton]}
-              >
-                <Ionicons name="wallet-outline" size={20} color="#047857" />
-                <Text style={styles.expenseText} numberOfLines={1}>Chi phí</Text>
-              </TouchableOpacity>
+              {shouldShowExpenseButton && (
+                <TouchableOpacity
+                  onPress={() => router.push(`/itinerary/expenses?itineraryId=${itineraryId}`)}
+                  style={[styles.actionButton, styles.expenseButton]}
+                >
+                  <Ionicons name="wallet-outline" size={20} color="#047857" />
+                  <Text style={styles.expenseText} numberOfLines={1}>Chi phí</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 onPress={() => router.push(`/itinerary/notebook?id=${itineraryId}`)}

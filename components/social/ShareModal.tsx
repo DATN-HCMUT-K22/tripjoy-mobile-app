@@ -11,6 +11,7 @@ import {
   Platform,
   TextInput,
   Keyboard,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Image } from "expo-image";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
@@ -113,14 +114,18 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <TouchableOpacity
-        className="flex-1 bg-black/50"
-        activeOpacity={1}
-        onPress={onClose}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
       >
-        <View className="flex-1 justify-end">
-          <TouchableOpacity activeOpacity={1}>
-            <View className="bg-white rounded-t-3xl">
+        <TouchableOpacity
+          className="flex-1 bg-black/50"
+          activeOpacity={1}
+          onPress={onClose}
+        >
+          <View className="flex-1 justify-end">
+            <TouchableOpacity activeOpacity={1}>
+              <View className="bg-white rounded-t-3xl">
               {/* Header */}
               <View className="flex-row items-center justify-between px-6 py-4 border-b border-gray-100">
                 <Text className="text-lg font-semibold text-gray-800">
@@ -248,6 +253,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
