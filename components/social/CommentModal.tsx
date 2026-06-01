@@ -196,7 +196,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
       onChange={handleSheetChanges}
       handleIndicatorStyle={styles.indicator}
       backgroundStyle={styles.background}
-      keyboardBehavior="interactive"
+      keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
     >
       {/* Header */}

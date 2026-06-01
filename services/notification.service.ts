@@ -84,6 +84,20 @@ class NotificationService {
             showBadge: true,
           });
           console.log("[NotificationService] ✅ Android notification channel 'default' configured with MAX importance");
+
+          // Đăng ký kênh geofencing_high cho cảnh báo vị trí nổi (Heads-up)
+          await Notifications.setNotificationChannelAsync("geofencing_high", {
+            name: "Cảnh báo vị trí (Quan trọng)",
+            description: "Thông báo nổi lập tức khi bạn đến gần địa điểm trong lịch trình",
+            importance: Notifications.AndroidImportance.MAX, // MAX = heads-up notification (auto hiển thị banner)
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: "#2BB673",
+            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+            sound: "default",
+            enableVibrate: true,
+            showBadge: true,
+          });
+          console.log("[NotificationService] ✅ Android notification channel 'geofencing_high' configured with MAX importance");
           
           // Verify channel sau khi tạo
           const channelsAfter = await Notifications.getNotificationChannelsAsync();
@@ -229,6 +243,13 @@ class NotificationService {
         return;
       }
 
+      // Xử lý điều hướng khi nhấn thông báo Geofencing
+      if (data.type === 'geofence_enter' && data.itineraryId) {
+        console.log("[NotificationService] Geofence notification clicked, navigating to itinerary:", data.itineraryId);
+        router.push(`/itinerary/detail?id=${data.itineraryId}&autoOpenItemId=${data.tripItemId}` as any);
+        return;
+      }
+
       const chatId = data.chatId || data.conversationId;
       const groupId = data.groupId;
       
@@ -253,6 +274,13 @@ class NotificationService {
 
             if (!additionalData) {
               console.warn("[NotificationService] No additional data in OneSignal notification");
+              return;
+            }
+
+            // Xử lý điều hướng khi nhấn thông báo Geofencing (OneSignal)
+            if (additionalData.type === 'geofence_enter' && additionalData.itineraryId) {
+              console.log("[NotificationService] OneSignal geofence notification clicked, navigating to itinerary:", additionalData.itineraryId);
+              router.push(`/itinerary/detail?id=${additionalData.itineraryId}&autoOpenItemId=${additionalData.tripItemId}` as any);
               return;
             }
 

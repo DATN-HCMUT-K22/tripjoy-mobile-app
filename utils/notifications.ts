@@ -6,7 +6,7 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true, // Enable badge for notification count
     shouldShowBanner: true,
     shouldShowList: true,
   }),
@@ -36,20 +36,39 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Default',
-        importance: Notifications.AndroidImportance.HIGH,
+        importance: Notifications.AndroidImportance.MAX, // MAX = heads-up notification
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#2BB673',
         sound: 'default',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        enableVibrate: true,
+        showBadge: true,
       });
 
       // Create a channel specifically for geofencing notifications
       await Notifications.setNotificationChannelAsync('geofencing', {
         name: 'Thông báo vị trí',
-        importance: Notifications.AndroidImportance.HIGH,
+        importance: Notifications.AndroidImportance.MAX, // MAX = heads-up notification (auto display from top)
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#2BB673',
         sound: 'default',
         description: 'Thông báo khi bạn đến gần địa điểm trong lịch trình',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        enableVibrate: true,
+        showBadge: true,
+      });
+
+      // Kênh thông báo độ ưu tiên cao mới để sửa lỗi immutability của Android
+      await Notifications.setNotificationChannelAsync('geofencing_high', {
+        name: 'Cảnh báo vị trí (Quan trọng)',
+        importance: Notifications.AndroidImportance.MAX, // MAX = heads-up notification (auto hiển thị banner)
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#2BB673',
+        sound: 'default',
+        description: 'Thông báo nổi lập tức khi bạn đến gần địa điểm trong lịch trình',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        enableVibrate: true,
+        showBadge: true,
       });
     }
 

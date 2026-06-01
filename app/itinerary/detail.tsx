@@ -48,6 +48,7 @@ import {
   Animated,
   Easing,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -163,7 +164,7 @@ function formatItemDateTime(dayKey: string, time: string): string {
 export default function ItineraryDetailScreen() {
   // const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id: itineraryId, from, postOwnerId } = useLocalSearchParams<{ id: string; from?: string; postOwnerId?: string }>();
+  const { id: itineraryId, from, postOwnerId, hideExpense, autoOpenItemId } = useLocalSearchParams<{ id: string; from?: string; postOwnerId?: string; hideExpense?: string; autoOpenItemId?: string }>();
   const currentUserId = useAppSelector((state) => state.auth.user?.id);
   const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
 
@@ -258,7 +259,7 @@ export default function ItineraryDetailScreen() {
           // If we already prompted, try to silently start if we have permissions
           const { status: fgStatus } = await Location.getForegroundPermissionsAsync();
           if (fgStatus === 'granted') {
-            const success = await startGeofencing(tripItems);
+            const success = await startGeofencing(tripItems, itineraryId);
             if (success) setGeofencingEnabled(true);
           }
           return;
@@ -315,17 +316,31 @@ export default function ItineraryDetailScreen() {
                   notifiedLocations.current.add(item.id ?? "");
                   const locationName = item.location?.name || `Địa điểm`;
 
-                  await Notifications.scheduleNotificationAsync({
-                    content: {
-                      title: '📍 Bạn đã đến gần địa điểm!',
-                      body: `(DEV) Bạn đang ở gần ${locationName}. Nhấn để check-in ngay!`,
-                      data: {
-                        type: 'geofence_enter',
-                        locationName: locationName,
-                        timestamp: new Date().toISOString(),
-                      },
-                      sound: true,
+                  const notificationContent: Notifications.NotificationContentInput = {
+                    title: '📍 Bạn đã đến gần địa điểm!',
+                    body: `(DEV) Bạn đang ở gần ${locationName}. Nhấn để check-in ngay!`,
+                    data: {
+                      type: 'geofence_enter',
+                      tripItemId: item.id,
+                      itineraryId: itineraryId,
+                      locationName: locationName,
+                      timestamp: new Date().toISOString(),
                     },
+                    sound: true,
+                    priority: Notifications.AndroidNotificationPriority.MAX,
+                  };
+
+                  if (Platform.OS === 'android') {
+                    (notificationContent as any).android = {
+                      channelId: 'geofencing_high',
+                      priority: Notifications.AndroidNotificationPriority.MAX,
+                      sound: true,
+                      vibrate: [0, 250, 250, 250],
+                    };
+                  }
+
+                  await Notifications.scheduleNotificationAsync({
+                    content: notificationContent,
                     trigger: null,
                   });
                 }
@@ -355,11 +370,39 @@ export default function ItineraryDetailScreen() {
   useEffect(() => {
     const cleanup = setupNotificationHandlers((data) => {
       console.log('[Notification] Tapped:', data);
-      // Could navigate to specific trip item or show check-in prompt
+      if (data && data.type === 'geofence_enter' && data.tripItemId) {
+        const targetItem = tripItems.find(item => item.id === data.tripItemId);
+        if (targetItem) {
+          router.push({
+            pathname: "/itinerary/item-detail",
+            params: {
+              itemData: JSON.stringify(targetItem),
+            },
+          });
+        }
+      }
     });
 
     return cleanup;
-  }, []);
+  }, [tripItems]);
+
+  // Phase 5: Auto-open trip item detail when navigated from geofence notification
+  useEffect(() => {
+    if (autoOpenItemId && tripItems.length > 0) {
+      const targetItem = tripItems.find(item => item.id === autoOpenItemId);
+      if (targetItem) {
+        // Clear param to prevent infinite loops or reopening on back navigation
+        router.setParams({ autoOpenItemId: undefined });
+        
+        router.push({
+          pathname: "/itinerary/item-detail",
+          params: {
+            itemData: JSON.stringify(targetItem),
+          },
+        });
+      }
+    }
+  }, [autoOpenItemId, tripItems]);
 
   // Phase 5: Handle accept permissions
   const handleAcceptPermissions = async () => {
@@ -403,7 +446,7 @@ export default function ItineraryDetailScreen() {
               text: 'Tiếp tục',
               onPress: async () => {
                 // Start geofencing anyway (works in foreground)
-                const success = await startGeofencing(tripItems);
+                const success = await startGeofencing(tripItems, itineraryId);
                 if (success) {
                   setGeofencingEnabled(true);
                   showSuccessToast('Đã bật thông báo vị trí', 'Chỉ hoạt động khi ứng dụng mở');
@@ -417,7 +460,7 @@ export default function ItineraryDetailScreen() {
       }
 
       // Step 4: Start geofencing
-      const success = await startGeofencing(tripItems);
+      const success = await startGeofencing(tripItems, itineraryId);
       if (success) {
         setGeofencingEnabled(true);
         showSuccessToast('Đã bật thông báo vị trí', 'Bạn sẽ nhận thông báo khi đến gần địa điểm');
@@ -783,7 +826,10 @@ export default function ItineraryDetailScreen() {
     status !== ITINERARY_STATUS.PENDING;
 
   // Group checking for starting/completing the trip
-  const isOwner = detail?.created_by === currentUserId;
+  const isOwner = useMemo(() => {
+    if (!detail?.created_by || !currentUserId) return false;
+    return detail.created_by === currentUserId;
+  }, [detail?.created_by, currentUserId]);
   const { data: group } = useGroup(detail?.group_id || undefined);
   const currentUserRole = group?.members?.find((m) => m.user?.id === currentUserId)?.role || "MEMBER";
 
@@ -792,11 +838,37 @@ export default function ItineraryDetailScreen() {
   // Creator (isOwner) also can control trip, even in group itineraries (in case role hasn't loaded yet)
   const canControlTrip = detail?.group_id ? (isGroupLeaderOrCoLeader || isOwner) : isOwner;
 
+  const isItineraryMember = useMemo(() => {
+    if (isOwner) return true;
+    if (!detail?.group_id) return false;
+    return !!group?.members?.some((m) => m.user?.id === currentUserId);
+  }, [isOwner, detail?.group_id, group?.members, currentUserId]);
+
+  const shouldShowExpenseButton = useMemo(() => {
+    const isHidden = hideExpense === "true";
+    if (isHidden && !isItineraryMember) {
+      return false;
+    }
+    return true;
+  }, [hideExpense, isItineraryMember]);
+
   // Rating editing permissions:
   // If viewed from a post, you can edit if you are the POST owner (regardless of itinerary ownership)
   // If viewed normally, you can edit if you are the ITINERARY owner
   const isPostOwner = postOwnerId ? currentUserId === postOwnerId : false;
   const canEditRating = from === 'post' ? isPostOwner : canControlTrip;
+
+  console.log("\n--- [DEBUG ItineraryDetail] ---");
+  console.log("itineraryId:", itineraryId);
+  console.log("hideExpense param:", hideExpense);
+  console.log("isOwner:", isOwner);
+  console.log("detail.created_by:", detail?.created_by);
+  console.log("currentUserId:", currentUserId);
+  console.log("detail.group_id:", detail?.group_id);
+  console.log("group?.members count:", group?.members?.length);
+  console.log("isItineraryMember:", isItineraryMember);
+  console.log("shouldShowExpenseButton:", shouldShowExpenseButton);
+  console.log("--------------------------------\n");
 
   // Date comparisons for Start/Complete trip
   const now = new Date();
@@ -964,13 +1036,15 @@ export default function ItineraryDetailScreen() {
           <View style={styles.actionsContainer}>
             {/* Hàng 1: Các nút công cụ phụ trợ */}
             <View style={styles.toolsRow}>
-              <TouchableOpacity
-                onPress={() => router.push(`/itinerary/expenses?itineraryId=${itineraryId}`)}
-                style={[styles.actionButton, styles.expenseButton]}
-              >
-                <Ionicons name="wallet-outline" size={20} color="#047857" />
-                <Text style={styles.expenseText} numberOfLines={1}>Chi phí</Text>
-              </TouchableOpacity>
+              {shouldShowExpenseButton && (
+                <TouchableOpacity
+                  onPress={() => router.push(`/itinerary/expenses?itineraryId=${itineraryId}`)}
+                  style={[styles.actionButton, styles.expenseButton]}
+                >
+                  <Ionicons name="wallet-outline" size={20} color="#047857" />
+                  <Text style={styles.expenseText} numberOfLines={1}>Chi phí</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 onPress={() => router.push(`/itinerary/notebook?id=${itineraryId}`)}

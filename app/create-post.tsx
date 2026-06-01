@@ -20,6 +20,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -29,7 +30,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AttachedMediaGalleryModal } from "@/components/create-post/AttachedMediaGalleryModal";
 import { LoginRequiredModal } from "@/components/common/LoginRequiredModal";
-import { ItineraryCardImage } from "@/components/itinerary/ItineraryCardImage";
+import { ItineraryThumb } from "@/components/itinerary/ItineraryThumb";
 import {
   clearPendingItinerary,
   getPendingItinerary,
@@ -112,6 +113,7 @@ export default function CreatePostScreen() {
   const [privacy, setPrivacy] = useState<PrivacyType>("public");
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [selectedItinerary, setSelectedItinerary] = useState<Itinerary | null>(null);
+  const [hideExpense, setHideExpense] = useState(false);
   const [privacyWidth, setPrivacyWidth] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
@@ -143,6 +145,7 @@ export default function CreatePostScreen() {
       setContent(post.content || post.caption || "");
       setPrivacy(post.visibility === "PRIVATE" ? "private" : "public");
       setHashtags(post.hashtags || []);
+      setHideExpense(!!post.hide_expense);
       
       if (post.media_urls && post.media_urls.length > 0) {
         setSelectedMedia(post.media_urls.map(url => ({
@@ -153,18 +156,33 @@ export default function CreatePostScreen() {
 
       if (post.itinerary) {
         const itFromList = myItineraries.find(x => String(x.id) === String(post.itinerary!.id));
-        setSelectedItinerary(itFromList || (post.itinerary as any as Itinerary));
+        if (itFromList) {
+          setSelectedItinerary(itFromList);
+        } else {
+          const rawIt = post.itinerary as any;
+          setSelectedItinerary({
+            id: rawIt.id,
+            name: rawIt.title || rawIt.name || "Lịch trình",
+            image: rawIt.image || "",
+            startDate: rawIt.startDate || rawIt.start_date || "",
+            endDate: rawIt.endDate || rawIt.end_date || rawIt.startDate || rawIt.start_date || "",
+            duration: rawIt.duration || (rawIt.duration_days ? `${rawIt.duration_days} ngày` : ""),
+            memberCount: rawIt.memberCount || rawIt.member_count || 0,
+            budget: rawIt.budget || rawIt.budget_estimate || 0,
+          } as any);
+        }
       }
     }
   }, [post, isEditing, myItineraries]);
 
-  const formatItineraryDateRange = (start: string, end: string) => {
+  const formatItineraryDateRange = (start?: string, end?: string) => {
+    if (!start) return "— - —";
     const f = (s: string) => {
       const d = new Date(s);
       if (Number.isNaN(d.getTime())) return "—";
       return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
     };
-    return `${f(start)} - ${f(end)}`;
+    return `${f(start)} - ${f(end || start)}`;
   };
 
   // Khi quay lại từ "Chọn lịch trình": đọc pending sau 1 frame để tránh race với router.back().
@@ -359,6 +377,7 @@ export default function CreatePostScreen() {
               hashtags: allHashtags,
               visibility: privacy.toUpperCase() as 'PUBLIC' | 'PRIVATE',
               itinerary_id: selectedItinerary?.id,
+              hide_expense: hideExpense,
             },
           });
         } else {
@@ -368,6 +387,7 @@ export default function CreatePostScreen() {
             hashtags: allHashtags,
             visibility: privacy.toUpperCase() as 'PUBLIC' | 'PRIVATE',
             itinerary_id: selectedItinerary?.id,
+            hide_expense: hideExpense,
           });
         }
       } catch (error: unknown) {
@@ -733,26 +753,17 @@ export default function CreatePostScreen() {
             >
               {selectedItinerary ? (
                 <View style={styles.itineraryCard}>
-                  <ItineraryCardImage
+                  <ItineraryThumb
                     itineraryId={selectedItinerary.id}
-                    defaultImage={selectedItinerary.image?.trim() || undefined}
+                    imageUri={selectedItinerary.image}
                     style={styles.itineraryCardImage}
                   />
                   <View style={styles.itineraryCardBody}>
                     <Text style={styles.itineraryCardTitle} numberOfLines={2}>
-                      {(() => {
-                        const name = (selectedItinerary.name ?? "").trim();
-                        const computedDur = computeDurationLabel(
-                          selectedItinerary.startDate,
-                          selectedItinerary.endDate
-                        );
-                        const dur = computedDur || (selectedItinerary.duration ?? "").trim();
-                        if (name && dur && !name.includes(dur)) return `${name} - ${dur}`;
-                        return name || dur || "Lịch trình";
-                      })()}
+                      {selectedItinerary.name}
                     </Text>
                     <View style={styles.itineraryCardRow}>
-                      <Ionicons name="calendar-outline" size={16} color="#16A34A" />
+                      <Text style={styles.itineraryCardIconEmoji}>📆</Text>
                       <Text style={styles.itineraryCardLabel}>
                         Thời gian:{" "}
                         <Text style={styles.itineraryCardValue}>
@@ -788,6 +799,28 @@ export default function CreatePostScreen() {
                 </View>
               )}
             </TouchableOpacity>
+            {selectedItinerary && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.expenseToggleRow}>
+                  <View style={styles.expenseToggleTextContainer}>
+                    <View style={styles.expenseToggleLabelRow}>
+                      <Ionicons name="lock-closed" size={16} color="#DC2626" style={{ marginRight: 6 }} />
+                      <Text style={styles.expenseToggleLabel}>Ẩn chi phí chuyến đi</Text>
+                    </View>
+                    <Text style={styles.expenseToggleSublabel}>
+                      Chỉ thành viên trong chuyến đi mới xem được
+                    </Text>
+                  </View>
+                  <Switch
+                    value={hideExpense}
+                    onValueChange={setHideExpense}
+                    trackColor={{ false: "#D1D5DB", true: "#34B27D" }}
+                    thumbColor={Platform.OS === "android" ? "#ffffff" : undefined}
+                  />
+                </View>
+              </>
+            )}
           </View>
       </KeyboardAwareScrollView>
 
@@ -1087,56 +1120,50 @@ const styles = StyleSheet.create({
   },
   itineraryCard: {
     flexDirection: "row",
-    alignItems: "stretch",
-    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    padding: 10,
     borderRadius: 12,
-    overflow: "hidden",
-    minHeight: 100,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: "#FFFFFF",
   },
   itineraryCardImage: {
-    width: 84,
-    minHeight: 96,
-    borderTopLeftRadius: 11,
-    borderBottomLeftRadius: 11,
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    marginRight: 12,
   },
   itineraryCardBody: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    justifyContent: "space-between",
   },
   itineraryCardTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#111827",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   itineraryCardRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginBottom: 4,
+    marginBottom: 2,
+  },
+  itineraryCardIconEmoji: {
+    fontSize: 16,
   },
   itineraryCardLabel: {
     fontSize: 13,
-    color: "#4B5563",
-    marginBottom: 2,
+    color: "#6B7280",
   },
   itineraryCardValue: {
-    fontWeight: "700",
+    fontSize: 13,
     color: "#111827",
+    fontWeight: "600",
   },
   itineraryCardBudget: {
-    fontWeight: "700",
-    color: "#16A34A",
     fontSize: 13,
+    color: "#16A34A",
+    fontWeight: "600",
   },
   dropdownContent: {
     position: "absolute",
@@ -1237,5 +1264,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#DC2626",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 12,
+  },
+  expenseToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  expenseToggleTextContainer: {
+    flex: 1,
+    marginRight: 16,
+  },
+  expenseToggleLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  expenseToggleLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  expenseToggleSublabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    lineHeight: 16,
   },
 });

@@ -38,6 +38,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -52,7 +53,7 @@ import {
 import { ImageZoom } from '@likashefqet/react-native-image-zoom';
 import type { FlashListRef } from "@shopify/flash-list";
 import { FlashList } from "@shopify/flash-list";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
 
@@ -149,6 +150,25 @@ export default function GroupChatScreen() {
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
   const [likesModalVisible, setLikesModalVisible] = useState(false);
+  const insets = useSafeAreaInsets();
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
   const [likesModalMessageId, setLikesModalMessageId] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
@@ -1158,9 +1178,15 @@ export default function GroupChatScreen() {
         )}
 
         {/* Input */}
-        <SafeAreaView
-          edges={["bottom"]}
-          style={[styles.inputContainer, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF",
+              borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB",
+              paddingBottom: isKeyboardVisible ? 0 : insets.bottom
+            }
+          ]}
         >
           <View style={styles.inputWrapper}>
             <TouchableOpacity
@@ -1246,7 +1272,7 @@ export default function GroupChatScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </SafeAreaView>
+        </View>
       </KeyboardAvoidingView>
 
       <MessageActionSheet

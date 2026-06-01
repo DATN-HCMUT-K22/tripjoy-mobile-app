@@ -1,7 +1,9 @@
-import * as TaskManager from 'expo-task-manager';
+import { TripItemResponse } from '@/services/itineraries';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
-import { TripItemResponse } from '@/services/itineraries';
+import * as TaskManager from 'expo-task-manager';
+
+import { Platform } from 'react-native';
 
 export const GEOFENCING_TASK = 'BACKGROUND_GEOFENCING';
 
@@ -23,24 +25,60 @@ TaskManager.defineTask(GEOFENCING_TASK, async ({ data, error }) => {
       console.log('[Geofencing] Entered region:', region.identifier);
 
       try {
-        // Send notification
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '📍 Bạn đã đến gần địa điểm!',
-            body: `Bạn đang ở gần ${region.identifier}. Nhấn để check-in ngay!`,
-            data: {
-              type: 'geofence_enter',
-              locationName: region.identifier,
-              timestamp: new Date().toISOString(),
-            },
-            sound: true,
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-            channelId: 'geofencing', // Ensure it pops up
+        // Verify notification permissions before sending
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('[Geofencing] Notification permission not granted, skipping notification');
+          return;
+        }
+
+        const identifier = region.identifier || '';
+        let tripItemId = '';
+        let itineraryId = '';
+        let locationName = identifier;
+
+        try {
+          const parsed = JSON.parse(identifier);
+          tripItemId = parsed.tripItemId || '';
+          itineraryId = parsed.itineraryId || '';
+          locationName = parsed.locationName || identifier;
+        } catch (e) {
+          // Fallback if region.identifier is not a JSON string
+          if (identifier.startsWith('Location ')) {
+            tripItemId = identifier.substring(9);
+          }
+        }
+
+        // Send notification with MAX priority for heads-up display
+        const notificationContent: Notifications.NotificationContentInput = {
+          title: '📍 Bạn đã đến gần địa điểm!',
+          body: `Bạn đang ở gần ${locationName}. Nhấn để check-in ngay!`,
+          data: {
+            type: 'geofence_enter',
+            tripItemId,
+            itineraryId,
+            locationName,
+            timestamp: new Date().toISOString(),
           },
+          sound: true,
+          priority: Notifications.AndroidNotificationPriority.MAX, // MAX priority for heads-up notification
+        };
+
+        if (Platform.OS === 'android') {
+          (notificationContent as any).android = {
+            channelId: 'geofencing_high', // Uses MAX importance channel (geofencing_high)
+            priority: Notifications.AndroidNotificationPriority.MAX,
+            sound: true,
+            vibrate: [0, 250, 250, 250],
+          };
+        }
+
+        await Notifications.scheduleNotificationAsync({
+          content: notificationContent,
           trigger: null, // Send immediately
         });
 
-        console.log('[Geofencing] Notification sent for:', region.identifier);
+        console.log('[Geofencing] Notification sent for:', locationName);
       } catch (notificationError) {
         console.error('[Geofencing] Failed to send notification:', notificationError);
       }
@@ -51,9 +89,10 @@ TaskManager.defineTask(GEOFENCING_TASK, async ({ data, error }) => {
 /**
  * Start geofencing for today's trip items
  * @param tripItems All trip items from the itinerary
+ * @param itineraryId Optional itinerary ID to associate
  * @returns Success status
  */
-export async function startGeofencing(tripItems: TripItemResponse[]): Promise<boolean> {
+export async function startGeofencing(tripItems: TripItemResponse[], itineraryId?: string): Promise<boolean> {
   try {
     // Check if task is already defined
     const isTaskDefined = await TaskManager.isTaskDefined(GEOFENCING_TASK);
@@ -96,14 +135,22 @@ export async function startGeofencing(tripItems: TripItemResponse[]): Promise<bo
         return { item, lat, lng };
       })
       .filter((data) => typeof data.lat === 'number' && typeof data.lng === 'number' && !Number.isNaN(data.lat) && !Number.isNaN(data.lng))
-      .map(({ item, lat, lng }) => ({
-        identifier: item.location?.name || `Location ${item.id}`,
-        latitude: lat!,
-        longitude: lng!,
-        radius: 1000, // 1km radius
-        notifyOnEnter: true,
-        notifyOnExit: false,
-      }));
+      .map(({ item, lat, lng }) => {
+        const locationName = item.location?.name || `Location ${item.id}`;
+        const identifierData = {
+          tripItemId: item.id || '',
+          itineraryId: itineraryId || '',
+          locationName: locationName,
+        };
+        return {
+          identifier: JSON.stringify(identifierData),
+          latitude: lat!,
+          longitude: lng!,
+          radius: 4000, // Keep existing radius
+          notifyOnEnter: true,
+          notifyOnExit: false,
+        };
+      });
 
     if (regions.length === 0) {
       console.log('[Geofencing] No valid locations with coordinates');
