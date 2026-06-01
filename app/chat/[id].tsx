@@ -35,6 +35,7 @@ import Toast from "react-native-toast-message";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -46,7 +47,7 @@ import {
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import type { FlashListProps } from "@shopify/flash-list";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const isApiSuccess = (code?: number) => code === 0 || code === 1000;
 
@@ -107,6 +108,25 @@ export default function ChatScreen() {
   const flashListRef = useRef<FlashList<any> | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const insets = useSafeAreaInsets();
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
   const [likesModalVisible, setLikesModalVisible] = useState(false);
   const [likesModalMessageId, setLikesModalMessageId] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageResponse | null>(null);
@@ -945,9 +965,15 @@ export default function ChatScreen() {
         )}
   
         {/* Input */}
-        <SafeAreaView 
-          edges={["bottom"]} 
-          style={[styles.inputContainer, { backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB" }]}
+        <View 
+          style={[
+            styles.inputContainer, 
+            { 
+              backgroundColor: isDark ? "#1A1A1A" : "#FFFFFF", 
+              borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB",
+              paddingBottom: isKeyboardVisible ? 0 : insets.bottom
+            }
+          ]}
         >
           <View style={styles.inputWrapper}>
           <TouchableOpacity 
@@ -1007,7 +1033,7 @@ export default function ChatScreen() {
             )}
           </TouchableOpacity>
           </View>
-        </SafeAreaView>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Likes Modal */}
@@ -1053,7 +1079,6 @@ export default function ChatScreen() {
              flashListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
           }
         }}
-        onUnpinMessage={handleUnpin}
       />
 
       {/* Report Modal */}

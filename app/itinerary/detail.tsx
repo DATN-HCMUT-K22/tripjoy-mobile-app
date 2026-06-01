@@ -48,6 +48,7 @@ import {
   Animated,
   Easing,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -163,7 +164,7 @@ function formatItemDateTime(dayKey: string, time: string): string {
 export default function ItineraryDetailScreen() {
   // const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id: itineraryId, from, postOwnerId, hideExpense } = useLocalSearchParams<{ id: string; from?: string; postOwnerId?: string; hideExpense?: string }>();
+  const { id: itineraryId, from, postOwnerId, hideExpense, autoOpenItemId } = useLocalSearchParams<{ id: string; from?: string; postOwnerId?: string; hideExpense?: string; autoOpenItemId?: string }>();
   const currentUserId = useAppSelector((state) => state.auth.user?.id);
   const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
 
@@ -258,7 +259,7 @@ export default function ItineraryDetailScreen() {
           // If we already prompted, try to silently start if we have permissions
           const { status: fgStatus } = await Location.getForegroundPermissionsAsync();
           if (fgStatus === 'granted') {
-            const success = await startGeofencing(tripItems);
+            const success = await startGeofencing(tripItems, itineraryId);
             if (success) setGeofencingEnabled(true);
           }
           return;
@@ -315,17 +316,31 @@ export default function ItineraryDetailScreen() {
                   notifiedLocations.current.add(item.id ?? "");
                   const locationName = item.location?.name || `Địa điểm`;
 
-                  await Notifications.scheduleNotificationAsync({
-                    content: {
-                      title: '📍 Bạn đã đến gần địa điểm!',
-                      body: `(DEV) Bạn đang ở gần ${locationName}. Nhấn để check-in ngay!`,
-                      data: {
-                        type: 'geofence_enter',
-                        locationName: locationName,
-                        timestamp: new Date().toISOString(),
-                      },
-                      sound: true,
+                  const notificationContent: Notifications.NotificationContentInput = {
+                    title: '📍 Bạn đã đến gần địa điểm!',
+                    body: `(DEV) Bạn đang ở gần ${locationName}. Nhấn để check-in ngay!`,
+                    data: {
+                      type: 'geofence_enter',
+                      tripItemId: item.id,
+                      itineraryId: itineraryId,
+                      locationName: locationName,
+                      timestamp: new Date().toISOString(),
                     },
+                    sound: true,
+                    priority: Notifications.AndroidNotificationPriority.MAX,
+                  };
+
+                  if (Platform.OS === 'android') {
+                    (notificationContent as any).android = {
+                      channelId: 'geofencing_high',
+                      priority: Notifications.AndroidNotificationPriority.MAX,
+                      sound: true,
+                      vibrate: [0, 250, 250, 250],
+                    };
+                  }
+
+                  await Notifications.scheduleNotificationAsync({
+                    content: notificationContent,
                     trigger: null,
                   });
                 }
@@ -355,11 +370,39 @@ export default function ItineraryDetailScreen() {
   useEffect(() => {
     const cleanup = setupNotificationHandlers((data) => {
       console.log('[Notification] Tapped:', data);
-      // Could navigate to specific trip item or show check-in prompt
+      if (data && data.type === 'geofence_enter' && data.tripItemId) {
+        const targetItem = tripItems.find(item => item.id === data.tripItemId);
+        if (targetItem) {
+          router.push({
+            pathname: "/itinerary/item-detail",
+            params: {
+              itemData: JSON.stringify(targetItem),
+            },
+          });
+        }
+      }
     });
 
     return cleanup;
-  }, []);
+  }, [tripItems]);
+
+  // Phase 5: Auto-open trip item detail when navigated from geofence notification
+  useEffect(() => {
+    if (autoOpenItemId && tripItems.length > 0) {
+      const targetItem = tripItems.find(item => item.id === autoOpenItemId);
+      if (targetItem) {
+        // Clear param to prevent infinite loops or reopening on back navigation
+        router.setParams({ autoOpenItemId: undefined });
+        
+        router.push({
+          pathname: "/itinerary/item-detail",
+          params: {
+            itemData: JSON.stringify(targetItem),
+          },
+        });
+      }
+    }
+  }, [autoOpenItemId, tripItems]);
 
   // Phase 5: Handle accept permissions
   const handleAcceptPermissions = async () => {
@@ -403,7 +446,7 @@ export default function ItineraryDetailScreen() {
               text: 'Tiếp tục',
               onPress: async () => {
                 // Start geofencing anyway (works in foreground)
-                const success = await startGeofencing(tripItems);
+                const success = await startGeofencing(tripItems, itineraryId);
                 if (success) {
                   setGeofencingEnabled(true);
                   showSuccessToast('Đã bật thông báo vị trí', 'Chỉ hoạt động khi ứng dụng mở');
@@ -417,7 +460,7 @@ export default function ItineraryDetailScreen() {
       }
 
       // Step 4: Start geofencing
-      const success = await startGeofencing(tripItems);
+      const success = await startGeofencing(tripItems, itineraryId);
       if (success) {
         setGeofencingEnabled(true);
         showSuccessToast('Đã bật thông báo vị trí', 'Bạn sẽ nhận thông báo khi đến gần địa điểm');

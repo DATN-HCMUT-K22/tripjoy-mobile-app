@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, TouchableOpacity, Text, StyleSheet, TextInput } from "react-native";
+import { View, TouchableOpacity, Text, StyleSheet, TextInput, Keyboard, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +27,25 @@ export const CommentInput = React.forwardRef<any, CommentInputProps>(({
 }, ref) => {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState("");
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  React.useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
   const isValid = text.trim().length > 0 && text.length <= MAX_CHARS;
   const charCount = text.length;
   const isOverLimit = charCount > MAX_CHARS;
@@ -57,7 +76,7 @@ export const CommentInput = React.forwardRef<any, CommentInputProps>(({
   const InputComponent = useBottomSheetInput ? BottomSheetTextInput : TextInput;
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(12, insets.bottom) }]}>
+    <View style={[styles.container, { paddingBottom: isKeyboardVisible ? 12 : Math.max(12, insets.bottom) }]}>
       {/* Reply indicator */}
       {replyToUsername && (
         <View style={styles.replyIndicator}>
