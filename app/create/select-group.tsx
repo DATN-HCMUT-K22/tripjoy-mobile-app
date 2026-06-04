@@ -13,7 +13,7 @@ import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -79,16 +79,18 @@ export default function SelectGroupScreen() {
   const updateItineraryMutation = useUpdateItinerary();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+  const isAutoSubmit = params.autoSubmit === "1";
+  const hasAutoSubmitted = useRef(false);
 
   useEffect(() => {
     const createdGroupId =
       typeof params.createdGroupId === "string" ? params.createdGroupId : "";
-    const shouldAutoSelect = params.autoSelect === "1";
+    const shouldAutoSelect = params.autoSelect === "1" || isAutoSubmit;
     if (!shouldAutoSelect || !createdGroupId || groups.length === 0) return;
     const existsInList = groups.some((g) => g.id === createdGroupId);
     if (!existsInList) return;
     setSelectedGroupId(createdGroupId);
-  }, [groups, params.autoSelect, params.createdGroupId]);
+  }, [groups, params.autoSelect, params.createdGroupId, isAutoSubmit]);
 
   const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -271,7 +273,14 @@ export default function SelectGroupScreen() {
     }
   };
 
-  if (isLoading) {
+  useEffect(() => {
+    if (isAutoSubmit && selectedGroupId && !createItineraryMutation.isPending && !updateItineraryMutation.isPending && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      handleApply();
+    }
+  }, [selectedGroupId, isAutoSubmit, createItineraryMutation.isPending, updateItineraryMutation.isPending]);
+
+  if (isLoading || isAutoSubmit) {
     return (
       <SafeAreaView
         className="flex-1 bg-white"
@@ -280,7 +289,9 @@ export default function SelectGroupScreen() {
         <SelectGroupScreenHeader onBack={() => router.back()} onHome={exitToHome} />
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#34B27D" />
-          <Text className="mt-4 text-gray-500 font-medium">Đang tải danh sách nhóm...</Text>
+          <Text className="mt-4 text-gray-500 font-medium">
+            {isAutoSubmit ? "Đang áp dụng lịch trình..." : "Đang tải danh sách nhóm..."}
+          </Text>
         </View>
       </SafeAreaView>
     );

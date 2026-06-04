@@ -166,6 +166,7 @@ export default function AiItineraryWaitScreen() {
   const completedRef = useRef(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [applyToGroupVisible, setApplyToGroupVisible] = useState(false);
 
   const { width: windowWidth } = useWindowDimensions();
   const carouselWidth = windowWidth - 32; // (padding-x 4 = 16px) * 2 for screen padding
@@ -1003,13 +1004,19 @@ export default function AiItineraryWaitScreen() {
                 activeOpacity={0.8}
                 className="items-center justify-center rounded-full bg-primary py-4 shadow-sm"
                 onPress={() => {
-                  router.push({
-                    pathname: "/create/select-group" as any,
-                    params: { itineraryId: String(itineraryId) },
-                  });
+                  if (tripData.targetGroupId) {
+                    setApplyToGroupVisible(true);
+                  } else {
+                    router.push({
+                      pathname: "/create/select-group" as any,
+                      params: { itineraryId: String(itineraryId) },
+                    });
+                  }
                 }}
               >
-                <Text className="text-base font-semibold text-white">Tiếp tục chọn nhóm du lịch</Text>
+                <Text className="text-base font-semibold text-white">
+                  {tripData.targetGroupId ? "Hoàn tất" : "Tiếp tục chọn nhóm du lịch"}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1050,6 +1057,27 @@ export default function AiItineraryWaitScreen() {
           setSwapConfirmVisible(false);
           setPendingSwap(null);
         }}
+      />
+      <AppDialogModal
+        visible={applyToGroupVisible}
+        variant="info"
+        title="Áp dụng lịch trình"
+        message={tripData.targetGroupName ? `Lịch trình này sẽ được áp dụng trực tiếp cho nhóm du lịch "${tripData.targetGroupName}". Bạn có muốn tiếp tục không?` : "Lịch trình này sẽ được áp dụng trực tiếp cho nhóm du lịch hiện tại của bạn. Bạn có muốn tiếp tục không?"}
+        primaryLabel="Hoàn tất"
+        onPrimaryPress={() => {
+          setApplyToGroupVisible(false);
+          router.push({
+            pathname: "/create/select-group" as any,
+            params: { 
+              itineraryId: String(itineraryId),
+              autoSubmit: "1",
+              createdGroupId: tripData.targetGroupId
+            },
+          });
+        }}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setApplyToGroupVisible(false)}
+        onRequestClose={() => setApplyToGroupVisible(false)}
       />
 
       {/* Edit Item Modal */}

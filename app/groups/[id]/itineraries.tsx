@@ -1,4 +1,5 @@
 import { useGroup } from "@/hooks/useGroups";
+import { useTripSetup } from "@/contexts/TripSetupContext";
 import { useGroupItinerariesByTab, GroupInfoItineraryListItem, useConfirmItinerary, useUndoConfirmItinerary, useDeleteItinerary, ITINERARY_STATUS, useGroupConfirmedItinerary, useItineraryTripItems, PLACEHOLDER_ITINERARY_IMAGE } from "@/hooks/useItineraries";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { isGroupManager } from "@/utils/roleUtils";
@@ -39,6 +40,7 @@ export default function GroupItinerariesScreen() {
   const { data: itinerariesByTab, isLoading: isItinerariesLoading } = useGroupItinerariesByTab(id);
   const { data: confirmedItinerary, isLoading: isConfirmedLoading } = useGroupConfirmedItinerary(id);
   const { data: currentUser } = useCurrentUser();
+  const { resetTripData, setTargetGroup } = useTripSetup();
 
   const isManager = useMemo(() => isGroupManager(group || undefined, currentUser?.id), [group, currentUser]);
   const isLeader = useMemo(() => {
@@ -238,7 +240,11 @@ export default function GroupItinerariesScreen() {
       {isManager && activeTab === "draft" && (
         <TouchableOpacity
           style={styles.createBtn}
-          onPress={() => router.push("/create" as any)}
+          onPress={() => {
+            resetTripData();
+            setTargetGroup(id, group?.name);
+            router.push("/create" as any);
+          }}
         >
           <Text style={styles.createBtnText}>Tạo lịch trình ngay</Text>
         </TouchableOpacity>
@@ -290,7 +296,11 @@ export default function GroupItinerariesScreen() {
         {isManager ? (
           <TouchableOpacity
             style={styles.addBtn}
-            onPress={() => router.push("/create" as any)}
+            onPress={() => {
+              resetTripData();
+              setTargetGroup(id, group?.name);
+              router.push("/create" as any);
+            }}
           >
             <Ionicons name="add-circle" size={32} color="#0D9488" />
           </TouchableOpacity>

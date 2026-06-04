@@ -3,7 +3,7 @@ import { useFeedback } from "@/hooks/useFeedback";
 import { useGuestMode } from "@/hooks/useGuestMode";
 import { FeedbackType } from "@/types/feedback";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -75,7 +75,8 @@ export default function FeedbackScreen() {
 
   if (isGuest) {
     return (
-      <SafeAreaView className="flex-1 bg-[#F5F7FA]" edges={["top", "left", "right"]}>
+      <SafeAreaView className="flex-1 bg-[#F5F7FA]" edges={["left", "right"]}>
+        <Stack.Screen options={{ headerShown: false }} />
         <SharedHeader
           showBackButton={true}
           centerElement={
@@ -113,7 +114,8 @@ export default function FeedbackScreen() {
   const isSubmitting = submitFeedbackMutation.isPending;
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F5F7FA]" edges={["top", "left", "right"]}>
+    <SafeAreaView className="flex-1 bg-[#F5F7FA]" edges={["left", "right"]}>
+      <Stack.Screen options={{ headerShown: false }} />
       <SharedHeader
         showBackButton={true}
         centerElement={

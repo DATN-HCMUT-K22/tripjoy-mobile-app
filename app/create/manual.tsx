@@ -356,6 +356,9 @@ export default function ManualItineraryScreen() {
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<ItineraryItem | null>(null);
 
+  // Apply directly to group modal
+  const [applyToGroupVisible, setApplyToGroupVisible] = useState(false);
+
   // Lưu snapshot của state trước khi điều hướng để có thể revert khi back
   const snapshotRef = useRef<{
     selectedLocationsByDay: Record<string, string[]>;
@@ -1069,13 +1072,17 @@ export default function ManualItineraryScreen() {
           activeOpacity={0.8}
           className="bg-primary rounded-full py-4 items-center justify-center"
           onPress={() => {
-            router.push({
-              pathname: "/create/select-group",
-            } as any);
+            if (tripData.targetGroupId) {
+              setApplyToGroupVisible(true);
+            } else {
+              router.push({
+                pathname: "/create/select-group",
+              } as any);
+            }
           }}
         >
           <Text className="text-white text-base font-semibold">
-            Chọn nhóm du lịch
+            {tripData.targetGroupId ? "Hoàn tất" : "Chọn nhóm du lịch"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1109,6 +1116,26 @@ export default function ManualItineraryScreen() {
           setDeleteConfirmVisible(false);
           setItemToDelete(null);
         }}
+      />
+      <AppDialogModal
+        visible={applyToGroupVisible}
+        variant="info"
+        title="Áp dụng lịch trình"
+        message={tripData.targetGroupName ? `Lịch trình này sẽ được áp dụng trực tiếp cho nhóm du lịch "${tripData.targetGroupName}". Bạn có muốn tiếp tục không?` : "Lịch trình này sẽ được áp dụng trực tiếp cho nhóm du lịch hiện tại của bạn. Bạn có muốn tiếp tục không?"}
+        primaryLabel="Hoàn tất"
+        onPrimaryPress={() => {
+          setApplyToGroupVisible(false);
+          router.push({
+            pathname: "/create/select-group" as any,
+            params: { 
+              autoSubmit: "1",
+              createdGroupId: tripData.targetGroupId
+            },
+          });
+        }}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setApplyToGroupVisible(false)}
+        onRequestClose={() => setApplyToGroupVisible(false)}
       />
     </SafeAreaView>
   );

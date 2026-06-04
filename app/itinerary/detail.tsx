@@ -189,6 +189,7 @@ export default function ItineraryDetailScreen() {
   const [pendingSwap, setPendingSwap] = useState<{ dayKey: string; from: number; to: number } | null>(null);
   const [timeConfirmVisible, setTimeConfirmVisible] = useState(false);
   const [pendingTimeEdit, setPendingTimeEdit] = useState<{ dayKey: string; item: TripItemResponse; newStart: string; newDuration: number } | null>(null);
+  const [applyConfirmVisible, setApplyConfirmVisible] = useState(false);
 
   // Phase 5: Geofencing state
   const [permissionModalVisible, setPermissionModalVisible] = useState(false);
@@ -1034,6 +1035,24 @@ export default function ItineraryDetailScreen() {
           </View>
 
           <View style={styles.actionsContainer}>
+            {/* Banner Apply Lịch trình (Chỉ hiện cho Leader/Co-leader và khi lịch trình đang ở bản nháp) */}
+            {isGroupLeaderOrCoLeader && status === ITINERARY_STATUS.DRAFT && (
+              <TouchableOpacity
+                onPress={() => setApplyConfirmVisible(true)}
+                style={styles.applyButton}
+                activeOpacity={0.8}
+              >
+                <View style={styles.applyIconContainer}>
+                  <Ionicons name="duplicate" size={22} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.applyButtonTitle}>Sử dụng lịch trình này</Text>
+                  <Text style={styles.applyButtonDesc}>Áp dụng vào chuyến đi hiện tại của nhóm</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#FBBF24" />
+              </TouchableOpacity>
+            )}
+
             {/* Hàng 1: Các nút công cụ phụ trợ */}
             <View style={styles.toolsRow}>
               {shouldShowExpenseButton && (
@@ -1163,7 +1182,7 @@ export default function ItineraryDetailScreen() {
                               },
                             });
                           }}
-                          onCheckIn={canControlTrip ? handleCheckIn : undefined}
+                          onCheckIn={canControlTrip && status === ITINERARY_STATUS.IN_PROGRESS ? handleCheckIn : undefined}
                           onRate={canEditRating ? handleRate : undefined}
                           isUpdating={updatingItemId === row.id}
                           showMenu={false}
@@ -1250,6 +1269,21 @@ export default function ItineraryDetailScreen() {
         secondaryLabel="Hủy"
         onSecondaryPress={() => setTimeConfirmVisible(false)}
         onRequestClose={() => setTimeConfirmVisible(false)}
+      />
+
+      <AppDialogModal
+        visible={applyConfirmVisible}
+        variant="info"
+        title="Xác nhận áp dụng"
+        message="Bạn có chắc chắn muốn chốt lịch trình này cho chuyến đi của nhóm?"
+        primaryLabel="Áp dụng"
+        onPrimaryPress={() => {
+          handleUpdateStatus(ITINERARY_STATUS.CONFIRMED);
+          setApplyConfirmVisible(false);
+        }}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setApplyConfirmVisible(false)}
+        onRequestClose={() => setApplyConfirmVisible(false)}
       />
 
       {/* AI Suggestion Modal */}
@@ -1593,5 +1627,38 @@ const styles = StyleSheet.create({
   completeButton: {
     backgroundColor: "#6366F1",
     borderColor: "#4F46E5",
+  },
+  applyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFBEB",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  applyIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#F59E0B",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  applyButtonTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#92400E",
+    marginBottom: 4,
+  },
+  applyButtonDesc: {
+    fontSize: 13,
+    color: "#B45309",
   },
 });

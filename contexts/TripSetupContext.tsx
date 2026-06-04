@@ -19,6 +19,8 @@ export interface TripSetupData {
   peopleQuantity: number;
   startDate: string | null;
   endDate: string | null;
+  targetGroupId: string | null;
+  targetGroupName: string | null;
 }
 
 interface TripSetupContextType {
@@ -34,9 +36,12 @@ interface TripSetupContextType {
   ) => void;
   setTripTypes: (types: string[]) => void;
   setPeopleQuantity: (n: number) => void;
+  setTripTypes: (types: string[]) => void;
+  setPeopleQuantity: (n: number) => void;
   adjustPeopleQuantity: (delta: number) => void;
   setStartDate: (date: string | null) => void;
   setEndDate: (date: string | null) => void;
+  setTargetGroup: (id: string | null, name?: string | null) => void;
   resetTripData: () => void;
 }
 
@@ -59,6 +64,8 @@ export const TripSetupProvider: React.FC<{ children: ReactNode }> = ({
     peopleQuantity: 2,
     startDate: null,
     endDate: null,
+    targetGroupId: null,
+    targetGroupName: null,
   });
 
   const setLocation = (location: Location | null) => {
@@ -158,6 +165,10 @@ export const TripSetupProvider: React.FC<{ children: ReactNode }> = ({
     setTripData((prev) => ({ ...prev, endDate: date }));
   };
 
+  const setTargetGroup = (id: string | null, name?: string | null) => {
+    setTripData((prev) => ({ ...prev, targetGroupId: id, targetGroupName: name || null }));
+  };
+
   const resetTripData = () => {
     setTripData({
       location: null,
@@ -171,6 +182,8 @@ export const TripSetupProvider: React.FC<{ children: ReactNode }> = ({
       peopleQuantity: 2,
       startDate: null,
       endDate: null,
+      targetGroupId: null,
+      targetGroupName: null,
     });
   };
 
@@ -189,6 +202,7 @@ export const TripSetupProvider: React.FC<{ children: ReactNode }> = ({
         adjustPeopleQuantity,
         setStartDate,
         setEndDate,
+        setTargetGroup,
         resetTripData,
       }}
     >
