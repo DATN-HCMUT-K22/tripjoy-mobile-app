@@ -1066,6 +1066,17 @@ export default function ItineraryDetailScreen() {
               )}
 
               <TouchableOpacity
+                onPress={() => router.push({
+                  pathname: "/itinerary/hotels",
+                  params: { id: itineraryId, cityName: detail?.title }
+                })}
+                style={[styles.actionButton, styles.hotelButton]}
+              >
+                <Ionicons name="bed-outline" size={20} color="#DC2626" />
+                <Text style={styles.hotelText} numberOfLines={1}>Khách sạn</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 onPress={() => router.push(`/itinerary/notebook?id=${itineraryId}`)}
                 style={[styles.actionButton, styles.notebookButton]}
               >
@@ -1545,6 +1556,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#065F46",
+  },
+  hotelButton: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FECACA",
+  },
+  hotelText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#991B1B",
   },
   notebookButton: {
     backgroundColor: "#F5F3FF",
