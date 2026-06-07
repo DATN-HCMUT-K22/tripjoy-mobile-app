@@ -19,6 +19,7 @@ import { useGroups } from "@/hooks/useGroups";
 import { useApplyItinerary } from "@/hooks/useSocial";
 import { useRouter } from "expo-router";
 import { trackEvent } from "@/utils/analytics";
+import { useAppDialog } from "@/hooks/useAppDialog";
 import type { Post } from "@/types/social";
 import type { Group } from "@/types/group";
 
@@ -41,6 +42,7 @@ export const ApplyItineraryBottomSheet: React.FC<ApplyItineraryBottomSheetProps>
 
   const { data: groups, isLoading: loadingGroups } = useGroups();
   const { mutate: applyItinerary, isPending } = useApplyItinerary();
+  const { dialog, showError } = useAppDialog();
 
   const [step, setStep] = useState<ApplyItineraryStep>("select-group");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -98,7 +100,7 @@ export const ApplyItineraryBottomSheet: React.FC<ApplyItineraryBottomSheetProps>
 
   const handleApply = useCallback(() => {
     if (!selectedGroupId || !post.itinerary?.id) {
-      Alert.alert("Lỗi", "Vui lòng chọn nhóm và đảm bảo bài viết có lịch trình");
+      showError("Lỗi", "Vui lòng chọn nhóm và đảm bảo bài viết có lịch trình");
       return;
     }
 
@@ -278,6 +280,7 @@ export const ApplyItineraryBottomSheet: React.FC<ApplyItineraryBottomSheetProps>
       onChange={handleSheetChanges}
     >
       <View style={styles.container}>{renderContent()}</View>
+      {dialog}
     </BottomSheet>
   );
 };

@@ -130,6 +130,7 @@ function ItineraryItemCard({
   totalItems,
   onEditTime,
   onDelete,
+  onPressLocation,
   travelFromUser,
 }: {
   item: ItineraryItem;
@@ -137,6 +138,7 @@ function ItineraryItemCard({
   totalItems: number;
   onEditTime: (item: ItineraryItem) => void;
   onDelete: (item: ItineraryItem) => void;
+  onPressLocation?: () => void;
   travelFromUser?: ItineraryItem["transportation"];
 }) {
   const { externalPlacesById } = useItinerary();
@@ -208,7 +210,12 @@ function ItineraryItemCard({
       </View>
 
       {/* Card content */}
-      <View className="flex-1 rounded-xl overflow-hidden bg-white border border-gray-200">
+      <TouchableOpacity 
+        activeOpacity={0.8}
+        onPress={onPressLocation}
+        disabled={!onPressLocation}
+        className="flex-1 rounded-xl overflow-hidden bg-white border border-gray-200"
+      >
         <LocationImage
           location={{
             id: item.locationId,
@@ -299,7 +306,7 @@ function ItineraryItemCard({
             ))}
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -979,6 +986,48 @@ export default function ManualItineraryScreen() {
                   onEditTime={openTimePicker}
                   onDelete={handleDeleteItem}
                   travelFromUser={travelByLocationId?.[item.locationId]}
+                  onPressLocation={() => {
+                    let lat, lng, address;
+                    const attr = mockAttractions.find((a) => a.id === item.locationId);
+                    if (attr) {
+                      lat = attr.latitude;
+                      lng = attr.longitude;
+                      address = attr.address;
+                    } else {
+                      const ext = externalPlacesById[item.locationId];
+                      if (ext) {
+                        lat = ext.latitude;
+                        lng = ext.longitude;
+                        address = ext.address || ext.formattedAddress;
+                      }
+                    }
+
+                    let start_time = undefined;
+                    if (selectedDay?.key && item.timeRange.start) {
+                      start_time = `${selectedDay.key}T${item.timeRange.start}:00`;
+                    }
+
+                    const tripItemRow = {
+                      id: item.id,
+                      start_time,
+                      note: item.note,
+                      location: {
+                        id: item.locationId,
+                        name: item.name,
+                        latitude: lat,
+                        longitude: lng,
+                        full_address: address,
+                        content: item.image,
+                        category: item.category,
+                        provider_id: item.providerId || (item.locationId.startsWith("gmap:") ? item.locationId.substring(5) : (item.locationId.startsWith("ChIJ") ? item.locationId : undefined)),
+                      }
+                    };
+
+                    router.push({
+                      pathname: "/itinerary/item-detail",
+                      params: { itemData: JSON.stringify(tripItemRow) }
+                    } as any);
+                  }}
                 />
               ))}
             </View>

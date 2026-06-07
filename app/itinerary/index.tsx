@@ -3,6 +3,7 @@ import { View, Text, FlatList, RefreshControl, TouchableOpacity, TextInput, Styl
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useDeleteItinerary, useItineraries } from '@/hooks/useItineraries';
+import { useAppDialog } from '@/hooks/useAppDialog';
 import { ItineraryCard } from '@/components/group/ItineraryCard';
 import { StatusBadge } from '@/components/itinerary/StatusBadge';
 import { NoItinerariesEmpty, NoSearchResultsEmpty } from '@/components/shared/EmptyState';
@@ -71,25 +72,24 @@ export default function ItineraryListScreen() {
   const [activeTab, setActiveTab] = useState<ItineraryTab>('ongoing');
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
+  const { dialog, showWarning } = useAppDialog();
 
   const handleDeleteItinerary = (itineraryId: string, name: string) => {
-    Alert.alert(
+    showWarning(
       "Xóa lịch trình",
       `Bạn có chắc chắn muốn xóa lịch trình "${name}"? Hành động này không thể hoàn tác.`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteItinerary(itineraryId);
-            } catch (error) {
-              console.error("Failed to delete itinerary:", error);
-            }
-          },
+      {
+        secondaryLabel: "Hủy",
+        primaryLabel: "Xóa",
+        primaryDestructive: true,
+        onPrimaryPress: async () => {
+          try {
+            await deleteItinerary(itineraryId);
+          } catch (error) {
+            console.error("Failed to delete itinerary:", error);
+          }
         },
-      ]
+      }
     );
   };
 
@@ -265,6 +265,7 @@ export default function ItineraryListScreen() {
       >
         <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
+      {dialog}
     </View>
   );
 }

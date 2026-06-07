@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { showSuccessToast } from "@/utils/toast";
+import { useAppDialog } from "@/hooks/useAppDialog";
 
 const DEFAULT_POST_VISIBILITY_KEY = "@tripjoy:defaultPostVisibility";
 
@@ -22,6 +23,7 @@ export default function PrivacySettingsScreen() {
   const router = useRouter();
   const [defaultVisibility, setDefaultVisibility] = useState<VisibilityType>("PUBLIC");
   const [isLoading, setIsLoading] = useState(true);
+  const { dialog, showError } = useAppDialog();
 
   useEffect(() => {
     loadDefaultVisibility();
@@ -47,7 +49,7 @@ export default function PrivacySettingsScreen() {
       showSuccessToast("Đã lưu", "Cài đặt quyền riêng tư đã được cập nhật");
     } catch (error) {
       console.error("Failed to save default visibility:", error);
-      Alert.alert("Lỗi", "Không thể lưu cài đặt. Vui lòng thử lại.");
+      showError("Lỗi", "Không thể lưu cài đặt. Vui lòng thử lại.");
     }
   };
 
@@ -233,6 +235,7 @@ export default function PrivacySettingsScreen() {
           </View>
         </View>
       </ScrollView>
+      {dialog}
     </SafeAreaView>
   );
 }

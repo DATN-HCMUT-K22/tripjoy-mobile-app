@@ -21,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LocationImage } from "@/components/location/LocationImage";
 import { useIsDark } from "@/hooks/useTheme";
 import { AppDialogModal } from "@/components/common/AppDialogModal";
+import { useAppDialog } from "@/hooks/useAppDialog";
 
 type TabType = "ongoing" | "completed" | "draft";
 
@@ -35,6 +36,7 @@ export default function GroupItinerariesScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("ongoing");
   const [applyConfirmVisible, setApplyConfirmVisible] = useState(false);
   const [itemToApply, setItemToApply] = useState<GroupInfoItineraryListItem | null>(null);
+  const { showWarning, dialog } = useAppDialog();
 
   const { data: group, isLoading: isGroupLoading } = useGroup(id);
   const { data: itinerariesByTab, isLoading: isItinerariesLoading } = useGroupItinerariesByTab(id);
@@ -71,23 +73,21 @@ export default function GroupItinerariesScreen() {
   const { mutateAsync: deleteItinerary } = useDeleteItinerary();
 
   const handleDelete = (itinerary: GroupInfoItineraryListItem) => {
-    Alert.alert(
+    showWarning(
       "Xóa lịch trình",
       `Bạn có chắc chắn muốn xóa lịch trình "${itinerary.name}"? Hành động này không thể hoàn tác.`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteItinerary(itinerary.id);
-            } catch (error) {
-              console.error("Failed to delete itinerary:", error);
-            }
-          },
+      {
+        secondaryLabel: "Hủy",
+        primaryLabel: "Xóa",
+        primaryDestructive: true,
+        onPrimaryPress: async () => {
+          try {
+            await deleteItinerary(itinerary.id);
+          } catch (error) {
+            console.error("Failed to delete itinerary:", error);
+          }
         },
-      ]
+      }
     );
   };
 
@@ -97,24 +97,22 @@ export default function GroupItinerariesScreen() {
   }, [itinerariesByTab, activeTab]);
 
   const handleUndoConfirm = (itinerary: GroupInfoItineraryListItem) => {
-    Alert.alert(
+    showWarning(
       "Hoàn tác lịch trình",
       `Bạn có chắc chắn muốn hoàn tác lịch trình "${itinerary.name}" về bản nháp? Hành động này sẽ chuyển trạng thái về chưa xác nhận.`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Hoàn tác",
-          style: "destructive",
-          onPress: async () => {
-            if (!itinerary.raw) return;
-            try {
-              await undoConfirmItinerary(itinerary.raw);
-            } catch (err) {
-              // error handled by hook
-            }
-          },
+      {
+        secondaryLabel: "Hủy",
+        primaryLabel: "Hoàn tác",
+        primaryDestructive: true,
+        onPrimaryPress: async () => {
+          if (!itinerary.raw) return;
+          try {
+            await undoConfirmItinerary(itinerary.raw);
+          } catch (err) {
+            // error handled by hook
+          }
         },
-      ]
+      }
     );
   };
 
@@ -366,6 +364,7 @@ export default function GroupItinerariesScreen() {
           setItemToApply(null);
         }}
       />
+      {dialog}
     </SafeAreaView>
   );
 }

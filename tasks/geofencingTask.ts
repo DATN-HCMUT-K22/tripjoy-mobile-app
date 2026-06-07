@@ -2,6 +2,7 @@ import { TripItemResponse } from '@/services/itineraries';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Platform } from 'react-native';
 
@@ -33,17 +34,26 @@ TaskManager.defineTask(GEOFENCING_TASK, async ({ data, error }) => {
         }
 
         const identifier = region.identifier || '';
-        let tripItemId = '';
+        let tripItemId = identifier;
         let itineraryId = '';
-        let locationName = identifier;
+        let locationName = 'địa điểm trong lịch trình';
 
         try {
-          const parsed = JSON.parse(identifier);
-          tripItemId = parsed.tripItemId || '';
-          itineraryId = parsed.itineraryId || '';
-          locationName = parsed.locationName || identifier;
+          const metaStr = await AsyncStorage.getItem(`geofence_meta_${identifier}`);
+          if (metaStr) {
+            const parsed = JSON.parse(metaStr);
+            tripItemId = parsed.tripItemId || identifier;
+            itineraryId = parsed.itineraryId || '';
+            locationName = parsed.locationName || locationName;
+          } else {
+            // Fallback for old JSON identifiers if they somehow persist
+            const parsed = JSON.parse(identifier);
+            tripItemId = parsed.tripItemId || identifier;
+            itineraryId = parsed.itineraryId || '';
+            locationName = parsed.locationName || identifier;
+          }
         } catch (e) {
-          // Fallback if region.identifier is not a JSON string
+          // Fallback if region.identifier is not a JSON string and no meta found
           if (identifier.startsWith('Location ')) {
             tripItemId = identifier.substring(9);
           }
@@ -142,8 +152,14 @@ export async function startGeofencing(tripItems: TripItemResponse[], itineraryId
           itineraryId: itineraryId || '',
           locationName: locationName,
         };
+        
+        // Save metadata to AsyncStorage to avoid Android's 100 character limit on requestId
+        if (item.id) {
+          AsyncStorage.setItem(`geofence_meta_${item.id}`, JSON.stringify(identifierData)).catch(console.error);
+        }
+
         return {
-          identifier: JSON.stringify(identifierData),
+          identifier: item.id || '',
           latitude: lat!,
           longitude: lng!,
           radius: 4000, // Keep existing radius

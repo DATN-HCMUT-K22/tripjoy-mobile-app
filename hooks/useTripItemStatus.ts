@@ -29,52 +29,52 @@ export function useUpdateTripItemStatus() {
         queryKey: ['itineraries', 'detail', variables.itineraryId, 'items'],
       });
 
-      // Snapshot previous value
-      const previousItems = queryClient.getQueryData<TripItemResponse[]>([
-        'itineraries',
-        'detail',
-        variables.itineraryId,
-        'items',
-      ]);
+      // Optimistically update to the new value using setQueriesData for safe key matching
+      queryClient.setQueriesData<TripItemResponse[]>(
+        { queryKey: ['itineraries', 'detail', variables.itineraryId, 'items'] },
+        (old) => {
+          if (!old) return old;
+          return old.map((item) =>
+            item.id === variables.tripItemId
+              ? {
+                  ...item,
+                  status: variables.payload.status,
+                  rating: variables.payload.rating,
+                  review: variables.payload.review,
+                  checked_in_at:
+                    variables.payload.status === 'CHECKED_IN'
+                      ? new Date().toISOString()
+                      : item.checked_in_at,
+                }
+              : item
+          );
+        }
+      );
 
-      // Optimistically update to the new value
-      if (previousItems) {
-        queryClient.setQueryData<TripItemResponse[]>(
-          ['itineraries', 'detail', variables.itineraryId, 'items'],
-          (old) =>
-            old?.map((item) =>
-              item.id === variables.tripItemId
-                ? {
-                    ...item,
-                    status: variables.payload.status,
-                    rating: variables.payload.rating,
-                    review: variables.payload.review,
-                    checked_in_at:
-                      variables.payload.status === 'CHECKED_IN'
-                        ? new Date().toISOString()
-                        : item.checked_in_at,
-                  }
-                : item
-            ) ?? []
-        );
-      }
-
-      return { previousItems };
+      // Snapshot previous value for rollback is harder with setQueriesData, 
+      // but we can just invalidate on error instead of manually rolling back.
+      return {};
     },
 
     onError: (error, variables, context) => {
-      // Rollback on error
-      if (context?.previousItems) {
-        queryClient.setQueryData(
-          ['itineraries', 'detail', variables.itineraryId, 'items'],
-          context.previousItems
-        );
-      }
+      // Rollback on error by invalidating the query
+      queryClient.invalidateQueries({
+        queryKey: ['itineraries', 'detail', variables.itineraryId, 'items'],
+      });
       showErrorToast('Lỗi', error);
     },
 
     onSuccess: (data, variables) => {
-      // Invalidate to ensure fresh data
+      // Direct update to ensure UI updates immediately with new data
+      queryClient.setQueriesData<TripItemResponse[]>(
+        { queryKey: ['itineraries', 'detail', variables.itineraryId, 'items'] },
+        (old) => {
+          if (!old) return old;
+          return old.map((item) => (item.id === variables.tripItemId ? data : item));
+        }
+      );
+
+      // Still invalidate in the background just in case
       queryClient.invalidateQueries({
         queryKey: ['itineraries', 'detail', variables.itineraryId, 'items'],
       });

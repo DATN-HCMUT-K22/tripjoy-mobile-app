@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import { ReportModal } from './ReportModal';
 import { ContentType } from '@/types/report';
+import { useAppDialog } from '@/hooks/useAppDialog';
 
 interface PostActionsMenuProps {
   post: Post;
@@ -20,6 +21,7 @@ export const PostActionsMenu: React.FC<PostActionsMenuProps> = ({ post, visible,
   const deleteMutation = useDeletePost();
   const router = useRouter();
   const [showReportModal, setShowReportModal] = useState(false);
+  const { dialog, showWarning } = useAppDialog();
 
   const handleEdit = () => {
     onClose();
@@ -30,27 +32,22 @@ export const PostActionsMenu: React.FC<PostActionsMenuProps> = ({ post, visible,
   };
 
   const handleDelete = () => {
-    Alert.alert(
+    showWarning(
       'Xóa bài viết',
       'Bạn có chắc chắn muốn xóa bài viết này?',
-      [
-        {
-          text: 'Hủy',
-          style: 'cancel',
+      {
+        secondaryLabel: 'Hủy',
+        primaryLabel: 'Xóa',
+        primaryDestructive: true,
+        onPrimaryPress: async () => {
+          onClose();
+          try {
+            await deleteMutation.mutateAsync(post.id);
+          } catch (error) {
+            console.error('Delete post error:', error);
+          }
         },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: async () => {
-            onClose();
-            try {
-              await deleteMutation.mutateAsync(post.id);
-            } catch (error) {
-              console.error('Delete post error:', error);
-            }
-          },
-        },
-      ]
+      }
     );
   };
 
@@ -121,6 +118,7 @@ export const PostActionsMenu: React.FC<PostActionsMenuProps> = ({ post, visible,
         contentType={ContentType.POST}
         contentTitle={post.content?.substring(0, 50)}
       />
+      {dialog}
     </Modal>
   );
 };

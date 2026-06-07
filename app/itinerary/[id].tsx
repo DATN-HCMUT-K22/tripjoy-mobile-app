@@ -794,6 +794,12 @@ export default function ItineraryDetailScreen() {
                               }}
                               onSuggest={() => handleOpenAiSuggest(row)}
                               onEdit={() => openTimePicker(dayKey, row)}
+                              onPressLocation={() => {
+                                router.push({
+                                  pathname: "/itinerary/item-detail",
+                                  params: { itemData: JSON.stringify(row) },
+                                });
+                              }}
                             />
                           );
                         })}

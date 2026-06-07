@@ -1,5 +1,6 @@
 import { UserSimpleResponse } from "@/types/search";
 import { ApiResponse, User, UserPublicProfile } from "@/types/user";
+import { PageResponse, ModerationActionResponse } from "@/types/moderation";
 import { httpClient } from "./http/client";
 
 export interface GetUsersResponse {
@@ -149,4 +150,14 @@ export const getUserProfile = async (userId: string): Promise<UserPublicProfile>
     createdAt: data.created_at || data.createdAt,
   };
 };
+
+/**
+ * Lấy lịch sử vi phạm của user hiện tại
+ * GET /users/me/moderations
+ */
+export const getMyModerationHistory = (page: number = 0, size: number = 20) =>
+  httpClient.get<ApiResponse<PageResponse<ModerationActionResponse>>>(`/users/me/moderations`, {
+    params: { page, size, sort: "createdAt,desc" }
+  });
+
 

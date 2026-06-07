@@ -46,6 +46,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Easing,
   Modal,
   Platform,
@@ -167,6 +168,7 @@ export default function ItineraryDetailScreen() {
   const { id: itineraryId, from, postOwnerId, hideExpense, autoOpenItemId } = useLocalSearchParams<{ id: string; from?: string; postOwnerId?: string; hideExpense?: string; autoOpenItemId?: string }>();
   const currentUserId = useAppSelector((state) => state.auth.user?.id);
   const [imageUrlCache, setImageUrlCache] = useState<Record<string, string>>({});
+  const { showWarning, showError, dialog, showInfo } = useAppDialog();
 
   // Setup Mode State
   const [isSetupMode, setIsSetupMode] = useState(false);
@@ -414,10 +416,9 @@ export default function ItineraryDetailScreen() {
       // Step 1: Request notification permissions
       const notificationGranted = await requestNotificationPermissions();
       if (!notificationGranted) {
-        Alert.alert(
+        showWarning(
           'Cần quyền thông báo',
-          'Vui lòng cho phép thông báo trong cài đặt để nhận cảnh báo vị trí.',
-          [{ text: 'OK' }]
+          'Vui lòng cho phép thông báo trong cài đặt để nhận cảnh báo vị trí.'
         );
         setPermissionModalVisible(false);
         return;
@@ -426,10 +427,9 @@ export default function ItineraryDetailScreen() {
       // Step 2: Request foreground location permission
       const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
       if (foregroundStatus !== 'granted') {
-        Alert.alert(
+        showWarning(
           'Cần quyền vị trí',
-          'Vui lòng cho phép truy cập vị trí trong cài đặt.',
-          [{ text: 'OK' }]
+          'Vui lòng cho phép truy cập vị trí trong cài đặt.'
         );
         setPermissionModalVisible(false);
         return;
@@ -439,23 +439,21 @@ export default function ItineraryDetailScreen() {
       const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
       if (backgroundStatus !== 'granted') {
         // Fallback: Still allow but warn user
-        Alert.alert(
+        showWarning(
           'Quyền vị trí nền bị từ chối',
           'Thông báo chỉ hoạt động khi ứng dụng đang mở. Để nhận thông báo khi ứng dụng đóng, vui lòng bật "Luôn luôn" trong cài đặt vị trí.',
-          [
-            {
-              text: 'Tiếp tục',
-              onPress: async () => {
-                // Start geofencing anyway (works in foreground)
-                const success = await startGeofencing(tripItems, itineraryId);
-                if (success) {
-                  setGeofencingEnabled(true);
-                  showSuccessToast('Đã bật thông báo vị trí', 'Chỉ hoạt động khi ứng dụng mở');
-                }
-                setPermissionModalVisible(false);
-              },
+          {
+            primaryLabel: 'Tiếp tục',
+            onPrimaryPress: async () => {
+              // Start geofencing anyway (works in foreground)
+              const success = await startGeofencing(tripItems, itineraryId);
+              if (success) {
+                setGeofencingEnabled(true);
+                showSuccessToast('Đã bật thông báo vị trí', 'Chỉ hoạt động khi ứng dụng mở');
+              }
+              setPermissionModalVisible(false);
             },
-          ]
+          }
         );
         return;
       }
@@ -466,20 +464,18 @@ export default function ItineraryDetailScreen() {
         setGeofencingEnabled(true);
         showSuccessToast('Đã bật thông báo vị trí', 'Bạn sẽ nhận thông báo khi đến gần địa điểm');
       } else {
-        Alert.alert(
+        showInfo(
           'Không thể bật thông báo',
-          'Không có địa điểm nào được lên lịch cho hôm nay.',
-          [{ text: 'OK' }]
+          'Không có địa điểm nào được lên lịch cho hôm nay.'
         );
       }
 
       setPermissionModalVisible(false);
     } catch (error) {
       console.error('[Geofencing] Permission error:', error);
-      Alert.alert(
+      showError(
         'Lỗi',
-        'Không thể thiết lập thông báo vị trí. Vui lòng thử lại.',
-        [{ text: 'OK' }]
+        'Không thể thiết lập thông báo vị trí. Vui lòng thử lại.'
       );
       setPermissionModalVisible(false);
     }
@@ -1054,11 +1050,16 @@ export default function ItineraryDetailScreen() {
             )}
 
             {/* Hàng 1: Các nút công cụ phụ trợ */}
-            <View style={styles.toolsRow}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={{ flexGrow: 0, marginBottom: 20, marginHorizontal: -16 }}
+              contentContainerStyle={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16 }}
+            >
               {shouldShowExpenseButton && (
                 <TouchableOpacity
                   onPress={() => router.push(`/itinerary/expenses?itineraryId=${itineraryId}`)}
-                  style={[styles.actionButton, styles.expenseButton]}
+                  style={[styles.actionButton, styles.expenseButton, { flex: 0, width: (Dimensions.get('window').width - 32 - 20) / 3 }]}
                 >
                   <Ionicons name="wallet-outline" size={20} color="#047857" />
                   <Text style={styles.expenseText} numberOfLines={1}>Chi phí</Text>
@@ -1066,8 +1067,19 @@ export default function ItineraryDetailScreen() {
               )}
 
               <TouchableOpacity
+                onPress={() => router.push({
+                  pathname: "/itinerary/hotels",
+                  params: { id: itineraryId, cityName: detail?.title }
+                })}
+                style={[styles.actionButton, styles.hotelButton, { flex: 0, width: (Dimensions.get('window').width - 32 - 20) / 3 }]}
+              >
+                <Ionicons name="bed-outline" size={20} color="#DC2626" />
+                <Text style={styles.hotelText} numberOfLines={1}>Khách sạn</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 onPress={() => router.push(`/itinerary/notebook?id=${itineraryId}`)}
-                style={[styles.actionButton, styles.notebookButton]}
+                style={[styles.actionButton, styles.notebookButton, { flex: 0, width: (Dimensions.get('window').width - 32 - 20) / 3 }]}
               >
                 <Ionicons name="book-outline" size={20} color="#7C3AED" />
                 <Text style={styles.notebookText} numberOfLines={1}>Hướng dẫn</Text>
@@ -1077,7 +1089,7 @@ export default function ItineraryDetailScreen() {
                 !isSetupMode ? (
                   <TouchableOpacity
                     onPress={() => setIsSetupMode(true)}
-                    style={[styles.actionButton, styles.setupButton]}
+                    style={[styles.actionButton, styles.setupButton, { flex: 0, width: (Dimensions.get('window').width - 32 - 20) / 3 }]}
                   >
                     <Ionicons name="settings-outline" size={20} color="#2563EB" />
                     <Text style={styles.setupText} numberOfLines={1}>Thiết lập</Text>
@@ -1085,14 +1097,14 @@ export default function ItineraryDetailScreen() {
                 ) : (
                   <TouchableOpacity
                     onPress={() => handleSaveSetup()}
-                    style={[styles.actionButton, styles.saveButton]}
+                    style={[styles.actionButton, styles.saveButton, { flex: 0, width: (Dimensions.get('window').width - 32 - 20) / 3 }]}
                   >
-                    <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
                     <Text style={styles.saveText} numberOfLines={1}>Xong</Text>
                   </TouchableOpacity>
                 )
               )}
-            </View>
+            </ScrollView>
 
             {/* Hàng 2: Nút hành động chính (Bắt đầu / Kết thúc) */}
             {canControlTrip && (showStartTrip || showCompleteTrip) && (
@@ -1169,6 +1181,12 @@ export default function ItineraryDetailScreen() {
                           onDelete={() => deleteItem(dayKey, row.id, idx, row.location?.name || row.note)}
                           onSuggest={() => handleOpenAiSuggest(row)}
                           onEdit={() => openTimePicker(dayKey, row)}
+                          onPressLocation={() => {
+                            router.push({
+                              pathname: "/itinerary/item-detail",
+                              params: { itemData: JSON.stringify(row) },
+                            });
+                          }}
                         />
                       ) : (
                         <TripItemCard
@@ -1377,6 +1395,7 @@ export default function ItineraryDetailScreen() {
         onAccept={handleAcceptPermissions}
         onDecline={handleDeclinePermissions}
       />
+      {dialog}
     </View>
   );
 }
@@ -1545,6 +1564,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#065F46",
+  },
+  hotelButton: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FECACA",
+  },
+  hotelText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#991B1B",
   },
   notebookButton: {
     backgroundColor: "#F5F3FF",

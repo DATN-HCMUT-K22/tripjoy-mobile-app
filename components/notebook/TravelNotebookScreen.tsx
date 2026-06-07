@@ -15,6 +15,7 @@ import { NotebookEmptyState } from "./EmptyState";
 import { NotebookGeneratingState } from "./GeneratingState";
 import { NotebookContent } from "./NotebookContent";
 import { timeAgo } from "@/utils/format";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 
 interface TravelNotebookScreenProps {
   itineraryId: string;
@@ -26,6 +27,7 @@ export function TravelNotebookScreen({
   itineraryName,
 }: TravelNotebookScreenProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRegenerateModalVisible, setIsRegenerateModalVisible] = useState(false);
 
   // Fetch notebook data
   const {
@@ -58,24 +60,16 @@ export function TravelNotebookScreen({
    * Handle regenerate notebook (with confirmation)
    */
   const handleRegenerate = () => {
-    Alert.alert(
-      "Làm mới hướng dẫn?",
-      "AI sẽ tạo nội dung mới. Nội dung cũ sẽ bị thay thế. Quá trình này mất khoảng 20 giây.",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Tiếp tục",
-          style: "default",
-          onPress: async () => {
-            try {
-              await regenerateMutation.mutateAsync(itineraryId);
-            } catch (err) {
-              console.error("[TravelNotebookScreen] Regenerate error:", err);
-            }
-          },
-        },
-      ]
-    );
+    setIsRegenerateModalVisible(true);
+  };
+
+  const confirmRegenerate = async () => {
+    setIsRegenerateModalVisible(false);
+    try {
+      await regenerateMutation.mutateAsync(itineraryId);
+    } catch (err) {
+      console.error("[TravelNotebookScreen] Regenerate error:", err);
+    }
   };
 
   /**
@@ -171,6 +165,18 @@ export function TravelNotebookScreen({
       >
         {notebook && <NotebookContent notebook={notebook} />}
       </ScrollView>
+
+      <AppDialogModal
+        visible={isRegenerateModalVisible}
+        onRequestClose={() => setIsRegenerateModalVisible(false)}
+        title="Làm mới hướng dẫn?"
+        message="AI sẽ tạo nội dung mới. Nội dung cũ sẽ bị thay thế. Quá trình này mất khoảng 20 giây."
+        variant="warning"
+        primaryLabel="Tiếp tục"
+        onPrimaryPress={confirmRegenerate}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setIsRegenerateModalVisible(false)}
+      />
     </View>
   );
 }

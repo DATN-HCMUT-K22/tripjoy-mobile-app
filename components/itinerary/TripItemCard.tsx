@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState, useCallback } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { RatingModal } from './RatingModal';
+import { useAppDialog } from '@/hooks/useAppDialog';
 
 type TripItemCardProps = {
   item: TripItemResponse;
@@ -110,10 +111,26 @@ export function TripItemCard({
   hideStatusBadge = false,
 }: TripItemCardProps) {
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [localAction, setLocalAction] = useState<TripItemStatus | null>(null);
+  const { dialog, showWarning } = useAppDialog();
+
+  // Clear local action when global updating is done
+  React.useEffect(() => {
+    if (!isUpdating) {
+      setLocalAction(null);
+    }
+  }, [isUpdating]);
 
   const location = item.location;
   const status = item.status || 'PENDING';
   const statusStyle = STATUS_STYLES[status];
+
+  const handleStatusAction = useCallback((newStatus: TripItemStatus) => {
+    if (onCheckIn && item.id) {
+      setLocalAction(newStatus);
+      onCheckIn(item.id, newStatus);
+    }
+  }, [onCheckIn, item.id]);
 
   // Memoized handlers for performance
   const handleOpenRating = useCallback(() => {
@@ -145,17 +162,15 @@ export function TripItemCard({
               {
                 text: 'Xóa',
                 onPress: () => {
-                  Alert.alert(
+                  showWarning(
                     'Xác nhận xóa',
                     `Bạn có chắc muốn xóa "${location?.name || 'hoạt động này'}"?`,
-                    [
-                      { text: 'Hủy', style: 'cancel' },
-                      {
-                        text: 'Xóa',
-                        style: 'destructive',
-                        onPress: onDelete,
-                      },
-                    ]
+                    {
+                      secondaryLabel: 'Hủy',
+                      primaryLabel: 'Xóa',
+                      primaryDestructive: true,
+                      onPrimaryPress: onDelete,
+                    }
                   );
                 },
                 style: 'destructive' as const,
@@ -204,6 +219,7 @@ export function TripItemCard({
           styles.card,
           showTimeline && styles.cardWithTimeline,
           status === 'CHECKED_IN' && styles.cardCheckedIn,
+          status === 'SKIPPED' && styles.cardSkipped,
           isUpdating && styles.cardUpdating,
         ]}
         onPress={onPress}
@@ -299,13 +315,13 @@ export function TripItemCard({
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={[styles.checkInButton, isUpdating && styles.buttonDisabled]}
-                onPress={() => onCheckIn(item.id!, 'CHECKED_IN')}
+                onPress={() => handleStatusAction('CHECKED_IN')}
                 disabled={isUpdating}
                 accessibilityLabel="Check-in tại địa điểm này"
                 accessibilityRole="button"
                 accessibilityHint="Đánh dấu bạn đã đến địa điểm này"
               >
-                {isUpdating ? (
+                {isUpdating && localAction === 'CHECKED_IN' ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>
@@ -316,13 +332,17 @@ export function TripItemCard({
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.skipButton, isUpdating && styles.buttonDisabled]}
-                onPress={() => onCheckIn(item.id!, 'SKIPPED')}
+                onPress={() => handleStatusAction('SKIPPED')}
                 disabled={isUpdating}
                 accessibilityLabel="Bỏ qua địa điểm này"
                 accessibilityRole="button"
                 accessibilityHint="Đánh dấu bạn không đến địa điểm này"
               >
-                <Text style={styles.skipButtonText}>Bỏ qua</Text>
+                {isUpdating && localAction === 'SKIPPED' ? (
+                  <ActivityIndicator size="small" color="#9CA3AF" />
+                ) : (
+                  <Text style={styles.skipButtonText}>Bỏ qua</Text>
+                )}
               </TouchableOpacity>
             </View>
           )}
@@ -331,14 +351,20 @@ export function TripItemCard({
           {onCheckIn && !isCompleted && (status === 'CHECKED_IN' || status === 'SKIPPED') && (
             <TouchableOpacity
               style={[styles.undoButton, isUpdating && styles.buttonDisabled]}
-              onPress={() => onCheckIn(item.id!, 'PENDING')}
+              onPress={() => handleStatusAction('PENDING')}
               disabled={isUpdating}
               accessibilityLabel="Hoàn tác"
               accessibilityRole="button"
               accessibilityHint="Đưa trạng thái về chưa check-in"
             >
-              <Ionicons name="arrow-undo" size={16} color="#6B7280" />
-              <Text style={styles.undoButtonText}>Hoàn tác</Text>
+              {isUpdating && localAction === 'PENDING' ? (
+                <ActivityIndicator size="small" color="#6B7280" />
+              ) : (
+                <>
+                  <Ionicons name="arrow-undo" size={16} color="#6B7280" />
+                  <Text style={styles.undoButtonText}>Hoàn tác</Text>
+                </>
+              )}
             </TouchableOpacity>
           )}
 
@@ -406,6 +432,7 @@ export function TripItemCard({
           isLoading={isUpdating}
         />
       </TouchableOpacity>
+      {dialog}
     </View>
   );
 }
@@ -550,6 +577,10 @@ const styles = StyleSheet.create({
   },
   cardCheckedIn: {
     opacity: 0.7,
+  },
+  cardSkipped: {
+    opacity: 0.6,
+    backgroundColor: '#F9FAFB',
   },
   statusBadge: {
     position: 'absolute',
