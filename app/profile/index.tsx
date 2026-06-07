@@ -446,7 +446,10 @@ export default function ProfileScreen() {
               ) : (
                 displayedFavoriteItineraries.map((itinerary) => (
                   <View key={itinerary.id} className="mb-4">
-                    <ItineraryCard itinerary={itinerary} />
+                    <ItineraryCard 
+                      itinerary={itinerary}
+                      onPress={() => router.push(`/itinerary/detail?id=${itinerary.id}` as any)}
+                    />
                   </View>
                 ))
               )}

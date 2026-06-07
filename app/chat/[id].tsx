@@ -7,6 +7,8 @@ import { TypingIndicatorBubble } from "@/components/chat/TypingIndicatorBubble";
 import { useMessages } from "@/hooks/useMessages";
 import { usePinnedMessages } from "@/hooks/usePinnedMessages";
 import { MessageActionSheet } from "@/components/chat/MessageActionSheet";
+import { useSocketTyping } from "@/hooks/useSocketTyping";
+import { useAppDialog } from "@/hooks/useAppDialog";
 import { conversationService } from "@/services/conversations";
 import { PinnedMessageBar, PINNED_BAR_HEIGHT } from "@/components/chat/PinnedMessageBar";
 import { PinnedMessagesModal } from "@/components/chat/PinnedMessagesModal";
@@ -18,12 +20,13 @@ import { socketService } from "@/services/socket/socketService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setCurrentOpenConversationId } from "@/store/slices/messageNotificationSlice";
 import { setActiveConversation, resetUnread as resetUnreadRedux, selectTypingUsersForConversation } from "@/store/slices/conversationSlice";
-import { useSocketTyping } from "@/hooks/useSocketTyping";
 import { useChatStore } from "@/stores/chat.store";
 import { ChatMessageResponse, getChatSenderId } from "@/types/message";
 import { getDirectPeerAvatarUrl } from "@/utils/conversationDisplay";
 import { showErrorToast } from "@/utils/toast";
 import { resolveUserAvatarUri } from "@/utils/userAvatar";
+import { useFocusEffect } from "@react-navigation/native";
+import { useIsFocused } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Video, ResizeMode } from "expo-av";
@@ -110,6 +113,7 @@ export default function ChatScreen() {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const insets = useSafeAreaInsets();
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const { showWarning, dialog } = useAppDialog();
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -140,7 +144,12 @@ export default function ChatScreen() {
   const [reportedMessage, setReportedMessage] = useState<ChatMessageResponse | null>(null);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
-  const conversationId = params.id;
+  const conversationId = (() => {
+    const raw = params.id;
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    if (Array.isArray(raw) && raw[0]) return raw[0];
+    return undefined;
+  })();
 
   // Load pinned messages với hook
   const { pinnedMessages, isLoading: isPinListLoading, refetch: refetchPinned } = usePinnedMessages(conversationId || null);
@@ -157,76 +166,75 @@ export default function ChatScreen() {
 
   // Zustand store integration - set current chat and reset unread
   const { setCurrentChatId, resetUnread } = useChatStore();
-  useEffect(() => {
-    if (conversationId) {
+  
+  useFocusEffect(
+    useCallback(() => {
+      if (!conversationId) return;
+      
       setCurrentChatId(conversationId);
       resetUnread(conversationId);
-      // 🔥 Redux: Set active conversation to prevent unread increment
       dispatch(setActiveConversation(conversationId));
-      return () => {
-        setCurrentChatId(null);
-        // 🔥 Redux: Clear active conversation
-        dispatch(setActiveConversation(null));
-      };
-    }
-  }, [conversationId, setCurrentChatId, resetUnread, dispatch]);
 
-  useEffect(() => {
-    if (!conversationId) return;
-    let cancelled = false;
-    const retryDelays = [300, 800, 1500];
-    const markReadWithRetry = async () => {
-      for (let i = 0; i < retryDelays.length; i++) {
-        try {
-          await conversationService.markConversationRead(conversationId);
-          if (!cancelled) {
-            // Zustand update
-            resetUnread(conversationId);
-            // 🔥 Redux: Reset unread count
-            dispatch(resetUnreadRedux({ conversationId }));
-            queryClient.setQueryData(["conversations"], (prev: any) => {
-              if (!prev || !Array.isArray(prev)) return prev;
-              return prev.map((conversation: any) =>
-                conversation.id === conversationId
-                  ? { ...conversation, unread_count: 0 }
-                  : conversation
-              );
-            });
+      let cancelled = false;
+      const retryDelays = [300, 800, 1500];
+      const markReadWithRetry = async () => {
+        for (let i = 0; i < retryDelays.length; i++) {
+          try {
+            await conversationService.markConversationRead(conversationId);
+            if (!cancelled) {
+              resetUnread(conversationId);
+              dispatch(resetUnreadRedux({ conversationId }));
+              queryClient.setQueryData(["conversations"], (prev: any) => {
+                if (!prev || !Array.isArray(prev)) return prev;
+                return prev.map((conversation: any) =>
+                  conversation.id === conversationId
+                    ? { ...conversation, unread_count: 0 }
+                    : conversation
+                );
+              });
+            }
+            return;
+          } catch {
+            if (i === retryDelays.length - 1 || cancelled) return;
+            await new Promise((resolve) => setTimeout(resolve, retryDelays[i]));
           }
-          return;
-        } catch {
-          if (i === retryDelays.length - 1 || cancelled) return;
-          await new Promise((resolve) => setTimeout(resolve, retryDelays[i]));
         }
-      }
-    };
+      };
 
-    void markReadWithRetry();
+      void markReadWithRetry();
 
-    return () => {
-      cancelled = true;
-      if (conversationId) {
-        // Optimistic update immediately
-        resetUnread(conversationId);
-        dispatch(resetUnreadRedux({ conversationId }));
-        queryClient.setQueryData(["conversations"], (prev: any) => {
-          if (!prev || !Array.isArray(prev)) return prev;
-          return prev.map((conversation: any) =>
-            conversation.id === conversationId
-              ? { ...conversation, unread_count: 0 }
-              : conversation
-          );
-        });
+      return () => {
+        console.log(`[CHAT] Unfocusing/Unmounting, running cleanup for conversationId: ${conversationId}`);
+        cancelled = true;
+        setCurrentChatId(null);
+        dispatch(setActiveConversation(null));
+        
+        if (conversationId) {
+          // Optimistic update immediately
+          resetUnread(conversationId);
+          dispatch(resetUnreadRedux({ conversationId }));
+          queryClient.setQueryData(["conversations"], (prev: any) => {
+            if (!prev || !Array.isArray(prev)) return prev;
+            return prev.map((conversation: any) =>
+              conversation.id === conversationId
+                ? { ...conversation, unread_count: 0 }
+                : conversation
+            );
+          });
 
-        // Backend call & update after confirm
-        conversationService.markConversationRead(conversationId)
-          .then(() => {
-            queryClient.invalidateQueries({ queryKey: ["conversations"] });
-          })
-          .catch(() => {});
-      }
-    };
-  }, [conversationId, resetUnread, dispatch, queryClient]);
+          // Backend call & update after confirm
+          conversationService.markConversationRead(conversationId)
+            .then(() => {
+              console.log(`[CHAT] markConversationRead API success for ${conversationId} on exit`);
+              queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            })
+            .catch((err) => {
+              console.error(`[CHAT] markConversationRead API failed on exit:`, err);
+            });
+        }
+      };
+    }, [conversationId, setCurrentChatId, resetUnread, dispatch, queryClient])
+  );
 
   // Đảm bảo header bị tắt
   useLayoutEffect(() => {
@@ -249,7 +257,7 @@ export default function ChatScreen() {
       );
       console.log(`📊 [CHAT] Conversation API Response:`, JSON.stringify(response, null, 2));
       console.log(`📊 [CHAT] Response code: ${response.code}`);
-      console.log(`📊 [CHAT] Response data:`, response.data);
+      console.log(`📊 [CHAT] Response data: ${response.data}`);
       if (response.data) {
         console.log(`📊 [CHAT] Conversation members:`, response.data.members);
         console.log(`📊 [CHAT] Conversation members length:`, response.data.members?.length);
@@ -638,10 +646,7 @@ export default function ChatScreen() {
       "Thu hồi tin nhắn",
       "Bạn có chắc chắn muốn thu hồi tin nhắn này?",
       [
-        {
-          text: "Hủy",
-          style: "cancel",
-        },
+        { text: "Hủy", style: "cancel" },
         {
           text: "Thu hồi",
           style: "destructive",
@@ -1100,6 +1105,7 @@ export default function ChatScreen() {
           }
         />
       )}
+      {dialog}
     </SafeAreaView>
   );
 }

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { conversationService } from '@/services/conversations';
 import { useAppSelector } from '@/store/hooks';
+import { useAppDialog } from '@/hooks/useAppDialog';
 
 interface ProfileActionsProps {
   userId: string;
@@ -13,6 +14,7 @@ export function ProfileActions({ userId }: ProfileActionsProps) {
   const router = useRouter();
   const currentUserId = useAppSelector((state) => state.auth.user?.id);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+  const { dialog, showError } = useAppDialog();
 
   const handleMessagePress = async () => {
     if (isCreatingConversation) return;
@@ -26,11 +28,11 @@ export function ProfileActions({ userId }: ProfileActionsProps) {
       if (response.data?.id) {
         router.push(`/chat/${response.data.id}` as any);
       } else {
-        Alert.alert('Lỗi', 'Không thể tạo cuộc trò chuyện');
+        showError('Lỗi', 'Không thể tạo cuộc trò chuyện');
       }
     } catch (error) {
       console.error('Error creating conversation:', error);
-      Alert.alert('Lỗi', 'Không thể tạo cuộc trò chuyện');
+      showError('Lỗi', 'Không thể tạo cuộc trò chuyện');
     } finally {
       setIsCreatingConversation(false);
     }
@@ -56,6 +58,7 @@ export function ProfileActions({ userId }: ProfileActionsProps) {
           )}
         </TouchableOpacity>
       </View>
+      {dialog}
     </View>
   );
 }

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import BottomSheet, {
@@ -25,6 +24,7 @@ import {
 } from "@/hooks/useComments";
 import type { CommentResponse } from "@/types/comment";
 import { useAppSelector } from "@/store/hooks";
+import { AppDialogModal } from "@/components/common/AppDialogModal";
 
 interface CommentModalProps {
   postId: string;
@@ -45,6 +45,9 @@ export const CommentModal: React.FC<CommentModalProps> = ({
 
   // State for reply mode
   const [replyToComment, setReplyToComment] = useState<CommentResponse | null>(null);
+
+  // State for delete confirm modal
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Fetch comments with polling
   const { data: commentsData, isLoading } = usePostComments(postId, visible);
@@ -130,21 +133,17 @@ export const CommentModal: React.FC<CommentModalProps> = ({
 
   const handleDelete = useCallback(
     (commentId: string) => {
-      Alert.alert(
-        "Xóa bình luận",
-        "Bạn có chắc chắn muốn xóa bình luận này?",
-        [
-          { text: "Hủy", style: "cancel" },
-          {
-            text: "Xóa",
-            style: "destructive",
-            onPress: () => deleteCommentMutation.mutate(commentId),
-          },
-        ]
-      );
+      setDeleteConfirmId(commentId);
     },
-    [deleteCommentMutation]
+    []
   );
+
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteConfirmId) {
+      deleteCommentMutation.mutate(deleteConfirmId);
+      setDeleteConfirmId(null);
+    }
+  }, [deleteConfirmId, deleteCommentMutation]);
 
   const renderCommentItem = useCallback(
     ({ item }: { item: CommentResponse }) => (
@@ -187,56 +186,71 @@ export const CommentModal: React.FC<CommentModalProps> = ({
   }
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={0}
-      snapPoints={snapPoints}
-      enablePanDownToClose
-      backdropComponent={renderBackdrop}
-      onChange={handleSheetChanges}
-      handleIndicatorStyle={styles.indicator}
-      backgroundStyle={styles.background}
-      keyboardBehavior="extend"
-      keyboardBlurBehavior="restore"
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          Bình luận {displayCommentCount > 0 ? `(${displayCommentCount})` : ""}
-        </Text>
-        <TouchableOpacity
-          onPress={onClose}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="close" size={24} color="#666" />
-        </TouchableOpacity>
-      </View>
+    <>
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={0}
+        snapPoints={snapPoints}
+        enablePanDownToClose
+        backdropComponent={renderBackdrop}
+        onChange={handleSheetChanges}
+        handleIndicatorStyle={styles.indicator}
+        backgroundStyle={styles.background}
+        keyboardBehavior="extend"
+        keyboardBlurBehavior="restore"
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>
+            Bình luận {displayCommentCount > 0 ? `(${displayCommentCount})` : ""}
+          </Text>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
+        </View>
 
-      {/* Comments list and Input Container */}
-      <View style={{ flex: 1 }}>
-        <BottomSheetFlatList
-          data={comments}
-          renderItem={renderCommentItem}
-          keyExtractor={(item) => item.id}
-          ListHeaderComponent={renderListHeader}
-          ListEmptyComponent={!isLoading ? renderEmptyState : null}
-          contentContainerStyle={styles.listContent}
-          style={styles.list}
-          showsVerticalScrollIndicator={false}
-        />
+        {/* Comments list and Input Container */}
+        <View style={{ flex: 1 }}>
+          <BottomSheetFlatList
+            data={comments}
+            renderItem={renderCommentItem}
+            keyExtractor={(item) => item.id}
+            ListHeaderComponent={renderListHeader}
+            ListEmptyComponent={!isLoading ? renderEmptyState : null}
+            contentContainerStyle={styles.listContent}
+            style={styles.list}
+            showsVerticalScrollIndicator={false}
+          />
 
-        <CommentInput
-          onSubmit={handleSubmitComment}
-          isSubmitting={
-            createCommentMutation.isPending || createReplyMutation.isPending
-          }
-          replyToUsername={replyToComment?.created_by_user.fullName}
-          onCancelReply={() => setReplyToComment(null)}
-          autoFocus={visible}
-        />
-      </View>
+          <CommentInput
+            onSubmit={handleSubmitComment}
+            isSubmitting={
+              createCommentMutation.isPending || createReplyMutation.isPending
+            }
+            replyToUsername={replyToComment?.created_by_user.fullName}
+            onCancelReply={() => setReplyToComment(null)}
+            autoFocus={visible}
+          />
+        </View>
+      </BottomSheet>
 
-    </BottomSheet>
+      {/* Custom Confirm Dialog for Delete */}
+      <AppDialogModal
+        visible={!!deleteConfirmId}
+        onRequestClose={() => setDeleteConfirmId(null)}
+        title="Xóa bình luận"
+        message="Bạn có chắc chắn muốn xóa bình luận này? Hành động này không thể hoàn tác."
+        variant="error"
+        primaryLabel="Xóa"
+        primaryDestructive
+        onPrimaryPress={handleConfirmDelete}
+        secondaryLabel="Hủy"
+        onSecondaryPress={() => setDeleteConfirmId(null)}
+      />
+    </>
   );
 };
 

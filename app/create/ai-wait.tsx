@@ -889,6 +889,12 @@ export default function AiItineraryWaitScreen() {
                                   deleteItem(dayKey, index, name, row.id);
                                 }}
                                 onEdit={() => handleEditItem(dayKey, index, row)}
+                                onPressLocation={() => {
+                                  router.push({
+                                    pathname: "/itinerary/item-detail",
+                                    params: { itemData: JSON.stringify(row) },
+                                  });
+                                }}
                               />
                             ))}
                           </View>
@@ -959,6 +965,12 @@ export default function AiItineraryWaitScreen() {
                                     canInteract={false}
                                     onMove={() => {}}
                                     onDelete={() => {}}
+                                    onPressLocation={() => {
+                                      router.push({
+                                        pathname: "/itinerary/item-detail",
+                                        params: { itemData: JSON.stringify(row) },
+                                      });
+                                    }}
                                   />
                                 ))}
                               </View>

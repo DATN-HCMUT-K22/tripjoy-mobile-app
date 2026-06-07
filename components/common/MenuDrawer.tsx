@@ -253,6 +253,18 @@ export function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
                   <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    onClose();
+                    router.push("/settings/account-standing" as any);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="shield-checkmark-outline" size={24} color="#111827" />
+                  <Text style={styles.menuItemText}>Trạng thái tài khoản</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
 
 
                 {/* Chỉ hiển thị nút đăng xuất nếu không phải guest mode */}

@@ -61,50 +61,35 @@ export const useCreateComment = () => {
         "comments",
       ]);
 
+      const optimisticId = `temp-${Date.now()}`;
+      const optimisticComment: CommentResponse = {
+        id: optimisticId,
+        content: newComment.content,
+        post_id: newComment.postId,
+        created_by_user: {
+          id: currentUser?.id || "unknown",
+          fullName: currentUser?.fullName || "Bạn",
+          avatarUrl: currentUser?.avatarUrl,
+        },
+        created_at: new Date().toISOString(),
+        like_count: 0,
+        is_liked: false,
+        reply_count: 0,
+      };
+
       // Optimistically update cache
       queryClient.setQueryData<PageCommentResponse>(
         ["posts", newComment.postId, "comments"],
         (old) => {
           if (!old) {
             return {
-              content: [
-                {
-                  id: `temp-${Date.now()}`,
-                  content: newComment.content,
-                  post_id: newComment.postId,
-                  created_by_user: {
-                    id: currentUser?.id || "unknown",
-                    fullName: currentUser?.fullName || "Bạn",
-                    avatarUrl: currentUser?.avatarUrl,
-                  },
-                  created_at: new Date().toISOString(),
-                  like_count: 0,
-                  is_liked: false,
-                  reply_count: 0,
-                },
-              ],
+              content: [optimisticComment],
             };
           }
 
           return {
             ...old,
-            content: [
-              {
-                id: `temp-${Date.now()}`,
-                content: newComment.content,
-                post_id: newComment.postId,
-                created_by_user: {
-                  id: currentUser?.id || "unknown",
-                  fullName: currentUser?.fullName || "Bạn",
-                  avatarUrl: currentUser?.avatarUrl,
-                },
-                created_at: new Date().toISOString(),
-                like_count: 0,
-                is_liked: false,
-                reply_count: 0,
-              },
-              ...(old.content || []),
-            ],
+            content: [optimisticComment, ...(old.content || [])],
           };
         }
       );
@@ -132,7 +117,27 @@ export const useCreateComment = () => {
         return old;
       });
 
-      return { previousComments };
+      return { previousComments, optimisticId };
+    },
+    onSuccess: (data: any, variables, context) => {
+      const realComment = data?.data;
+      const optimisticId = context?.optimisticId;
+
+      if (optimisticId && realComment) {
+        queryClient.setQueryData<PageCommentResponse>(
+          ["posts", variables.postId, "comments"],
+          (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              content: old.content.map((c) =>
+                c.id === optimisticId ? realComment : c
+              ),
+            };
+          }
+        );
+      }
+      showSuccessToast("Đã đăng bình luận");
     },
     onError: (err, variables, context) => {
       // Rollback on error
@@ -146,9 +151,6 @@ export const useCreateComment = () => {
       // Refetch to get server truth
       queryClient.invalidateQueries({ queryKey: ["posts", variables.postId, "comments"] });
       queryClient.invalidateQueries({ queryKey: ["posts"] }); // Update comment count on post list
-      if (!error) {
-        showSuccessToast("Đã đăng bình luận");
-      }
     },
   });
 };
@@ -173,6 +175,8 @@ export const useCreateReply = () => {
         "comments",
       ]);
 
+      const optimisticId = `temp-reply-${Date.now()}`;
+
       // Optimistically add reply
       queryClient.setQueryData<PageCommentResponse>(
         ["posts", newReply.postId, "comments"],
@@ -180,7 +184,7 @@ export const useCreateReply = () => {
           if (!old) return old;
 
           const optimisticReply: CommentResponse = {
-            id: `temp-reply-${Date.now()}`,
+            id: optimisticId,
             content: newReply.content,
             post_id: newReply.postId,
             parent_comment_id: newReply.commentId,
@@ -203,8 +207,8 @@ export const useCreateReply = () => {
                   ...comment,
                   reply_count: comment.reply_count + 1,
                   latest_replies: [
-                    optimisticReply,
                     ...(comment.latest_replies || []),
+                    optimisticReply,
                   ],
                 };
               }
@@ -214,7 +218,78 @@ export const useCreateReply = () => {
         }
       );
 
-      return { previousComments };
+      // Also optimistically add to replies cache if it exists
+      queryClient.setQueryData<PageCommentResponse>(
+        ["comments", newReply.commentId, "replies"],
+        (old) => {
+          if (!old) return old;
+          const optimisticReply: CommentResponse = {
+            id: optimisticId,
+            content: newReply.content,
+            post_id: newReply.postId,
+            parent_comment_id: newReply.commentId,
+            created_by_user: {
+              id: currentUser?.id || "unknown",
+              fullName: currentUser?.fullName || "Bạn",
+              avatarUrl: currentUser?.avatarUrl,
+            },
+            created_at: new Date().toISOString(),
+            like_count: 0,
+            is_liked: false,
+            reply_count: 0,
+          };
+          return {
+            ...old,
+            content: [...old.content, optimisticReply],
+            total_elements: (old.total_elements || 0) + 1,
+          };
+        }
+      );
+
+      return { previousComments, optimisticId };
+    },
+    onSuccess: (data: any, variables, context) => {
+      const realReply = data?.data;
+      const optimisticId = context?.optimisticId;
+
+      if (optimisticId && realReply) {
+        // Replace optimistic ID with real ID in posts cache
+        queryClient.setQueryData<PageCommentResponse>(
+          ["posts", variables.postId, "comments"],
+          (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              content: old.content.map((comment) => {
+                if (comment.id === variables.commentId) {
+                  return {
+                    ...comment,
+                    latest_replies: (comment.latest_replies || []).map((r) =>
+                      r.id === optimisticId ? realReply : r
+                    ),
+                  };
+                }
+                return comment;
+              }),
+            };
+          }
+        );
+
+        // Replace in replies cache
+        queryClient.setQueryData<PageCommentResponse>(
+          ["comments", variables.commentId, "replies"],
+          (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              content: old.content.map((r) =>
+                r.id === optimisticId ? realReply : r
+              ),
+            };
+          }
+        );
+      }
+      showSuccessToast("Đã gửi phản hồi");
     },
     onError: (err, variables, context) => {
       queryClient.setQueryData(
@@ -228,11 +303,11 @@ export const useCreateReply = () => {
         queryKey: ["posts", variables.postId, "comments"],
       });
       queryClient.invalidateQueries({
+        queryKey: ["comments", variables.commentId, "replies"],
+      });
+      queryClient.invalidateQueries({
         queryKey: ["posts"],
       });
-      if (!error) {
-        showSuccessToast("Đã gửi phản hồi");
-      }
     },
   });
 };
@@ -342,6 +417,7 @@ export const useDeleteComment = (postId: string) => {
       // Cancel outgoing queries
       await queryClient.cancelQueries({ queryKey: ["posts", postId, "comments"] });
       await queryClient.cancelQueries({ queryKey: ["posts"] });
+      await queryClient.cancelQueries({ queryKey: ["comments"] });
 
       // 1. Update comment list cache
       const previousComments = queryClient.getQueryData<PageCommentResponse>([
@@ -350,40 +426,84 @@ export const useDeleteComment = (postId: string) => {
         "comments",
       ]);
 
+      const removeCommentFromList = (comments: CommentResponse[], idToRemove: string): { updatedList: CommentResponse[], removedCount: number } => {
+        let removedCount = 0;
+        const updatedList = comments.filter((c) => {
+          if (c.id === idToRemove) {
+            removedCount++;
+            return false;
+          }
+          return true;
+        }).map((c) => {
+          if (c.latest_replies) {
+            const result = removeCommentFromList(c.latest_replies, idToRemove);
+            if (result.removedCount > 0) {
+              removedCount += result.removedCount;
+              return {
+                ...c,
+                latest_replies: result.updatedList,
+                reply_count: Math.max(0, c.reply_count - result.removedCount)
+              };
+            }
+          }
+          return c;
+        });
+        return { updatedList, removedCount };
+      };
+
+      let totalRemoved = 0;
+
       queryClient.setQueryData<PageCommentResponse>(
         ["posts", postId, "comments"],
         (old) => {
           if (!old) return old;
+          const { updatedList, removedCount } = removeCommentFromList(old.content, commentId);
+          totalRemoved = removedCount;
           return {
             ...old,
-            content: old.content.filter((c) => c.id !== commentId),
-            total_elements: old.total_elements ? old.total_elements - 1 : undefined,
+            content: updatedList,
+            total_elements: old.total_elements !== undefined ? Math.max(0, old.total_elements - removedCount) : undefined,
           };
         }
       );
 
-      // 2. Update post comment count cache
-      queryClient.setQueriesData({ queryKey: ["posts"] }, (old: any) => {
-        if (Array.isArray(old)) {
-          return old.map((p) =>
-            p.id === postId
-              ? {
-                  ...p,
-                  comments: Math.max(0, (p.comments || 0) - 1),
-                  comment_count: Math.max(0, (p.comment_count || 0) - 1),
-                }
-              : p
-          );
-        }
-        if (old && old.id === postId) {
+      // 2. Update replies caches
+      queryClient.setQueriesData<PageCommentResponse>(
+        { queryKey: ["comments"] },
+        (old) => {
+          if (!old || !old.content) return old;
+          const { updatedList } = removeCommentFromList(old.content, commentId);
           return {
             ...old,
-            comments: Math.max(0, (old.comments || 0) - 1),
-            comment_count: Math.max(0, (old.comment_count || 0) - 1),
+            content: updatedList,
           };
         }
-        return old;
-      });
+      );
+
+      // 3. Update post comment count cache
+      if (totalRemoved > 0) {
+        queryClient.setQueriesData({ queryKey: ["posts"] }, (old: any) => {
+          if (Array.isArray(old)) {
+            return old.map((p) =>
+              p.id === postId
+                ? {
+                    ...p,
+                    comments: Math.max(0, (p.comments || 0) - totalRemoved),
+                    comment_count: Math.max(0, (p.comment_count || 0) - totalRemoved),
+                  }
+                : p
+            );
+          }
+          if (old && old.id === postId) {
+            return {
+              ...old,
+              comments: Math.max(0, (old.comments || 0) - totalRemoved),
+              comment_count: Math.max(0, (old.comment_count || 0) - totalRemoved),
+            };
+          }
+          return old;
+        });
+      }
 
       return { previousComments };
     },
@@ -404,6 +524,7 @@ export const useDeleteComment = (postId: string) => {
       // Refetch to ensure consistency
       queryClient.invalidateQueries({ queryKey: ["posts", postId, "comments"] });
       queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["comments"] });
     },
   });
 };

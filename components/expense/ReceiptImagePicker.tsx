@@ -5,6 +5,7 @@ import { Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '@/services/media';
 import { showErrorToast, showSuccessToast } from '@/utils/toast';
+import { useAppDialog } from '@/hooks/useAppDialog';
 
 interface ReceiptImagePickerProps {
   images: string[];
@@ -22,11 +23,12 @@ export function ReceiptImagePicker({
   disabled = false,
 }: ReceiptImagePickerProps) {
   const [uploading, setUploading] = useState(false);
+  const { dialog, showWarning } = useAppDialog();
 
   const handleAddImage = async () => {
     if (disabled) return;
     if (images.length >= maxImages) {
-      Alert.alert('Giới hạn ảnh', `Chỉ được tải tối đa ${maxImages} ảnh hóa đơn`);
+      showWarning('Giới hạn ảnh', `Chỉ được tải tối đa ${maxImages} ảnh hóa đơn`);
       return;
     }
 
@@ -142,6 +144,7 @@ export function ReceiptImagePicker({
           </TouchableOpacity>
         )}
       </View>
+      {dialog}
     </View>
   );
 }

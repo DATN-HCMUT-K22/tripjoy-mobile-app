@@ -8,6 +8,7 @@ import { searchService } from "@/services/search";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { deleteConversation, togglePin } from "@/store/slices/conversationSlice";
 import { useChatStore } from "@/stores/chat.store";
+import { useAppDialog } from "@/hooks/useAppDialog";
 import { ConversationResponse } from "@/types/message";
 import { MessageSearchResponse, UserSimpleResponse } from "@/types/search";
 import { getDirectPeerAvatarUrl } from "@/utils/conversationDisplay";
@@ -240,6 +241,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
 }) => {
   const dispatch = useAppDispatch();
   const { updateConversation, markConversationRead } = useConversations();
+  const { dialog, showWarning } = useAppDialog();
   // Load group info nếu là GROUP và không có name
   const { data: groupInfo } = useQuery({
     queryKey: ["group", conversation.group_id],
@@ -330,19 +332,17 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
   };
 
   const handleDelete = () => {
-    Alert.alert(
+    showWarning(
       'Xóa cuộc trò chuyện',
       'Bạn có chắc muốn xóa cuộc trò chuyện này?',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: () => {
-            dispatch(deleteConversation({ conversationId: conversation.id }));
-          },
+      {
+        secondaryLabel: 'Hủy',
+        primaryLabel: 'Xóa',
+        primaryDestructive: true,
+        onPrimaryPress: () => {
+          dispatch(deleteConversation({ conversationId: conversation.id }));
         },
-      ]
+      }
     );
   };
 
@@ -407,6 +407,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
           </View>
         </View>
       </TouchableOpacity>
+      {dialog}
     </SwipeableConversationItem>
   );
 };
@@ -433,6 +434,7 @@ export default function MessagesScreen() {
   const userSearchAbortRef = useRef<AbortController | null>(null);
   const messageSearchAbortRef = useRef<AbortController | null>(null);
   const latestSearchRequestRef = useRef(0);
+  const { dialog: screenDialog, open: openDialog } = useAppDialog();
 
   const {
     directConversations,
@@ -766,20 +768,16 @@ export default function MessagesScreen() {
 
   // Handle long press - show options
   const handleLongPress = (conversation: ConversationResponse) => {
-    Alert.alert(
+    openDialog(
+      'info',
       conversation.name || "Hội thoại",
       "Chọn hành động",
-      [
-        {
-          text: conversation.is_pinned ? "Bỏ ghim" : "Ghim",
-          onPress: () =>
-            handlePinConversation(conversation, conversation.is_pinned || false),
-        },
-        {
-          text: "Hủy",
-          style: "cancel",
-        },
-      ]
+      {
+        secondaryLabel: "Hủy",
+        primaryLabel: conversation.is_pinned ? "Bỏ ghim" : "Ghim",
+        onPrimaryPress: () =>
+          handlePinConversation(conversation, conversation.is_pinned || false),
+      }
     );
   };
 

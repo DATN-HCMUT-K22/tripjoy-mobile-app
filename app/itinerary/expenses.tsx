@@ -25,6 +25,7 @@ import { ReceiptImagePicker } from "@/components/expense/ReceiptImagePicker";
 import { useAppSelector } from "@/store/hooks";
 import { useGroup } from "@/hooks/useGroups";
 import { AttachedMediaGalleryModal } from "@/components/create-post/AttachedMediaGalleryModal";
+import { useAppDialog } from "@/hooks/useAppDialog";
 
 const EXPENSE_CATEGORIES = [
   { id: "FOOD", name: "Ăn uống", icon: "restaurant-outline", color: "#F59E0B", bg: "#FEF3C7" }, // amber-100
@@ -94,6 +95,7 @@ export default function ExpensesScreen() {
   // Mode: 'list' or 'form'
   const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const { dialog, showWarning, showError } = useAppDialog();
 
   const [formData, setFormData] = useState<ExpenseRequest>({
     name: "",
@@ -206,33 +208,31 @@ export default function ExpensesScreen() {
   };
 
   const handleDelete = (id: string, name?: string) => {
-    Alert.alert(
+    showWarning(
       "Xóa chi phí",
       `Bạn có chắc chắn muốn xóa chi phí "${name || ''}"? Hành động này không thể hoàn tác.`,
-      [
-        { text: "Hủy", style: "cancel" },
-        { 
-          text: "Xóa", 
-          style: "destructive", 
-          onPress: () => {
-            if (itineraryId) {
-              deleteExpenseMut.mutate({ itineraryId, expenseId: id });
-            }
+      {
+        secondaryLabel: "Hủy",
+        primaryLabel: "Xóa",
+        primaryDestructive: true,
+        onPrimaryPress: () => {
+          if (itineraryId) {
+            deleteExpenseMut.mutate({ itineraryId, expenseId: id });
           }
         }
-      ]
+      }
     );
   };
 
   const handleSave = async () => {
     if (!itineraryId) return;
     if (!formData.name.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập tên chi phí");
+      showError("Lỗi", "Vui lòng nhập tên chi phí");
       return;
     }
     const numAmt = parseInt(strAmount.replace(/[^0-9]/g, ""), 10);
     if (isNaN(numAmt) || numAmt <= 0) {
-      Alert.alert("Lỗi", "Vui lòng nhập số tiền hợp lệ");
+      showError("Lỗi", "Vui lòng nhập số tiền hợp lệ");
       return;
     }
 
@@ -563,6 +563,7 @@ export default function ExpensesScreen() {
           initialIndex={galleryIndex}
           onClose={() => setGalleryVisible(false)}
         />
+        {dialog}
       </View>
     );
   }
@@ -876,6 +877,7 @@ export default function ExpensesScreen() {
         initialIndex={galleryIndex}
         onClose={() => setGalleryVisible(false)}
       />
+      {dialog}
     </View>
   );
 }

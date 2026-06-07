@@ -33,7 +33,7 @@ import { socketService } from "@/services/socket/socketService";
 import { appStateManager } from "@/utils/appStateManager";
 import { Ionicons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { LogBox, Platform, Text, View, StyleSheet, Alert, AppState } from "react-native";
+import { LogBox, Platform, Text, View, StyleSheet, Alert, AppState, DeviceEventEmitter, Modal, TouchableOpacity } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
 import { Provider } from "react-redux";
@@ -180,6 +180,18 @@ function RootLayoutContent() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
+  const [isBannedModalVisible, setIsBannedModalVisible] = useState(false);
+
+  useEffect(() => {
+    const handleUserBanned = async () => {
+      setIsBannedModalVisible(true);
+    };
+
+    const subscription = DeviceEventEmitter.addListener("USER_BANNED", handleUserBanned);
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", async (nextState) => {
@@ -191,15 +203,9 @@ function RootLayoutContent() {
             if (userResponse.code === 1000 || userResponse.code === 0) {
               const userData = userResponse.data;
               const isLocked = userData.locked || (userData as any).isLocked;
-              if (isLocked) {
-                Alert.alert(
-                  "Tài khoản bị khóa",
-                  "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
-                  [{ text: "Đóng", style: "cancel" }]
-                );
-                await storage.clearTokens();
-                store.dispatch(logout());
-              }
+                if (isLocked) {
+                  DeviceEventEmitter.emit("USER_BANNED");
+                }
             }
           } catch (e) {
             // ignore
@@ -236,11 +242,7 @@ function RootLayoutContent() {
                 console.log("[Auth] User data fetched, isLocked:", isLocked);
 
                 if (isLocked) {
-                  Alert.alert(
-                    "Tài khoản bị khóa",
-                    "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
-                    [{ text: "Đóng", style: "cancel" }]
-                  );
+                  DeviceEventEmitter.emit("USER_BANNED");
                   throw new Error("User is locked");
                 }
 
@@ -338,6 +340,38 @@ function RootLayoutContent() {
         <SocketInitializer />
         <IncomingMessageHandler />
         <IncomingNotificationHandler />
+
+        <Modal
+          visible={isBannedModalVisible}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" }}>
+            <View style={{ backgroundColor: "white", padding: 24, borderRadius: 16, width: "85%", alignItems: "center" }}>
+              <View style={{ backgroundColor: "#FEE2E2", padding: 16, borderRadius: 50, marginBottom: 16 }}>
+                <Ionicons name="lock-closed" size={32} color="#EF4444" />
+              </View>
+              <Text style={{ fontSize: 20, fontWeight: "bold", marginBottom: 8, color: "#1F2937", textAlign: "center" }}>
+                Tài khoản bị khóa
+              </Text>
+              <Text style={{ fontSize: 16, color: "#4B5563", textAlign: "center", marginBottom: 24, lineHeight: 24 }}>
+                Tài khoản của bạn đã bị vi phạm và bị khóa. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.
+              </Text>
+              <TouchableOpacity
+                onPress={async () => {
+                  setIsBannedModalVisible(false);
+                  await storage.clearTokens();
+                  store.dispatch(logout());
+                }}
+                style={{ backgroundColor: "#EF4444", paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12, width: "100%" }}
+              >
+                <Text style={{ color: "white", fontSize: 16, fontWeight: "bold", textAlign: "center" }}>
+                  Xác nhận
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
 
       <StatusBar style="auto" />

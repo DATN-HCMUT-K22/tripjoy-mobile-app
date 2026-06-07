@@ -504,15 +504,21 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
    */
   const deleteMessage = useCallback(
     async (messageId: string) => {
-      // Optimistically remove from UI
+      // Optimistically mark as UNSENT
       const previousMessages = messagesRef.current;
-      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, status: "UNSENT", message_content: "Tin nhắn đã thu hồi", media_url: undefined }
+            : m
+        )
+      );
 
       try {
         const response = await messageService.deleteMessage(messageId);
         if (response.code === 1000 || response.code === 0) {
-          // Success - message already removed optimistically
-          console.log(`✅ Message ${messageId} deleted successfully`);
+          // Success - message already marked as UNSENT optimistically
+          console.log(`✅ Message ${messageId} deleted/unsent successfully`);
         } else {
           // Rollback on error
           setMessages(previousMessages);

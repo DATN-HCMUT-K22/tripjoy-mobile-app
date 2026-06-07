@@ -13,6 +13,9 @@ import { PLACEHOLDER_ITINERARY_IMAGE, useGroupConfirmedItinerary, useItineraryTr
 import { useMessages } from "@/hooks/useMessages";
 import { usePinnedMessages } from "@/hooks/usePinnedMessages";
 import { useSocketTyping } from "@/hooks/useSocketTyping";
+import { useAppDialog } from "@/hooks/useAppDialog";
+import { useTripSetup } from "@/contexts/TripSetupContext";
+import { isGroupManager } from "@/utils/roleUtils";
 import { conversationService } from "@/services/conversations";
 import { uploadImage, uploadVideo } from "@/services/media";
 import { socketService } from "@/services/socket/socketService";
@@ -28,6 +31,7 @@ import {
 import { ContentType } from "@/types/report";
 import { showErrorToast } from "@/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { useIsFocused } from "@react-navigation/native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResizeMode, Video } from "expo-av";
@@ -152,6 +156,7 @@ export default function GroupChatScreen() {
   const [likesModalVisible, setLikesModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const { showWarning, dialog } = useAppDialog();
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -199,7 +204,12 @@ export default function GroupChatScreen() {
   }, [navigation]);
 
   // Lấy conversationId từ params
-  const paramConversationId = (params as any).conversationId;
+  const paramConversationId = (() => {
+    const raw = (params as any).conversationId;
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    if (Array.isArray(raw) && raw[0]) return raw[0];
+    return undefined;
+  })();
   const groupId = params.id;
 
   const messageIdFromParams = (() => {
@@ -254,76 +264,75 @@ export default function GroupChatScreen() {
 
   // Zustand store integration - set current chat and reset unread
   const { setCurrentChatId, resetUnread } = useChatStore();
-  useEffect(() => {
-    if (conversationId) {
+  
+  useFocusEffect(
+    useCallback(() => {
+      if (!conversationId) return;
+      
       setCurrentChatId(conversationId);
       resetUnread(conversationId);
-      // 🔥 Redux: Set active conversation to prevent unread increment
       dispatch(setActiveConversation(conversationId));
-      return () => {
-        setCurrentChatId(null);
-        // 🔥 Redux: Clear active conversation
-        dispatch(setActiveConversation(null));
-      };
-    }
-  }, [conversationId, setCurrentChatId, resetUnread, dispatch]);
 
-  useEffect(() => {
-    if (!conversationId) return;
-    let cancelled = false;
-    const retryDelays = [300, 800, 1500];
-    const markReadWithRetry = async () => {
-      for (let i = 0; i < retryDelays.length; i++) {
-        try {
-          await conversationService.markConversationRead(conversationId);
-          if (!cancelled) {
-            // Zustand update
-            resetUnread(conversationId);
-            // 🔥 Redux: Reset unread count
-            dispatch(resetUnreadRedux({ conversationId }));
-            queryClient.setQueryData(["conversations"], (prev: any) => {
-              if (!prev || !Array.isArray(prev)) return prev;
-              return prev.map((conversation: any) =>
-                conversation.id === conversationId
-                  ? { ...conversation, unread_count: 0 }
-                  : conversation
-              );
-            });
+      let cancelled = false;
+      const retryDelays = [300, 800, 1500];
+      const markReadWithRetry = async () => {
+        for (let i = 0; i < retryDelays.length; i++) {
+          try {
+            await conversationService.markConversationRead(conversationId);
+            if (!cancelled) {
+              resetUnread(conversationId);
+              dispatch(resetUnreadRedux({ conversationId }));
+              queryClient.setQueryData(["conversations"], (prev: any) => {
+                if (!prev || !Array.isArray(prev)) return prev;
+                return prev.map((conversation: any) =>
+                  conversation.id === conversationId
+                    ? { ...conversation, unread_count: 0 }
+                    : conversation
+                );
+              });
+            }
+            return;
+          } catch {
+            if (i === retryDelays.length - 1 || cancelled) return;
+            await new Promise((resolve) => setTimeout(resolve, retryDelays[i]));
           }
-          return;
-        } catch {
-          if (i === retryDelays.length - 1 || cancelled) return;
-          await new Promise((resolve) => setTimeout(resolve, retryDelays[i]));
         }
-      }
-    };
+      };
 
-    void markReadWithRetry();
+      void markReadWithRetry();
 
-    return () => {
-      cancelled = true;
-      if (conversationId) {
-        // Optimistic update immediately
-        resetUnread(conversationId);
-        dispatch(resetUnreadRedux({ conversationId }));
-        queryClient.setQueryData(["conversations"], (prev: any) => {
-          if (!prev || !Array.isArray(prev)) return prev;
-          return prev.map((conversation: any) =>
-            conversation.id === conversationId
-              ? { ...conversation, unread_count: 0 }
-              : conversation
-          );
-        });
+      return () => {
+        console.log(`[GROUP CHAT] Unfocusing/Unmounting, running cleanup for conversationId: ${conversationId}`);
+        cancelled = true;
+        setCurrentChatId(null);
+        dispatch(setActiveConversation(null));
+        
+        if (conversationId) {
+          // Optimistic update immediately
+          resetUnread(conversationId);
+          dispatch(resetUnreadRedux({ conversationId }));
+          queryClient.setQueryData(["conversations"], (prev: any) => {
+            if (!prev || !Array.isArray(prev)) return prev;
+            return prev.map((conversation: any) =>
+              conversation.id === conversationId
+                ? { ...conversation, unread_count: 0 }
+                : conversation
+            );
+          });
 
-        // Backend call & update after confirm
-        conversationService.markConversationRead(conversationId)
-          .then(() => {
-            queryClient.invalidateQueries({ queryKey: ["conversations"] });
-          })
-          .catch(() => {});
-      }
-    };
-  }, [conversationId, resetUnread, dispatch, queryClient]);
+          // Backend call & update after confirm
+          conversationService.markConversationRead(conversationId)
+            .then(() => {
+              console.log(`[GROUP CHAT] markConversationRead API success for ${conversationId} on exit`);
+              queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            })
+            .catch((err) => {
+              console.error(`[GROUP CHAT] markConversationRead API failed on exit:`, err);
+            });
+        }
+      };
+    }, [conversationId, setCurrentChatId, resetUnread, dispatch, queryClient])
+  );
 
   // Load conversation info để lấy members và tên nhóm
   const { data: conversation } = useQuery({
@@ -425,6 +434,9 @@ export default function GroupChatScreen() {
     if (groupInfo?.avatar) return groupInfo.avatar;
     return null;
   }, [groupInfo?.avatar]);
+
+  const { resetTripData, setTargetGroup } = useTripSetup();
+  const isManager = useMemo(() => isGroupManager(groupInfo || undefined, currentUser?.id), [groupInfo, currentUser?.id]);
 
   // Mention Suggestions logic
   const mentionSuggestions = useMemo(() => {
@@ -1003,6 +1015,16 @@ export default function GroupChatScreen() {
               {memberCount} thành viên
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            className="p-2"
+            onPress={() => {
+              resetTripData();
+              setTargetGroup(groupId || "", groupName);
+              router.push("/create" as any);
+            }}
+          >
+            <Ionicons name="add-circle" size={28} color="#0D9488" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -1316,10 +1338,7 @@ export default function GroupChatScreen() {
       {reportedMessage && (
         <ReportModal
           visible={reportModalVisible}
-          onClose={() => {
-            setReportModalVisible(false);
-            setReportedMessage(null);
-          }}
+          onClose={() => setReportModalVisible(false)}
           contentId={reportedMessage.id}
           contentType={ContentType.MESSAGE}
           contentTitle={

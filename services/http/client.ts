@@ -17,6 +17,7 @@ type RequestOptions = RequestInit & {
 };
 
 import { setCredentials } from "@/store/slices/authSlice";
+import { DeviceEventEmitter } from "react-native";
 
 // Biến để tránh refresh token nhiều lần cùng lúc
 let isRefreshing = false;
@@ -61,6 +62,17 @@ export async function handleRefreshToken(): Promise<string> {
       });
 
       if (!res.ok) {
+        let errorCode: number | undefined;
+        try {
+          const clonedRes = res.clone();
+          const errData = await clonedRes.json();
+          errorCode = errData?.code;
+        } catch (e) {}
+
+        if (errorCode === 2007) {
+          DeviceEventEmitter.emit("USER_BANNED");
+        }
+
         throw new Error(`Refresh token failed: ${res.status}`);
       }
 
@@ -342,6 +354,9 @@ async function request<T>(
           console.error(`Full Response:`, message);
           console.error("================================\n");
           
+          if (errorData?.code === 2007) {
+            DeviceEventEmitter.emit("USER_BANNED");
+          }
           // Tạo error object với response property
           const error: any = new Error(errorMessage);
           error.response = {
@@ -414,6 +429,9 @@ async function request<T>(
       console.error(`Request Headers:`, JSON.stringify(headers, null, 2));
       console.error("================================\n");
       
+      if (errorData?.code === 2007) {
+        DeviceEventEmitter.emit("USER_BANNED");
+      }
       // Tạo error object với response property để có thể access status và data
       const error: any = new Error(errorMessage);
       error.response = {

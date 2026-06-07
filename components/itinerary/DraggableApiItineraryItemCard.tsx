@@ -75,6 +75,7 @@ export const DraggableApiItineraryItemCard = React.memo(
     onDelete,
     onSuggest,
     onEdit,
+    onPressLocation,
   }: {
     row: TripItemResponse;
     index: number;
@@ -85,6 +86,7 @@ export const DraggableApiItineraryItemCard = React.memo(
     onDelete: () => void;
     onSuggest?: () => void;
     onEdit?: () => void;
+    onPressLocation?: () => void;
   }) {
   const translateY = useSharedValue(0);
   const isDragging = useSharedValue(false);
@@ -157,39 +159,42 @@ export const DraggableApiItineraryItemCard = React.memo(
             </View>
           )}
 
-          {/* Image */}
-          <LocationImage
-            location={row.location}
-            style={{ width: '100%', height: '100%' }}
-            containerStyle={{ width: 135, height: 80, borderRadius: 12 }}
-          />
+          {/* Image and Info */}
+          <TouchableOpacity onPress={onPressLocation} activeOpacity={0.7} disabled={!onPressLocation} className="flex-1 flex-row items-center">
+            {/* Image */}
+            <LocationImage
+              location={row.location}
+              style={{ width: '100%', height: '100%' }}
+              containerStyle={{ width: 135, height: 80, borderRadius: 12 }}
+            />
 
-          {/* Info */}
-          <View className="flex-1 ml-3">
-            <Text className="text-base font-bold text-black mb-1" numberOfLines={1}>
-              {name}
-            </Text>
-            {address ? (
-              <Text className="text-xs text-gray-500 mb-1" numberOfLines={1}>
-                {address}
+            {/* Info */}
+            <View className="flex-1 ml-3">
+              <Text className="text-base font-bold text-black mb-1" numberOfLines={1}>
+                {name}
               </Text>
-            ) : null}
-            <View className="flex-row items-center">
-              <Ionicons name="time-outline" size={14} color="#666" />
-              <Text className="ml-1 text-sm text-gray-600">
-                {timeRange || "Chưa đặt giờ"}
-              </Text>
-              {canInteract && onEdit && (
-                <TouchableOpacity
-                  onPress={onEdit}
-                  className="ml-2 rounded-full border border-blue-200 bg-blue-50 px-2 py-1"
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Ionicons name="pencil" size={14} color="#2563EB" />
-                </TouchableOpacity>
-              )}
+              {address ? (
+                <Text className="text-xs text-gray-500 mb-1" numberOfLines={1}>
+                  {address}
+                </Text>
+              ) : null}
+              <View className="flex-row items-center">
+                <Ionicons name="time-outline" size={14} color="#666" />
+                <Text className="ml-1 text-sm text-gray-600">
+                  {timeRange || "Chưa đặt giờ"}
+                </Text>
+                {canInteract && onEdit && (
+                  <TouchableOpacity
+                    onPress={onEdit}
+                    className="ml-2 rounded-full border border-blue-200 bg-blue-50 px-2 py-1"
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="pencil" size={14} color="#2563EB" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-          </View>
+          </TouchableOpacity>
 
           {/* Actions */}
           <View className="ml-2 flex-row items-center">

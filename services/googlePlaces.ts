@@ -328,9 +328,33 @@ export async function getPlacePhotoUrl(placeId: string): Promise<string | undefi
   }
 
   const firstPhoto = details.photos[0];
-  const url = buildPhotoMediaUrl(firstPhoto.name || "", apiKey, 800);
-  console.log(`🖼️ [GOOGLE PLACES NEW] Photo URL resolved (800px): ${url.substring(0, 60)}...`);
-  return url;
+  const photoName = firstPhoto.name || "";
+  const mediaUrl = `${PLACES_BASE}/${photoName}/media?key=${apiKey}&maxWidthPx=800&skipHttpRedirect=true`;
+
+  try {
+    const res = await fetch(mediaUrl, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.photoUri) {
+        console.log(`🖼️ [GOOGLE PLACES NEW] Photo URL resolved (skipHttpRedirect): ${data.photoUri.substring(0, 60)}...`);
+        return data.photoUri;
+      }
+    }
+  } catch (error) {
+    console.warn("[GOOGLE PLACES NEW] Failed to fetch skipHttpRedirect photo:", error);
+  }
+
+  // Fallback if skipHttpRedirect fails
+  const fallbackUrl = buildPhotoMediaUrl(photoName, apiKey, 800);
+  console.log(`🖼️ [GOOGLE PLACES NEW] Fallback Photo URL resolved: ${fallbackUrl.substring(0, 60)}...`);
+  return fallbackUrl;
 }
 
 /**

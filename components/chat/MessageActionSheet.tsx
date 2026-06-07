@@ -92,15 +92,19 @@ export function MessageActionSheet({
   const handleDelete = () => {
     if (!message) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onDelete?.(message);
     onDismiss();
+    setTimeout(() => {
+      onDelete?.(message);
+    }, 300);
   };
 
   const handleReport = () => {
     if (!message) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onReport?.(message);
     onDismiss();
+    setTimeout(() => {
+      onReport?.(message);
+    }, 300);
   };
 
   const isPinned = !!message?.is_pinned;
